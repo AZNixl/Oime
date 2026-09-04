@@ -17,7 +17,8 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         
         ndk {
-            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
+            // librime_jni.so 目前仅提供 arm64-v8a（提取自 Xime 2.6.2）
+            abiFilters += listOf("arm64-v8a")
         }
     }
 
