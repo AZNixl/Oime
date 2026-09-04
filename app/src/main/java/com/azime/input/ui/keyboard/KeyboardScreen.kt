@@ -2,6 +2,9 @@ package com.azime.input.ui.keyboard
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,9 +22,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -31,6 +40,8 @@ import com.azime.input.data.keyboard.KeyboardPages
 import com.azime.input.data.model.Key
 import com.azime.input.data.model.KeyType
 import com.azime.input.data.model.KeyboardLayout
+
+import kotlinx.coroutines.delay
 
 /** 键盘 → Service 的动作。 */
 sealed interface KeyAction {
@@ -225,14 +236,11 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
         else -> key.label
     }
 
-    Box(
-        modifier = Modifier
-            .weight(key.width)
-            .fillMaxSize()
-            .background(bg, RoundedCornerShape(8.dp))
-            .clickable { onKeyAction(key, onAction) },
-        contentAlignment = Alignment.Center,
-    ) {
+    val modifier = Modifier
+        .weight(key.width)
+        .fillMaxSize()
+        .background(bg, RoundedCornerShape(8.dp))
+    val content: @Composable () -> Unit = {
         Text(
             text = label,
             fontSize = if (key.type == KeyType.CHARACTER) 20.sp else 14.sp,
@@ -240,6 +248,40 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
             color = fg,
             maxLines = 1,
         )
+    }
+
+    if (key.type == KeyType.DELETE) {
+        // 退格：按下即删一次；按住 400ms 后进入连删（每 45ms 一次）
+        var pressing by remember { mutableStateOf(false) }
+        LaunchedEffect(pressing) {
+            if (pressing) {
+                delay(400)
+                if (pressing) {
+                    delay(150)
+                    while (pressing) {
+                        onKeyAction(key, onAction)
+                        delay(45)
+                    }
+                }
+            }
+        }
+        Box(
+            modifier = modifier.pointerInput(Unit) {
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    onKeyAction(key, onAction)
+                    pressing = true
+                    waitForUpOrCancellation()
+                    pressing = false
+                }
+            },
+            contentAlignment = Alignment.Center,
+        ) { content() }
+    } else {
+        Box(
+            modifier = modifier.clickable { onKeyAction(key, onAction) },
+            contentAlignment = Alignment.Center,
+        ) { content() }
     }
 }
 

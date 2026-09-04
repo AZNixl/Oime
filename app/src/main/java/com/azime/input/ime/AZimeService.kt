@@ -49,6 +49,7 @@ class AZimeService : InputMethodService() {
     }
 
     override fun onCreateInputView(): View {
+        lifecycleOwner.resume() // 视图可能被重建（配置变化），确保 Compose 生命周期就绪
         val composeView = ComposeView(this)
         composeView.setViewTreeLifecycleOwner(lifecycleOwner)
         composeView.setViewTreeSavedStateRegistryOwner(lifecycleOwner)
