@@ -30,8 +30,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
@@ -46,6 +48,7 @@ import com.azime.input.data.model.KeyType
 import com.azime.input.data.model.KeyboardLayout
 
 import kotlinx.coroutines.delay
+import kotlin.math.abs
 
 /** 键盘 → Service 的动作。 */
 sealed interface KeyAction {
@@ -269,11 +272,17 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
     var pressing by remember { mutableStateOf(false) }
     var longFired by remember { mutableStateOf(false) }
     var showBubble by remember { mutableStateOf(false) }
+    var swipePreview by remember { mutableStateOf<String?>(null) }
+
+    val density = LocalDensity.current
+    val haptics = LocalHapticFeedback.current
+    val bubbleOffset = with(density) { IntOffset(0, -58.dp.roundToPx()) }
+    val swipeThreshold = with(density) { 30.dp.toPx() }
 
     LaunchedEffect(pressing) {
         if (pressing) {
             delay(400)
-            if (pressing) {
+            if (pressing && !longFired) {
                 when {
                     longPressSymbols.isNotEmpty() -> {
                         longFired = true
@@ -299,27 +308,51 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
     if (supportsLongPress) {
         baseModifier = baseModifier.pointerInput(key.code, state.symbolPage) {
             awaitEachGesture {
-                awaitFirstDown(requireUnconsumed = false)
+                val down = awaitFirstDown(requireUnconsumed = false)
                 longFired = false
                 pressing = true
-                waitForUpOrCancellation()
+                val startX = down.position.x
+                val startY = down.position.y
+                var swipeTarget: String? = null
+
+                while (true) {
+                    val event = awaitPointerEvent()
+                    val change = event.changes.firstOrNull() ?: break
+                    if (!change.pressed) break
+                    if (swipeTarget == null && longPressSymbols.isNotEmpty()) {
+                        val dx = change.position.x - startX
+                        val dy = change.position.y - startY
+                        if (abs(dy) > swipeThreshold && abs(dy) > abs(dx) * 1.2f) {
+                            // 上滑取主符号（数字），下滑取次符号；滑出即预览并抑制长按/点击
+                            swipeTarget = if (dy < 0) {
+                                longPressSymbols.first()
+                            } else {
+                                longPressSymbols.getOrElse(1) { longPressSymbols.first() }
+                            }
+                            longFired = true
+                            swipePreview = swipeTarget
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        }
+                    }
+                }
                 pressing = false
-                if (!longFired) onKeyAction(key, onAction)
+                swipePreview = null
+                when {
+                    swipeTarget != null -> onAction(KeyAction.DirectCommit(swipeTarget))
+                    !longFired -> onKeyAction(key, onAction)
+                }
             }
         }
     } else {
         baseModifier = baseModifier.clickable { onKeyAction(key, onAction) }
     }
 
-    val density = LocalDensity.current
-    val bubbleOffset = with(density) { IntOffset(0, -58.dp.roundToPx()) }
-
     Box(
         modifier = baseModifier,
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text = label,
+            text = swipePreview ?: label,
             fontSize = if (key.type == KeyType.CHARACTER) 20.sp else 14.sp,
             fontWeight = FontWeight.Medium,
             color = fg,
