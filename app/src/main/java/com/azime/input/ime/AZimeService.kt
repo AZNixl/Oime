@@ -10,6 +10,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.ComposeView
 import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
+import com.azime.input.core.keyboard.KeyboardManager
 import com.azime.input.core.rime.RimeManager
 import com.azime.input.core.rime.RimeManager.KEY_BACKSPACE
 import com.azime.input.core.rime.RimeManager.KEY_RETURN
@@ -35,6 +36,7 @@ class AZimeService : InputMethodService() {
     override fun onCreate() {
         super.onCreate()
         lifecycleOwner.onCreate()
+        KeyboardManager.initialize(applicationContext)
         scope.launch {
             val ok = RimeManager.ensureReady(applicationContext)
             val sessionOk = ok && RimeManager.ensureSession()
