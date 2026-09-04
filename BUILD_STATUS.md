@@ -1,221 +1,114 @@
-# AZime 项目构建状态报告
+# AZime 项目状态报告
+
+> 最后更新：2026-09-04（首构建验证通过后重写，旧的 AAPT2 阻塞问题已解决）
 
 ## 项目信息
-- **项目名称**: AZime (Android RIME 输入法)
+
+- **项目名称**: AZime（Android RIME 输入法）
 - **版本**: v0.1.0-preview
-- **创建时间**: 2026-09-04
-- **项目路径**: /root/AZime
-- **包名**: com.azime.input
+- **包名**: `com.azime.input`
+- **仓库**: https://github.com/AZNixl/AZime （私有，main 分支）
+- **技术栈**: Kotlin 1.9.22 / AGP 8.3.0 / Gradle 8.4 / Compose BOM 2024.02.00
+- **构建目标**: compileSdk 34 / minSdk 24 / targetSdk 34 / JDK 17
 
-## 当前状态
+## 构建状态：✅ 已跑通
 
-### ✅ 已完成的工作
+首构建验证已完成，本地与 CI 两侧均通过。
 
-#### 1. 项目结构搭建
-- Gradle 构建系统配置完成 (AGP 8.3.0, Kotlin 1.9.22)
-- 项目目录结构完整建立
-- 12个 Kotlin 源文件编写完成
-- 9个 XML 资源文件配置完成
-- AndroidManifest.xml 完整配置
+| 环境 | 结果 | 耗时 |
+|---|---|---|
+| Windows 本机（`./gradlew assembleDebug`） | BUILD SUCCESSFUL | 首次 7m02s，增量 44s |
+| GitHub Actions（ubuntu-latest） | 3 次运行全部 success | 首次 ~4m，后续 ~1m40s |
 
-#### 2. 核心模块实现
+产物：`app/build/outputs/apk/debug/app-debug.apk`，约 12.8 MB。
 
-**应用层**:
-- `AZimeApplication`: 应用入口，初始化存储目录
-- `MainActivity`: 主界面，包含启用/选择输入法、进入设置功能
-- `SettingsActivity`: Compose构建的设置界面
-- `KeyboardEditorActivity`: 键盘编辑器占位页面
+### 旧的阻塞问题已解决
 
-**输入法服务**:
-- `AZimeService`: 输入法服务基础框架
-- `KeyboardView`: 自定义键盘视图（占位实现）
+此前卡住的 **AAPT2 架构不兼容**（`Cannot run program aapt2: No such file or directory`）是纯构建环境问题：
+AAPT2 只有 x86_64 版本，ARM64 机器上跑不了。改用 x86_64 环境（本机或 GitHub Actions）即可，
+输出始终是 APK，与"是否构建成 PC 应用"无关。
 
-**核心管理器**:
-- `StorageManager`: 外部存储管理
-  - 自动创建 `/storage/emulated/0/Documents/AZime/` 目录结构
-  - 包含 schema/、fonts/、lua/ 三个子目录
-  - 预生成默认 preset_keys.lua 脚本
-- `KeyboardManager`: 键盘布局管理器
-- `RimeManager`: RIME引擎管理器（占位，待集成librime）
-- `LuaScriptManager`: Lua脚本解析器（基于LuaJ，已实现基础解析）
+### 本机构建方式
 
-**数据模型**:
-- `KeyboardLayout`: 键盘布局数据结构
-- `KeyboardRow`: 键盘行模型
-- `Key`: 按键模型
-- `KeyType`: 按键类型枚举 (CHARACTER/FUNCTION/MODIFIER/SPACE/ENTER/DELETE)
-
-**工具类**:
-- `SchemaImporter`: 基于Zip4j实现ZIP方案导入功能
-
-#### 3. 依赖配置
-- AndroidX 全套库 (AppCompat, Core, Material3)
-- Jetpack Compose (BOM 2024.02.00)
-- LuaJ 3.0.1 (Lua脚本执行)
-- Zip4j 2.11.5 (ZIP文件处理)
-- Kotlin Coroutines
-- Gson
-
-#### 4. 资源文件
-- Material Design 3 主题配置
-- 应用图标 (adaptive icon)
-- 输入法服务配置 (method.xml)
-- 字符串资源
-- 颜色资源
-
-#### 5. 文档
-- README.md: 项目说明文档
-- .gitignore: Git版本控制配置
-
-### ⚠️ 当前阻塞问题
-
-**AAPT2 架构不兼容问题**:
-- **问题描述**: 构建环境为 ARM64 (aarch64) 架构，但 Android SDK Build Tools 中的 AAPT2 工具仅提供 x86_64 版本
-- **错误信息**: `Cannot run program "/root/Android/build-tools/34.0.0/aapt2": error=2, No such file or directory`
-- **根本原因**: AGP 8.3.0 强制要求使用 AAPT2，且不支持禁用。AAPT2从Maven自动下载的版本也是x86架构
-- **影响**: 无法完成首次APK构建验证
-
-### 📋 解决方案
-
-#### 方案1: 使用x86_64构建环境（推荐）
-将项目转移到x86_64 Linux环境或使用GitHub Actions进行云端构建：
 ```bash
-# 在x86_64环境中
-cd /root/AZime
+ANDROID_HOME="C:/Users/HinYoung/AppData/Local/Android/Sdk" \
+ANDROID_SDK_ROOT="C:/Users/HinYoung/AppData/Local/Android/Sdk" \
+JAVA_HOME="C:/Program Files/Eclipse Adoptium/jdk-17.0.20.8-hotspot" \
 ./gradlew assembleDebug
 ```
 
-#### 方案2: 使用Docker容器
-```bash
-docker run --rm -v $(pwd):/project -w /project \
-  mingc/android-build-box:latest \
-  bash -c "./gradlew assembleDebug"
-```
+两个注意事项：
 
-#### 方案3: GitHub Actions自动构建
-项目已准备就绪，可直接推送到GitHub并配置Actions:
-```yaml
-name: Android CI
-on: [push, pull_request]
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-java@v3
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-      - name: Build with Gradle
-        run: ./gradlew assembleDebug
-      - uses: actions/upload-artifact@v3
-        with:
-          name: app-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
-```
+1. **项目路径含中文（如 `Desktop\搞机\...`）会被 AGP 拒绝**
+   （`Your project path contains non-ASCII characters`）。当前用
+   `gradle.properties` 里的 `android.overridePathCheck=true` 绕过；
+   若遇到资源处理异常，把项目移到纯英文路径才是根治办法。
+2. **Gradle 版本不可随意升级**：AGP 8.3 不能搭配 Gradle 9，`gradle-wrapper.properties`
+   固定为 Gradle 8.4。
 
-### 🔄 后续开发任务
+## 功能完成度（实事求是）
 
-#### 高优先级
-1. **解决构建环境问题**，完成首次APK编译
-2. **RIME引擎集成**
-   - 编译 librime.so 原生库（arm64-v8a, armeabi-v7a, x86_64）
-   - 实现 RimeManager 的 JNI 绑定
-   - 配置默认输入方案
+代码总量 744 行。目前是**可安装、可启用的应用骨架**，尚不能真正打字。
 
-3. **键盘布局编辑器**
-   - 实现可视化布局设计界面
-   - 按键拖拽和调整功能
-   - 布局导入/导出功能
+| 模块 | 文件 | 状态 | 说明 |
+|---|---|---|---|
+| 应用入口 | `AZimeApplication.kt` | 可用 | 初始化存储目录 |
+| 主界面 | `MainActivity.kt` | 可用 | 启用/切换输入法、进入设置 |
+| 设置界面 | `SettingsActivity.kt` | 基本可用 | Compose + Material 3，部分入口还是 `TODO` |
+| 存储管理 | `StorageManager.kt` | 可用 | 创建 `Documents/AZime/{schema,fonts,lua}` 并生成默认 Lua |
+| 方案导入 | `SchemaImporter.kt` | 可用 | 基于 Zip4j 导入 ZIP 方案 |
+| Lua 脚本 | `LuaScriptManager.kt` | 基础可用 | LuaJ 执行脚本 |
+| 数据模型 | `KeyboardLayout.kt` | 可用 | KeyboardLayout / Row / Key / KeyType |
+| **输入法服务** | `AZimeService.kt` | 骨架 | 生命周期回调已接，但按键→候选→上屏链路未建立 |
+| **键盘视图** | `KeyboardView.kt` | **占位** | 仅 `canvas.drawText("AZime Keyboard")`，没有真实按键 |
+| **键盘管理** | `KeyboardManager.kt` | **占位** | 布局加载/保存均为 `TODO` |
+| **RIME 引擎** | `RimeManager.kt` | **空壳** | 7 个方法全是 `TODO`，返回空值 |
+| 键盘编辑器 | `KeyboardEditorActivity.kt` | 占位页面 | 无编辑功能 |
 
-#### 中优先级
-4. **字体管理界面**
-   - 字体文件浏览
-   - 主字体/备用字体设置
-   - 字体预览功能
+未闭合的关键缺口（`TODO` 共 12 处，分布见下）：
 
-5. **键盘功能完善**
-   - 候选词显示和选择
-   - 按键反馈（触觉、声音、视觉）
-   - 滑动输入支持
+- `RimeManager`：初始化、`processKey`、取候选、选候选、上屏、清空 —— 全部未实现
+- `KeyboardManager`：布局加载与保存
+- `SettingsActivity`：键盘编辑器、字体管理、Lua 脚本编辑三个入口未接线
 
-6. **主题系统**
-   - 颜色主题切换
-   - 背景图片支持
-   - 自定义主题导入
+## 后续开发优先级
 
-#### 低优先级
-7. **性能优化**
-8. **用户引导和帮助文档**
-9. **云同步功能**
+打通"能真正打出一个字"的最短路径，顺序上建议 **键盘在前、引擎在后**——
+先把按键事件和上屏链路做通，用假数据也能验证交互，再替换成真实 RIME 结果：
 
-## 技术规格
+1. **真实键盘视图（前置依赖）**
+   - 用 Compose 重写 `KeyboardView`，按 `KeyboardLayout` 数据渲染按键
+   - 触摸/长按/滑动事件 → `AZimeService` → `commitText` 上屏
+   - 先用内置 QWERTY 布局验证链路，不依赖 RIME
 
-### 构建配置
-- **Gradle**: 8.4 (wrapper) / 9.1.0 (system)
-- **Android Gradle Plugin**: 8.3.0
-- **Kotlin**: 1.9.22
-- **Java**: 17 (OpenJDK 17.0.20)
-- **compileSdk**: 34
-- **minSdk**: 24
-- **targetSdk**: 34
+2. **候选栏**
+   - 候选词横向列表、翻页、点击上屏
+   - 数据先 mock，接口按 RIME 的形状设计
 
-### 架构特点
-- **UI框架**: Jetpack Compose + Material Design 3
-- **存储策略**: 
-  - 用户可配置资源：外部存储 (`/storage/emulated/0/Documents/AZime/`)
-  - 应用私有数据：内部存储 (`Context.filesDir`)
-- **多语言支持**: Kotlin为主，预留JNI接口对接C++的librime
-- **方案管理**: 支持ZIP导入，每个方案独立子文件夹
-- **字体系统**: 主字体+多备用字体级联回退机制
-- **脚本扩展**: Lua脚本自定义按键功能
+3. **RIME 引擎集成（最大工作量）**
+   - 编译 `librime.so`（arm64-v8a / armeabi-v7a / x86_64），或复用现有预编译产物
+   - JNI 绑定 `RimeManager`，打通 initialize / processKey / getCandidates / selectCandidate
+   - 部署默认输入方案到 `Documents/AZime/schema/`
+   - 注意：`app/build.gradle.kts` 已声明 `ndk.abiFilters`，接入 so 后即可打包
 
-### 文件统计
-- Kotlin源文件: 12个
-- XML资源文件: 9个
-- 配置文件: 6个 (Gradle相关)
-- 项目总大小: 41MB (含Gradle缓存)
+4. **补齐设置页入口**：键盘编辑器、字体管理、Lua 脚本编辑
 
-## 下一步行动建议
+5. **打磨**：按键反馈（振动/声音）、主题系统、字体回退验证
 
-### 立即可执行
-1. **将项目推送到GitHub私有仓库**
-```bash
-cd /root/AZime
-git init
-git add .
-git commit -m "Initial commit: AZime v0.1.0-preview project structure"
-git remote add origin <YOUR_GITHUB_REPO_URL>
-git push -u origin main
-```
+## 已知技术债
 
-2. **配置GitHub Actions** 使用上述YAML配置文件
+- `KeyboardView` 是传统 `View` + `onDraw` 绘制，其余 UI 均为 Compose，后续应统一到 Compose
+- `SettingsActivity` 使用了已废弃的 `Icons.Filled.ArrowBack`（应换 `AutoMirrored` 版本）
+- 多处 `TODO` 参数未使用（如 `RimeManager.initialize` 的 `context`），编译期有警告
+- 无测试代码，已有 `junit` / `espresso` 依赖但零用例
 
-3. **在x86_64环境验证构建** 确保代码无语法错误
+## 环境备忘（本机）
 
-### 中期目标
-- 完成RIME引擎的原生库编译和集成
-- 实现基础输入功能（拼音/五笔至少一种方案可用）
-- 完成键盘布局可视化编辑器MVP版本
+| 组件 | 路径 |
+|---|---|
+| Android SDK | `C:\Users\HinYoung\AppData\Local\Android\Sdk`（build-tools 34/35/36，platforms 34/35/36） |
+| JDK 17 | `C:\Program Files\Eclipse Adoptium\jdk-17.0.20.8-hotspot` |
+| Gradle 分发 | 已缓存于 `~/.gradle/wrapper/dists/gradle-8.4-bin/` |
 
-### 长期目标
-- 发布第一个公开测试版本
-- 建立用户社区和反馈渠道
-- 持续优化性能和用户体验
-
-## 项目优势
-
-1. **完整的项目结构**: 所有必需的配置和框架代码已就位
-2. **现代化技术栈**: Compose + Material 3 + Kotlin
-3. **清晰的架构设计**: 分层明确，易于扩展
-4. **灵活的配置方案**: 外部存储+ZIP导入+Lua脚本
-5. **多字体支持**: 解决生僻字显示问题
-6. **参考成熟项目**: 借鉴小企鹅输入法、曦码、同文等经验
-
-## 结论
-
-AZime项目的代码框架已经完整搭建完成，所有核心模块的基础代码已编写。当前唯一的阻塞问题是ARM64环境下的AAPT2架构不兼容，这是构建环境问题而非代码问题。
-
-**推荐路径**: 将项目推送到GitHub，使用GitHub Actions（运行在x86_64环境）进行构建，即可获得可安装的APK文件，然后继续进行RIME引擎集成等核心功能开发。
-
-项目已具备良好的开发基础，可以顺利推进到下一阶段。
+**网络提示**：本机代理只放行 `api.github.com`，`git push` 到 github.com 会 502。
+代码更新需通过 GitHub API 推送，或在可直连的网络环境下操作。
