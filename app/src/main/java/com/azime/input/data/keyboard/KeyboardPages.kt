@@ -5,6 +5,19 @@ import com.azime.input.data.model.KeyboardLayout
 import com.azime.input.data.model.KeyboardRow
 import com.azime.input.data.model.KeyType
 
+/** 主键盘页字母键的长按符号（fcitx5 风格：q→1!、w→2@ …）。 */
+val LongPressSymbols: Map<Char, List<String>> = mapOf(
+    'q' to listOf("1", "!"), 'w' to listOf("2", "@"), 'e' to listOf("3", "#"),
+    'r' to listOf("4", "$"), 't' to listOf("5", "%"), 'y' to listOf("6", "^"),
+    'u' to listOf("7", "&"), 'i' to listOf("8", "*"), 'o' to listOf("9", "("),
+    'p' to listOf("0", ")"),
+    'a' to listOf("~"), 's' to listOf("`"), 'd' to listOf("\\"), 'f' to listOf("|"),
+    'g' to listOf("/"), 'h' to listOf(":"), 'j' to listOf(";"), 'k' to listOf("\""),
+    'l' to listOf("'"),
+    'z' to listOf("·"), 'x' to listOf("×"), 'c' to listOf("《"), 'v' to listOf("》"),
+    'b' to listOf("["), 'n' to listOf("]"), 'm' to listOf("—"),
+)
+
 /**
  * 内置键盘页。布局参考小企鹅输入法（fcitx5-android）26 键样式：
  *
