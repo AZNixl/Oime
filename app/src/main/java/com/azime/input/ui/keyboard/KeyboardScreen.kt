@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
+import com.azime.input.core.keyboard.KeyboardManager
 import com.azime.input.core.rime.Candidate
 import com.azime.input.data.keyboard.KeyboardPages
 import com.azime.input.data.keyboard.LongPressSymbols
@@ -127,7 +128,9 @@ fun AzimeKeyboardScreen(
     onAction: (KeyAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val layout = if (state.symbolPage) KeyboardPages.symbols else KeyboardPages.qwerty
+    // 布局来自 KeyboardManager（内置 + 自定义覆盖）；切换发生在 Service 初始化阶段，
+    // 此处读内存缓存即可，无需响应式刷新
+    val layout = if (state.symbolPage) KeyboardManager.symbolLayout() else KeyboardManager.mainLayout()
     val c = keyboardColors()
     Column(
         modifier = modifier
