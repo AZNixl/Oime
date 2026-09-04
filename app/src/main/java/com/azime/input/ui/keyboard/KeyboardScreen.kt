@@ -1,5 +1,6 @@
 package com.azime.input.ui.keyboard
 
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -62,6 +63,7 @@ sealed interface KeyAction {
     data object ToggleAscii : KeyAction
     data class Candidate(val index: Int) : KeyAction
     data object PageDown : KeyAction
+    data class SelectSchema(val schemaId: String) : KeyAction
 }
 
 /** 键盘 UI 状态，由 AZimeService 持有并驱动。 */
@@ -74,17 +76,45 @@ data class KeyboardUiState(
     val hasPrevPage: Boolean = false,
     val hasNextPage: Boolean = false,
     val schemaName: String = "",
+    val schemas: List<String> = emptyList(),
     val ready: Boolean = false,
     val statusMessage: String = "",
 )
 
-// ── 配色（浅色，参考小企鹅 fcitx5-android）────────────────────
-private val KeyboardBg = Color(0xFFE9EBEE)
-private val KeyBg = Color.White
-private val FuncKeyBg = Color(0xFFD3D7DC)
-private val AccentKeyBg = Color(0xFFC7DDF6)
-private val AccentActive = Color(0xFF1A73E8)
-private val KeyText = Color(0xFF202124)
+// ── 配色：浅色/深色双主题（跟随系统），参考小企鹅 fcitx5-android ──
+data class KeyboardColors(
+    val bg: Color,
+    val barBg: Color,
+    val keyBg: Color,
+    val funcKeyBg: Color,
+    val accentKeyBg: Color,
+    val accentKeyText: Color,
+    val accentActive: Color,
+    val accentActiveText: Color,
+    val text: Color,
+    val subText: Color,
+)
+
+private val LightColors = KeyboardColors(
+    bg = Color(0xFFE9EBEE), barBg = Color.White,
+    keyBg = Color.White, funcKeyBg = Color(0xFFD3D7DC),
+    accentKeyBg = Color(0xFFC7DDF6), accentKeyText = Color(0xFF202124),
+    accentActive = Color(0xFF1A73E8), accentActiveText = Color.White,
+    text = Color(0xFF202124), subText = Color(0xFF80868B),
+)
+
+private val DarkColors = KeyboardColors(
+    bg = Color(0xFF1B1D1F), barBg = Color(0xFF26282A),
+    keyBg = Color(0xFF2A2D2F), funcKeyBg = Color(0xFF3C4043),
+    accentKeyBg = Color(0xFF3B5C8A), accentKeyText = Color(0xFFD7E3F4),
+    accentActive = Color(0xFF8AB4F8), accentActiveText = Color(0xFF202124),
+    text = Color(0xFFE8EAED), subText = Color(0xFF9AA0A6),
+)
+
+@Composable
+private fun keyboardColors(): KeyboardColors =
+    if (isSystemInDarkTheme()) DarkColors else LightColors
+
 private val KeyHeight = 46.dp
 private val KeySpacing = 4.dp
 
@@ -98,10 +128,11 @@ fun AzimeKeyboardScreen(
     modifier: Modifier = Modifier,
 ) {
     val layout = if (state.symbolPage) KeyboardPages.symbols else KeyboardPages.qwerty
+    val c = keyboardColors()
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .background(KeyboardBg),
+            .background(c.bg),
     ) {
         CandidateBar(state = state, onAction = onAction)
         Column(
@@ -130,11 +161,13 @@ fun AzimeKeyboardScreen(
 
 @Composable
 private fun CandidateBar(state: KeyboardUiState, onAction: (KeyAction) -> Unit) {
+    val c = keyboardColors()
+    var showSchemaMenu by remember { mutableStateOf(false) }
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .height(48.dp)
-            .background(Color.White)
+            .background(c.barBg)
             .padding(horizontal = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -142,7 +175,7 @@ private fun CandidateBar(state: KeyboardUiState, onAction: (KeyAction) -> Unit) 
         Box(
             modifier = Modifier
                 .background(
-                    color = if (state.asciiMode) FuncKeyBg else AccentKeyBg,
+                    color = if (state.asciiMode) c.funcKeyBg else c.accentKeyBg,
                     shape = RoundedCornerShape(6.dp),
                 )
                 .clickable { onAction(KeyAction.ToggleAscii) }
@@ -152,7 +185,7 @@ private fun CandidateBar(state: KeyboardUiState, onAction: (KeyAction) -> Unit) 
                 text = if (state.asciiMode) "EN" else "中",
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Medium,
-                color = KeyText,
+                color = if (state.asciiMode) c.text else c.accentKeyText,
             )
         }
 
@@ -177,14 +210,14 @@ private fun CandidateBar(state: KeyboardUiState, onAction: (KeyAction) -> Unit) 
                             Text(
                                 text = "${index + 1} ",
                                 fontSize = 12.sp,
-                                color = Color(0xFF9AA0A6),
+                                color = c.subText,
                             )
                         }
                         Text(
                             text = candidate.text,
                             fontSize = 17.sp,
                             maxLines = 1,
-                            color = KeyText,
+                            color = c.text,
                         )
                         if (candidate.comment.isNotBlank()) {
                             Spacer(Modifier.width(3.dp))
@@ -192,7 +225,7 @@ private fun CandidateBar(state: KeyboardUiState, onAction: (KeyAction) -> Unit) 
                                 text = candidate.comment,
                                 fontSize = 11.sp,
                                 maxLines = 1,
-                                color = Color(0xFF9AA0A6),
+                                color = c.subText,
                             )
                         }
                     }
@@ -201,7 +234,7 @@ private fun CandidateBar(state: KeyboardUiState, onAction: (KeyAction) -> Unit) 
                     Text(
                         text = "▶",
                         fontSize = 13.sp,
-                        color = Color(0xFF80868B),
+                        color = c.subText,
                         modifier = Modifier
                             .clickable { onAction(KeyAction.PageDown) }
                             .padding(horizontal = 10.dp, vertical = 8.dp),
@@ -214,7 +247,7 @@ private fun CandidateBar(state: KeyboardUiState, onAction: (KeyAction) -> Unit) 
                     Text(
                         text = state.preedit,
                         fontSize = 16.sp,
-                        color = KeyText,
+                        color = c.text,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -226,10 +259,45 @@ private fun CandidateBar(state: KeyboardUiState, onAction: (KeyAction) -> Unit) 
                             else -> schemaDisplay(state.schemaName)
                         },
                         fontSize = 13.sp,
-                        color = Color(0xFF80868B),
+                        color = c.subText,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
+                        // 空态点方案名 → 弹方案切换菜单
+                        modifier = if (state.ready && state.schemas.size > 1) {
+                            Modifier.clickable { showSchemaMenu = true }
+                        } else Modifier,
                     )
+                }
+            }
+        }
+
+        if (showSchemaMenu && state.schemas.isNotEmpty()) {
+            Popup(
+                alignment = Alignment.BottomEnd,
+                onDismissRequest = { showSchemaMenu = false },
+            ) {
+                Column(
+                    modifier = Modifier
+                        .background(c.barBg, RoundedCornerShape(10.dp))
+                        .padding(vertical = 4.dp),
+                ) {
+                    state.schemas.forEach { schemaId ->
+                        Text(
+                            text = schemaDisplay(schemaId).removePrefix("AZime · "),
+                            fontSize = 15.sp,
+                            color = if (schemaId == state.schemaName) c.accentKeyText else c.text,
+                            fontWeight = if (schemaId == state.schemaName) FontWeight.Bold else FontWeight.Normal,
+                            modifier = Modifier
+                                .clickable {
+                                    showSchemaMenu = false
+                                    if (schemaId != state.schemaName) {
+                                        onAction(KeyAction.SelectSchema(schemaId))
+                                    }
+                                }
+                                .padding(horizontal = 16.dp, vertical = 10.dp)
+                                .fillMaxWidth(),
+                        )
+                    }
                 }
             }
         }
@@ -245,14 +313,19 @@ private fun schemaDisplay(schemaId: String): String = when {
 
 @Composable
 private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (KeyAction) -> Unit) {
+    val c = keyboardColors()
     val isShiftActive = key.code == "shift" && state.shiftOn
     val bg = when {
-        isShiftActive -> AccentActive
-        key.type == KeyType.ENTER -> AccentKeyBg
-        key.type == KeyType.CHARACTER || key.type == KeyType.SPACE -> KeyBg
-        else -> FuncKeyBg
+        isShiftActive -> c.accentActive
+        key.type == KeyType.ENTER -> c.accentKeyBg
+        key.type == KeyType.CHARACTER || key.type == KeyType.SPACE -> c.keyBg
+        else -> c.funcKeyBg
     }
-    val fg = if (isShiftActive) Color.White else KeyText
+    val fg = when {
+        isShiftActive -> c.accentActiveText
+        key.type == KeyType.ENTER -> c.accentKeyText
+        else -> c.text
+    }
     val label = when {
         key.type == KeyType.CHARACTER && (state.shiftOn || state.asciiMode) -> key.label
         key.type == KeyType.CHARACTER -> key.label.lowercase()
@@ -366,7 +439,7 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
             ) {
                 Row(
                     modifier = Modifier
-                        .background(Color.White, RoundedCornerShape(10.dp))
+                        .background(c.barBg, RoundedCornerShape(10.dp))
                         .padding(horizontal = 4.dp, vertical = 2.dp),
                     horizontalArrangement = Arrangement.spacedBy(2.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -375,7 +448,7 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
                         Text(
                             text = symbol,
                             fontSize = 22.sp,
-                            color = KeyText,
+                            color = c.text,
                             modifier = Modifier
                                 .clickable {
                                     onAction(KeyAction.DirectCommit(symbol))
