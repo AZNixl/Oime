@@ -119,7 +119,7 @@ class AZimeService : InputMethodService() {
                     refreshState()
                 }
                 KeyAction.Shift -> uiState.update { it.copy(shiftOn = !it.shiftOn) }
-                KeyAction.Backspace -> applyResult(RimeManager.processKey(KEY_BACKSPACE))
+                KeyAction.Backspace -> handleBackspace()
                 KeyAction.Space -> applyResult(RimeManager.processKey(KEY_SPACE))
                 KeyAction.Enter -> handleEnter()
                 KeyAction.ToggleSymbols -> uiState.update { it.copy(symbolPage = !it.symbolPage) }
@@ -154,6 +154,28 @@ class AZimeService : InputMethodService() {
             return
         }
         applyResult(RimeManager.processKey(c.lowercaseChar().code))
+    }
+
+    /**
+     * 退格：组合存在时 librime 消费（缩组合）；组合为空时 librime 返回 processed=false，
+     * 此时由输入连接删除光标前一个字符（emoji 代理对场景先按 2 个 code point 兜底）。
+     */
+    private suspend fun handleBackspace() {
+        val result = RimeManager.processKey(KEY_BACKSPACE)
+        if (result.processed) {
+            applyResult(result)
+            return
+        }
+        val ic = currentInputConnection
+        if (ic != null) {
+            val before = ic.getTextBeforeCursor(2, 0) ?: ""
+            if (before.length == 2 && Character.isSurrogatePair(before[0], before[1])) {
+                ic.deleteSurroundingText(2, 0)
+            } else {
+                ic.deleteSurroundingText(1, 0)
+            }
+        }
+        refreshState()
     }
 
     private suspend fun handleEnter() {
