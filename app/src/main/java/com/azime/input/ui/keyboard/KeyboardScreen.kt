@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -35,12 +36,15 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
+import androidx.compose.material3.LocalTextStyle
+import com.azime.input.core.font.FontManager
 import com.azime.input.core.keyboard.KeyboardManager
 import com.azime.input.core.rime.Candidate
 import com.azime.input.data.keyboard.KeyboardPages
@@ -132,27 +136,33 @@ fun AzimeKeyboardScreen(
     // 此处读内存缓存即可，无需响应式刷新
     val layout = if (state.symbolPage) KeyboardManager.symbolLayout() else KeyboardManager.mainLayout()
     val c = keyboardColors()
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .background(c.bg),
+    // 用户字体（FontManager 导入的 ttf/otf/ttc）作用于候选栏与键帽；无设置时为系统默认
+    val kbFontFamily = remember { FontManager.activeTypeface()?.let { FontFamily(it) } }
+    CompositionLocalProvider(
+        LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = kbFontFamily ?: FontFamily.Default),
     ) {
-        CandidateBar(state = state, onAction = onAction)
         Column(
-            modifier = Modifier
+            modifier = modifier
                 .fillMaxWidth()
-                .padding(horizontal = KeySpacing, vertical = KeySpacing),
-            verticalArrangement = Arrangement.spacedBy(KeySpacing),
+                .background(c.bg),
         ) {
-            for (row in layout.rows) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(KeyHeight),
-                    horizontalArrangement = Arrangement.spacedBy(KeySpacing),
-                ) {
-                    for (key in row.keys) {
-                        KeyboardKey(key = key, state = state, onAction = onAction)
+            CandidateBar(state = state, onAction = onAction)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = KeySpacing, vertical = KeySpacing),
+                verticalArrangement = Arrangement.spacedBy(KeySpacing),
+            ) {
+                for (row in layout.rows) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(KeyHeight),
+                        horizontalArrangement = Arrangement.spacedBy(KeySpacing),
+                    ) {
+                        for (key in row.keys) {
+                            KeyboardKey(key = key, state = state, onAction = onAction)
+                        }
                     }
                 }
             }

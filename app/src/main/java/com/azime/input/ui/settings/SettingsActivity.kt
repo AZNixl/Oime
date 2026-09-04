@@ -19,6 +19,8 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.unit.dp
 import com.azime.input.core.storage.StorageManager
 import com.azime.input.ui.editor.KeyboardEditorActivity
+import com.azime.input.ui.font.FontManagerActivity
+import com.azime.input.ui.lua.LuaEditorActivity
 import com.azime.input.utils.SchemaImporter
 import kotlinx.coroutines.launch
 
@@ -50,10 +52,10 @@ class SettingsActivity : AppCompatActivity() {
                                 startActivity(Intent(this@SettingsActivity, KeyboardEditorActivity::class.java))
                             },
                             onManageFonts = {
-                                Toast.makeText(this@SettingsActivity, "字体管理开发中", Toast.LENGTH_SHORT).show()
+                                startActivity(Intent(this@SettingsActivity, FontManagerActivity::class.java))
                             },
                             onEditLuaScript = {
-                                Toast.makeText(this@SettingsActivity, "Lua 脚本编辑开发中", Toast.LENGTH_SHORT).show()
+                                startActivity(Intent(this@SettingsActivity, LuaEditorActivity::class.java))
                             }
                         )
                     }
