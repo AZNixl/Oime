@@ -53,6 +53,13 @@ object RimeManager {
                 sharedDataDir = sharedDir.absolutePath,
             )
         }
+        // 关键：librime 不会在 initialize 后自动部署（Xime 原版由服务层显式调度维护）。
+        // 不触发的话 availableSchemas 永远为空，会话只挂内置 .default 兜底方案。
+        // startMaintenance 是异步的：发起后由 ensureSession 的等待循环收尾。
+        if (RimeEngine.getInstance().getAvailableSchemas().isEmpty()) {
+            val kicked = RimeEngine.getInstance().startMaintenance(true)
+            Log.i(TAG, "kick full maintenance: kicked=$kicked")
+        }
         RimeEngine.isInitialized()
     }
 
