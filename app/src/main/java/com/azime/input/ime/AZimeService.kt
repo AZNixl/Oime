@@ -52,28 +52,34 @@ class AZimeService : InputMethodService() {
 
     override fun onCreateInputView(): View {
         lifecycleOwner.resume() // 视图可能被重建（配置变化），确保 Compose 生命周期就绪
-        val composeView = object : ComposeView(this) {
-            override fun onAttachedToWindow() {
-                // WindowRecomposer / LocalLifecycleOwner 从视图树「根」向上查找 owner，
-                // 只挂在 ComposeView 上不够 —— IME 窗口根（parentPanel）上没有 owner 会抛
-                // "ViewTreeLifecycleOwner not found" 导致进程崩溃。挂满整条祖先链。
-                var p = parent as? View
+        val composeView = ComposeView(this)
+        composeView.setViewTreeLifecycleOwner(lifecycleOwner)
+        composeView.setViewTreeSavedStateRegistryOwner(lifecycleOwner)
+        // 不能预先 setContent：ComposeView.onAttachedToWindow 会立刻创建组合，
+        // 而 WindowRecomposer 从窗口「根视图」查找 ViewTreeLifecycleOwner，此时祖先链
+        // 还没挂 owner，会抛 "ViewTreeLifecycleOwner not found from ...parentPanel" 并崩溃。
+        // 所以 attach 后先补挂整条祖先链，再 post 设内容。
+        composeView.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(v: View) {
+                var p = v.parent as? View
                 while (p != null) {
                     p.setViewTreeLifecycleOwner(lifecycleOwner)
                     p.setViewTreeSavedStateRegistryOwner(lifecycleOwner)
                     p = p.parent as? View
                 }
-                super.onAttachedToWindow()
+                v.post {
+                    if (!v.isAttachedToWindow) return@post
+                    composeView.setContent {
+                        MaterialTheme(colorScheme = lightColorScheme()) {
+                            val state by uiState.collectAsState()
+                            AzimeKeyboardScreen(state = state, onAction = ::onKeyAction)
+                        }
+                    }
+                }
             }
-        }
-        composeView.setViewTreeLifecycleOwner(lifecycleOwner)
-        composeView.setViewTreeSavedStateRegistryOwner(lifecycleOwner)
-        composeView.setContent {
-            MaterialTheme(colorScheme = lightColorScheme()) {
-                val state by uiState.collectAsState()
-                AzimeKeyboardScreen(state = state, onAction = ::onKeyAction)
-            }
-        }
+
+            override fun onViewDetachedFromWindow(v: View) {}
+        })
         return composeView
     }
 
