@@ -91,6 +91,12 @@ class AZimeService : InputMethodService() {
         scope.launch {
             when (action) {
                 is KeyAction.CharKey -> handleChar(action.c)
+                is KeyAction.DirectCommit -> {
+                    // 长按符号等直出文本：绕过编码，直接上屏
+                    currentInputConnection?.commitText(action.text, 1)
+                    uiState.update { it.copy(shiftOn = false) }
+                    refreshState()
+                }
                 KeyAction.Shift -> uiState.update { it.copy(shiftOn = !it.shiftOn) }
                 KeyAction.Backspace -> applyResult(RimeManager.processKey(KEY_BACKSPACE))
                 KeyAction.Space -> applyResult(RimeManager.processKey(KEY_SPACE))

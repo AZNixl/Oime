@@ -31,12 +31,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
 import com.azime.input.core.rime.Candidate
 import com.azime.input.data.keyboard.KeyboardPages
+import com.azime.input.data.keyboard.LongPressSymbols
 import com.azime.input.data.model.Key
 import com.azime.input.data.model.KeyType
 import com.azime.input.data.model.KeyboardLayout
@@ -46,6 +50,7 @@ import kotlinx.coroutines.delay
 /** 键盘 → Service 的动作。 */
 sealed interface KeyAction {
     data class CharKey(val c: Char) : KeyAction
+    data class DirectCommit(val text: String) : KeyAction
     data object Shift : KeyAction
     data object Backspace : KeyAction
     data object Space : KeyAction
@@ -158,20 +163,36 @@ private fun CandidateBar(state: KeyboardUiState, onAction: (KeyAction) -> Unit) 
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 state.candidates.forEachIndexed { index, candidate ->
-                    val label = buildString {
-                        append(candidate.text)
-                        if (candidate.comment.isNotBlank()) append(" ").append(candidate.comment)
-                    }
-                    Text(
-                        text = label,
-                        fontSize = 17.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        color = KeyText,
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .clickable { onAction(KeyAction.Candidate(index)) }
-                            .padding(horizontal = 10.dp, vertical = 8.dp),
-                    )
+                            .padding(horizontal = 8.dp, vertical = 8.dp),
+                    ) {
+                        // 编号前缀：符号页/候选存在时按数字键可直接选中（librime selector 原生支持）
+                        if (index < 9) {
+                            Text(
+                                text = "${index + 1} ",
+                                fontSize = 12.sp,
+                                color = Color(0xFF9AA0A6),
+                            )
+                        }
+                        Text(
+                            text = candidate.text,
+                            fontSize = 17.sp,
+                            maxLines = 1,
+                            color = KeyText,
+                        )
+                        if (candidate.comment.isNotBlank()) {
+                            Spacer(Modifier.width(3.dp))
+                            Text(
+                                text = candidate.comment,
+                                fontSize = 11.sp,
+                                maxLines = 1,
+                                color = Color(0xFF9AA0A6),
+                            )
+                        }
+                    }
                 }
                 if (state.hasNextPage) {
                     Text(
@@ -236,11 +257,67 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
         else -> key.label
     }
 
-    val modifier = Modifier
+    // 长按行为：字符键(仅主键盘页)弹符号气泡；退格键连删
+    val longPressSymbols = remember(key.code) {
+        if (!state.symbolPage && key.type == KeyType.CHARACTER) {
+            LongPressSymbols[key.code.firstOrNull()] ?: emptyList()
+        } else emptyList()
+    }
+    val autoRepeat = key.type == KeyType.DELETE
+    val supportsLongPress = longPressSymbols.isNotEmpty() || autoRepeat
+
+    var pressing by remember { mutableStateOf(false) }
+    var longFired by remember { mutableStateOf(false) }
+    var showBubble by remember { mutableStateOf(false) }
+
+    LaunchedEffect(pressing) {
+        if (pressing) {
+            delay(400)
+            if (pressing) {
+                when {
+                    longPressSymbols.isNotEmpty() -> {
+                        longFired = true
+                        showBubble = true
+                    }
+                    autoRepeat -> {
+                        longFired = true
+                        delay(150)
+                        while (pressing) {
+                            onKeyAction(key, onAction)
+                            delay(45)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    var baseModifier = Modifier
         .weight(key.width)
         .fillMaxSize()
         .background(bg, RoundedCornerShape(8.dp))
-    val content: @Composable () -> Unit = {
+    if (supportsLongPress) {
+        baseModifier = baseModifier.pointerInput(key.code, state.symbolPage) {
+            awaitEachGesture {
+                awaitFirstDown(requireUnconsumed = false)
+                longFired = false
+                pressing = true
+                waitForUpOrCancellation()
+                pressing = false
+                if (!longFired) onKeyAction(key, onAction)
+            }
+        }
+    } else {
+        baseModifier = baseModifier.clickable { onKeyAction(key, onAction) }
+    }
+
+    val density = LocalDensity.current
+    val bubbleOffset = with(density) { IntOffset(0, -58.dp.roundToPx()) }
+
+    Box(
+        modifier = baseModifier,
+        contentAlignment = Alignment.Center,
+    ) {
         Text(
             text = label,
             fontSize = if (key.type == KeyType.CHARACTER) 20.sp else 14.sp,
@@ -248,40 +325,35 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
             color = fg,
             maxLines = 1,
         )
-    }
-
-    if (key.type == KeyType.DELETE) {
-        // 退格：按下即删一次；按住 400ms 后进入连删（每 45ms 一次）
-        var pressing by remember { mutableStateOf(false) }
-        LaunchedEffect(pressing) {
-            if (pressing) {
-                delay(400)
-                if (pressing) {
-                    delay(150)
-                    while (pressing) {
-                        onKeyAction(key, onAction)
-                        delay(45)
+        if (showBubble && longPressSymbols.isNotEmpty()) {
+            Popup(
+                alignment = Alignment.TopCenter,
+                offset = bubbleOffset,
+                onDismissRequest = { showBubble = false },
+            ) {
+                Row(
+                    modifier = Modifier
+                        .background(Color.White, RoundedCornerShape(10.dp))
+                        .padding(horizontal = 4.dp, vertical = 2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    longPressSymbols.forEach { symbol ->
+                        Text(
+                            text = symbol,
+                            fontSize = 22.sp,
+                            color = KeyText,
+                            modifier = Modifier
+                                .clickable {
+                                    onAction(KeyAction.DirectCommit(symbol))
+                                    showBubble = false
+                                }
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                        )
                     }
                 }
             }
         }
-        Box(
-            modifier = modifier.pointerInput(Unit) {
-                awaitEachGesture {
-                    awaitFirstDown(requireUnconsumed = false)
-                    onKeyAction(key, onAction)
-                    pressing = true
-                    waitForUpOrCancellation()
-                    pressing = false
-                }
-            },
-            contentAlignment = Alignment.Center,
-        ) { content() }
-    } else {
-        Box(
-            modifier = modifier.clickable { onKeyAction(key, onAction) },
-            contentAlignment = Alignment.Center,
-        ) { content() }
     }
 }
 
