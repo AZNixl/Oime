@@ -52,7 +52,20 @@ class AZimeService : InputMethodService() {
 
     override fun onCreateInputView(): View {
         lifecycleOwner.resume() // 视图可能被重建（配置变化），确保 Compose 生命周期就绪
-        val composeView = ComposeView(this)
+        val composeView = object : ComposeView(this) {
+            override fun onAttachedToWindow() {
+                // WindowRecomposer / LocalLifecycleOwner 从视图树「根」向上查找 owner，
+                // 只挂在 ComposeView 上不够 —— IME 窗口根（parentPanel）上没有 owner 会抛
+                // "ViewTreeLifecycleOwner not found" 导致进程崩溃。挂满整条祖先链。
+                var p = parent as? View
+                while (p != null) {
+                    p.setViewTreeLifecycleOwner(lifecycleOwner)
+                    p.setViewTreeSavedStateRegistryOwner(lifecycleOwner)
+                    p = p.parent as? View
+                }
+                super.onAttachedToWindow()
+            }
+        }
         composeView.setViewTreeLifecycleOwner(lifecycleOwner)
         composeView.setViewTreeSavedStateRegistryOwner(lifecycleOwner)
         composeView.setContent {
