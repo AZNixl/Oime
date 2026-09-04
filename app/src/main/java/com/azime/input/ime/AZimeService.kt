@@ -111,6 +111,10 @@ class AZimeService : InputMethodService() {
                     RimeManager.selectCandidate(action.index)
                     applyResult(RimeManager.getProcessResult())
                 }
+                is KeyAction.SelectSchema -> {
+                    RimeManager.switchSchema(action.schemaId)
+                    refreshState()
+                }
                 KeyAction.PageDown -> {
                     RimeManager.processKey(0xFF55) // Prior/PageDown keysym
                     applyResult(RimeManager.getProcessResult())
@@ -169,6 +173,7 @@ class AZimeService : InputMethodService() {
             state.copy(
                 ready = RimeManager.isReady(),
                 schemaName = RimeManager.currentSchema().ifBlank { state.schemaName },
+                schemas = if (RimeManager.isReady()) RimeManager.availableSchemas() else state.schemas,
                 statusMessage = if (RimeManager.isMaintaining()) "正在部署词典，请稍候…" else "",
             )
         }
