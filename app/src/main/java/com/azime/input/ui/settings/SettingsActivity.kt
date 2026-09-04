@@ -11,13 +11,14 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.unit.dp
 import com.azime.input.core.storage.StorageManager
+import com.azime.input.ui.editor.KeyboardEditorActivity
 import com.azime.input.utils.SchemaImporter
 import kotlinx.coroutines.launch
 
@@ -45,9 +46,15 @@ class SettingsActivity : AppCompatActivity() {
                         SettingsScreen(
                             onBackClick = { finish() },
                             onImportSchema = { pickZipFile() },
-                            onOpenKeyboardEditor = { /* TODO */ },
-                            onManageFonts = { /* TODO */ },
-                            onEditLuaScript = { /* TODO */ }
+                            onOpenKeyboardEditor = {
+                                startActivity(Intent(this@SettingsActivity, KeyboardEditorActivity::class.java))
+                            },
+                            onManageFonts = {
+                                Toast.makeText(this@SettingsActivity, "字体管理开发中", Toast.LENGTH_SHORT).show()
+                            },
+                            onEditLuaScript = {
+                                Toast.makeText(this@SettingsActivity, "Lua 脚本编辑开发中", Toast.LENGTH_SHORT).show()
+                            }
                         )
                     }
                 }
@@ -89,7 +96,7 @@ fun SettingsScreen(
                 title = { Text("设置") },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
                     }
                 }
             )
