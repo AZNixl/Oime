@@ -76,6 +76,16 @@ class AZimeService : InputMethodService() {
             }
             refreshState()
         }
+        // 首次部署可能超过会话等待窗口（大词典编译），由 onKeyAction 按键重试兜底
+        scope.launch {
+            while (!RimeManager.isSessionReady()) {
+                kotlinx.coroutines.delay(3000)
+                if (RimeManager.ensureSessionNow()) {
+                    refreshState()
+                    break
+                }
+            }
+        }
     }
 
     override fun onCreateInputView(): View {
