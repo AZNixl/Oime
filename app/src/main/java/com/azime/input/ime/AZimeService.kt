@@ -270,9 +270,12 @@ class AZimeService : InputMethodService() {
             "page_down" -> applyResult(RimeManager.processKey(0xFF55))
             "home" -> ic?.sendKeyEvent(android.view.KeyEvent(0, 0, 0, 0, 0, 0, android.view.KeyEvent.KEYCODE_MOVE_HOME, 0))
             "end" -> ic?.sendKeyEvent(android.view.KeyEvent(0, 0, 0, 0, 0, 0, android.view.KeyEvent.KEYCODE_MOVE_END, 0))
-            "select_all" -> ic?.let {
-                val all = (it.getTextBeforeCursor(Int.MAX_VALUE / 2, 0) ?: "") + (it.getSelectedText(0) ?: "") + (it.getTextAfterCursor(Int.MAX_VALUE / 2, 0) ?: "")
-                if (all.isNotEmpty()) it.setSelection(0, all.length)
+            "select_all" -> ic?.run {
+                val before = (getTextBeforeCursor(MAX_TEXT, 0) ?: "").toString()
+                val sel = (getSelectedText(0) ?: "").toString()
+                val after = (getTextAfterCursor(MAX_TEXT, 0) ?: "").toString()
+                val all = before + sel + after
+                if (all.isNotEmpty()) setSelection(0, all.length)
             }
             "copy" -> ic?.getSelectedText(0)?.let { text ->
                 clipboardManager.setPrimaryClip(android.content.ClipData.newPlainText("azime", text))

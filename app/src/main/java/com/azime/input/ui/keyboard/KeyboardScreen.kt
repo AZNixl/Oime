@@ -229,30 +229,6 @@ private fun ClipboardPanel(state: KeyboardUiState, onAction: (KeyAction) -> Unit
             .findAll(state.clipText).map { it.value }.distinct().toList()
     }
 
-    fun chipRow(title: String, items: List<String>) {
-        if (items.isEmpty()) return
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(title, fontSize = 12.sp, color = c.subText)
-            Spacer(Modifier.width(6.dp))
-            Row(
-                modifier = Modifier.horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                items.take(12).forEach { token ->
-                    Text(
-                        text = token,
-                        fontSize = 13.sp,
-                        color = c.text,
-                        modifier = Modifier
-                            .background(c.funcKeyBg, RoundedCornerShape(6.dp))
-                            .clickable { onAction(KeyAction.DirectCommit(token)) }
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                    )
-                }
-            }
-        }
-    }
-
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -287,9 +263,35 @@ private fun ClipboardPanel(state: KeyboardUiState, onAction: (KeyAction) -> Unit
                 .fillMaxWidth()
                 .padding(8.dp),
         )
-        chipRow("分词", tokens)
-        chipRow("英文", englishWords)
-        chipRow("网址", urls)
+        ChipRow("分词", tokens, onAction)
+        ChipRow("英文", englishWords, onAction)
+        ChipRow("网址", urls, onAction)
+    }
+}
+
+@Composable
+private fun ChipRow(title: String, items: List<String>, onAction: (KeyAction) -> Unit) {
+    val c = keyboardColors()
+    if (items.isEmpty()) return
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(title, fontSize = 12.sp, color = c.subText)
+        Spacer(Modifier.width(6.dp))
+        Row(
+            modifier = Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            items.take(12).forEach { token ->
+                Text(
+                    text = token,
+                    fontSize = 13.sp,
+                    color = c.text,
+                    modifier = Modifier
+                        .background(c.funcKeyBg, RoundedCornerShape(6.dp))
+                        .clickable { onAction(KeyAction.DirectCommit(token)) }
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                )
+            }
+        }
     }
 }
 
@@ -334,12 +336,12 @@ private fun ToolbarRow(state: KeyboardUiState, onAction: (KeyAction) -> Unit) {
                         .padding(vertical = 4.dp),
                 ) {
                     listOf(
-                        Triple("设置", "open_settings"),
-                        Triple("剪贴板", "clipboard"),
-                        Triple("26键", "page:main"),
-                        Triple("数字", "page:numpad"),
-                        Triple("emoji", "page:emoji"),
-                        Triple("符号", "page:symbols"),
+                        "设置" to "open_settings",
+                        "剪贴板" to "clipboard",
+                        "26键" to "page:main",
+                        "数字" to "page:numpad",
+                        "emoji" to "page:emoji",
+                        "符号" to "page:symbols",
                     ).forEach { (label, cmd) ->
                         Text(
                             text = label,

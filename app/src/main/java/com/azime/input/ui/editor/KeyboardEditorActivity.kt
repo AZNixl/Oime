@@ -53,6 +53,7 @@ class KeyboardEditorActivity : AppCompatActivity() {
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun KeyboardEditorScreen(onBack: () -> Unit) {
     var version by remember { mutableStateOf(0) }
@@ -233,6 +234,7 @@ private fun LayoutCard(
 
 // ── 网格编辑器 ───────────────────────────────────────────────
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun GridEditorScreen(initial: KeyboardLayout, onDone: (KeyboardLayout?) -> Unit) {
     var name by remember { mutableStateOf(initial.name) }
