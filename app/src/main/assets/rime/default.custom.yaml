@@ -7,11 +7,8 @@
 
 
 patch:
+  # 内置仅保留拼音；导入的方案由 app 追加到 shared 目录并在部署时被发现
   schema_list:
-    - schema: wubi86_pinyin
-    - schema: wubi86
-    - schema: wubi86_trad
-    - schema: wubi86_trad_pinyin
     - schema: pinyin_simp
 
   # Menu

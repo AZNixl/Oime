@@ -18,6 +18,17 @@ val LongPressSymbols: Map<Char, List<String>> = mapOf(
     'b' to listOf("["), 'n' to listOf("]"), 'm' to listOf("—"),
 )
 
+/** 内置功能键动作（trime2 identifier 约定）。 */
+object KeyActions {
+    const val SPACE_LONG = "toggle_ascii"
+    const val ENTER_LONG = "newline"
+    const val SHIFT_LONG = "caps_lock"
+    const val SYMBOLS_LONG = "choose_page"
+    const val BS_UP = "delete_all"
+    const val BS_DOWN = "undo"
+    const val BS_LEFT = "select_back"
+}
+
 /**
  * 内置键盘页。布局参考小企鹅输入法（fcitx5-android）26 键样式：
  *
@@ -35,6 +46,32 @@ object KeyboardPages {
     private fun charKey(label: String, width: Float = 1f): Key =
         Key(label = label, code = label.lowercase(), width = width, type = KeyType.CHARACTER)
 
+    private fun backspace(width: Float = 1.5f) = Key(
+        label = "⌫", code = "backspace", width = width, type = KeyType.DELETE,
+        swipeUp = KeyActions.BS_UP, swipeDown = KeyActions.BS_DOWN, swipeLeft = KeyActions.BS_LEFT,
+    )
+
+    private fun space(width: Float = 4f) = Key(
+        label = "空格", code = "space", width = width, type = KeyType.SPACE,
+        longClick = KeyActions.SPACE_LONG,
+    )
+
+    private fun enter(width: Float = 1.5f) = Key(
+        label = "⏎", code = "enter", width = width, type = KeyType.ENTER,
+        longClick = KeyActions.ENTER_LONG,
+    )
+
+    private fun shift(width: Float = 1.5f) = Key(
+        label = "⇧", code = "shift", width = width, type = KeyType.MODIFIER,
+        longClick = KeyActions.SHIFT_LONG,
+    )
+
+    /** 符号/页面切换键：长按呼出「默认键盘」选择气泡（26键 / 九宫格数字 / emoji）。 */
+    private fun pageKey(label: String, target: String = "symbols", width: Float = 1.5f) = Key(
+        label = label, code = target, width = width, type = KeyType.FUNCTION,
+        longClick = KeyActions.SYMBOLS_LONG,
+    )
+
     /** 26 键主键盘。 */
     val qwerty: KeyboardLayout = KeyboardLayout(
         name = "qwerty",
@@ -48,17 +85,17 @@ object KeyboardPages {
                 charKey("H"), charKey("J"), charKey("K"), charKey("L"),
             ),
             row(
-                Key("⇧", code = "shift", width = 1.5f, type = KeyType.MODIFIER),
+                shift(),
                 charKey("Z"), charKey("X"), charKey("C"), charKey("V"),
                 charKey("B"), charKey("N"), charKey("M"),
-                Key("⌫", code = "backspace", width = 1.5f, type = KeyType.DELETE),
+                backspace(),
             ),
             row(
-                Key("123", code = "symbols", width = 1.5f, type = KeyType.FUNCTION),
+                pageKey("123"),
                 charKey(","),
-                Key("空格", code = "space", width = 4f, type = KeyType.SPACE),
+                space(),
                 charKey("."),
-                Key("⏎", code = "enter", width = 1.5f, type = KeyType.ENTER),
+                enter(),
             ),
         ),
     )
@@ -76,17 +113,38 @@ object KeyboardPages {
                 charKey("-"), charKey("+"), charKey("("), charKey(")"),
             ),
             row(
-                Key("ABC", code = "symbols", width = 1.5f, type = KeyType.FUNCTION),
+                pageKey("ABC"),
                 charKey("*"), charKey("\""), charKey("'"), charKey(":"),
                 charKey(";"), charKey("!"), charKey("?"),
-                Key("⌫", code = "backspace", width = 1.5f, type = KeyType.DELETE),
+                backspace(),
             ),
             row(
-                Key("ABC", code = "symbols", width = 1.5f, type = KeyType.FUNCTION),
+                pageKey("ABC"),
                 charKey(","),
-                Key("空格", code = "space", width = 4f, type = KeyType.SPACE),
+                space(),
                 charKey("."),
-                Key("⏎", code = "enter", width = 1.5f, type = KeyType.ENTER),
+                enter(),
+            ),
+        ),
+    )
+
+    /** 九宫格数字键盘。 */
+    val numpad: KeyboardLayout = KeyboardLayout(
+        name = "numpad",
+        rows = listOf(
+            row(
+                charKey("1"), charKey("2"), charKey("3"), Key("+", code = "+", type = KeyType.CHARACTER),
+            ),
+            row(
+                charKey("4"), charKey("5"), charKey("6"), Key("-", code = "-", type = KeyType.CHARACTER),
+            ),
+            row(
+                charKey("7"), charKey("8"), charKey("9"), Key("×", code = "*", type = KeyType.CHARACTER),
+            ),
+            row(
+                pageKey("符", target = "symbols", width = 1f),
+                charKey("0", width = 1f), charKey(".", width = 1f),
+                enter(1f),
             ),
         ),
     )
