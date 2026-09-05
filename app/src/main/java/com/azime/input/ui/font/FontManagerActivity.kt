@@ -2,7 +2,10 @@ package com.azime.input.ui.font
 
 import android.graphics.Typeface
 import android.os.Bundle
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -11,10 +14,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -41,6 +46,7 @@ class FontManagerActivity : AppCompatActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FontManagerScreen(onBack: () -> Unit) {
+    val context = LocalContext.current
     var version by remember { mutableStateOf(0) }
     var fonts by remember(version) { mutableStateOf(FontManager.fontFiles()) }
     var keyFont by remember(version) { mutableStateOf(FontManager.keyFontName()) }
@@ -48,6 +54,17 @@ fun FontManagerScreen(onBack: () -> Unit) {
     var pendingDelete by remember { mutableStateOf<File?>(null) }
 
     fun refresh() { version++ }
+
+    // SAF 导入：复制进应用私有目录，Android 13+ 一定可读
+    val folderPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        if (uri != null) {
+            val n = FontManager.importFromTree(context, uri)
+            Toast.makeText(context, "已导入 $n 个字体", Toast.LENGTH_SHORT).show()
+            refresh()
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -71,17 +88,28 @@ fun FontManagerScreen(onBack: () -> Unit) {
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
                 shape = RoundedCornerShape(12.dp),
             ) {
-                Text(
-                    "把 ttf / otf / ttc 字体文件放入 Documents/AZime/fonts 文件夹即可在此看到（无需导入）。",
-                    modifier = Modifier.padding(14.dp),
-                    fontSize = 13.sp,
-                )
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "把 ttf / otf / ttc 字体文件放入 Documents/Oime/fonts 文件夹（支持子文件夹）即可在此看到。",
+                        fontSize = 13.sp,
+                    )
+                    Button(onClick = { folderPicker.launch(null) }) {
+                        Icon(Icons.Default.FolderOpen, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("从文件夹导入（复制，推荐）")
+                    }
+                    Text(
+                        "若外置文件夹读不到（Android 13+ 权限限制），用上面的导入按钮选择字体文件夹即可。",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
             Spacer(Modifier.height(12.dp))
 
             if (fonts.isEmpty()) {
                 Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                    Text("fonts 文件夹为空", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("未发现字体，试试上面的「从文件夹导入」", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             } else {
                 LazyColumn(

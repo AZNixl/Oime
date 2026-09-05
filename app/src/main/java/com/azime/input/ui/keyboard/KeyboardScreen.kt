@@ -51,6 +51,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.TextButton
 import com.azime.input.core.font.FontManager
+import com.azime.input.core.haptic.HapticsManager
 import com.azime.input.core.keyboard.KeyboardManager
 import com.azime.input.core.lua.LuaScriptManager
 import com.azime.input.core.rime.Candidate
@@ -213,10 +214,12 @@ fun AzimeKeyboardScreen(
                         verticalArrangement = Arrangement.spacedBy(KeySpacing),
                     ) {
                         for (row in layout.rows) {
+                            // 行高 = 标准键高 × 行内最大 height 系数（编辑器可调）
+                            val rowH = keyH * (row.keys.maxOfOrNull { it.height.coerceIn(0.5f, 2f) } ?: 1f)
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(keyH),
+                                    .height(rowH),
                                 horizontalArrangement = Arrangement.spacedBy(KeySpacing),
                             ) {
                                 for (key in row.keys) {
@@ -1015,6 +1018,7 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
                 val down = awaitFirstDown(requireUnconsumed = false)
                 longFired = false
                 pressing = true
+                HapticsManager.press()
                 val startX = down.position.x
                 val startY = down.position.y
                 var activeDir: Dir? = null
@@ -1076,6 +1080,7 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
                     }
                 }
                 pressing = false
+                HapticsManager.release()
                 swipePreview = null
 
                 when {
@@ -1097,7 +1102,11 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
             }
         }
     } else {
-        baseModifier = baseModifier.clickable { onKeyAction(key, onAction) }
+        baseModifier = baseModifier.clickable {
+            HapticsManager.press()
+            onKeyAction(key, onAction)
+            HapticsManager.release()
+        }
     }
 
     Box(
@@ -1213,11 +1222,13 @@ private fun onKeyAction(key: Key, onAction: (KeyAction) -> Unit) {
         KeyType.FUNCTION -> when (key.code) {
             "symbols" -> onAction(KeyAction.ToggleSymbols)
             "emoji_back" -> onAction(KeyAction.SwitchPage("main"))
-            // lua 布局的自定义 FUNCTION 键：命令 / preset 引用 / 文本上屏（trime2 语义）
+            // lua 布局的自定义 FUNCTION 键：命令 / preset 引用 / 文本上屏（trime2 语义，Service 端解析）
             else -> {
-                val resolved = LuaScriptManager.resolveAction(key.code)
-                if (resolved != null) onAction(KeyAction.Resolved(resolved))
-                else onAction(KeyAction.ToggleAscii)
+                if (LuaScriptManager.resolveAction(key.code) != null) {
+                    onAction(KeyAction.Resolved(key.code))
+                } else {
+                    onAction(KeyAction.ToggleAscii)
+                }
             }
         }
     }

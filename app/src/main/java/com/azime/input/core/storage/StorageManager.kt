@@ -6,7 +6,7 @@ import java.io.File
 
 object StorageManager {
     
-    private const val EXTERNAL_DIR = "Documents/AZime"
+    private const val EXTERNAL_DIR = "Documents/Oime"
     private const val SCHEMA_DIR = "schema"
     private const val FONTS_DIR = "fonts"
     private const val LUA_DIR = "lua"

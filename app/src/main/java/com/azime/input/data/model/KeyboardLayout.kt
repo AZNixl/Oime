@@ -24,6 +24,8 @@ data class Key(
     val code: String,
     val width: Float = 1.0f,
     val type: KeyType = KeyType.CHARACTER,
+    /** 高度系数（1.0 = 标准键高），编辑器可调，渲染行高按行内最大值取。 */
+    val height: Float = 1.0f,
     /** 长按动作（同 trime2 long_click）。 */
     val longClick: String? = null,
     val swipeUp: String? = null,

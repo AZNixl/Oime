@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.widget.EditText
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -30,12 +31,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
+import com.azime.input.core.haptic.HapticsManager
 import com.azime.input.core.rime.RimeManager
+import com.azime.input.core.storage.StorageManager
 import com.azime.input.ui.editor.KeyboardEditorActivity
 import com.azime.input.ui.font.FontManagerActivity
 import com.azime.input.ui.lua.LuaEditorActivity
 import com.azime.input.utils.SchemaImporter
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.launch
+import java.io.File
 
 /**
  * 设置主页 —— UI 参考 KernelSU 主页：
@@ -66,10 +71,41 @@ class SettingsActivity : AppCompatActivity() {
             action().onSuccess { name ->
                 RimeManager.deployImportedSchemas(applicationContext)
                 Toast.makeText(this@SettingsActivity, "已导入「$name」，方案部署中…", Toast.LENGTH_SHORT).show()
+                promptRename(name)
             }.onFailure { e ->
                 Toast.makeText(this@SettingsActivity, "导入失败：${e.message}", Toast.LENGTH_LONG).show()
             }
         }
+    }
+
+    /** 导入成功后询问重命名（改写 schema 子文件夹名，内部 schema_id 不变）。 */
+    private fun promptRename(importedName: String) {
+        val input = EditText(this).apply {
+            setText(importedName)
+            setSelection(0, importedName.length)
+        }
+        MaterialAlertDialogBuilder(this)
+            .setTitle("重命名方案文件夹")
+            .setMessage("可修改导入的文件夹名（Documents/Oime/schema/ 下），内部方案 ID 不变。")
+            .setView(input)
+            .setPositiveButton("重命名") { _, _ ->
+                val newName = input.text.toString().trim()
+                if (newName.isEmpty() || newName == importedName) return@setPositiveButton
+                if (newName.contains('/') || newName.contains('\\') || newName.contains("..")) {
+                    Toast.makeText(this, "名称含非法字符", Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                val src = File(StorageManager.schemaDir, importedName)
+                val dst = File(StorageManager.schemaDir, newName)
+                if (!src.exists() || dst.exists() || !src.renameTo(dst)) {
+                    Toast.makeText(this, "重命名失败（目标文件夹已存在？）", Toast.LENGTH_LONG).show()
+                    return@setPositiveButton
+                }
+                RimeManager.deployImportedSchemas(applicationContext)
+                Toast.makeText(this, "已重命名为「$newName」", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("保持原名", null)
+            .show()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -222,9 +258,19 @@ fun SettingsScreen(
                         KsuItem(
                             icon = Icons.Default.FontDownload,
                             title = "字体管理",
-                            subtitle = "读取 Documents/AZime/fonts 中的字体",
+                            subtitle = "读取 Documents/Oime/fonts 中的字体",
                             onClick = onManageFonts,
                         )
+                    }
+                }
+            }
+
+            // 打字振动
+            item {
+                SectionLabel("打字振动")
+                Card {
+                    Column(Modifier.padding(vertical = 4.dp)) {
+                        VibrationSettings()
                     }
                 }
             }
@@ -236,8 +282,8 @@ fun SettingsScreen(
                     Column(Modifier.padding(vertical = 4.dp)) {
                         KsuItem(
                             icon = Icons.Default.Code,
-                            title = "Lua 脚本",
-                            subtitle = "preset_keys.lua（trime2 格式兼容）",
+                            title = "预设置",
+                            subtitle = "preset_keys.lua（按键动作与多符号预设）",
                             onClick = onEditLuaScript,
                         )
                     }
@@ -252,7 +298,7 @@ fun SettingsScreen(
                         KsuItem(
                             icon = Icons.Default.Info,
                             title = "版本",
-                            subtitle = "0.2.0-preview · 平台 RIME",
+                            subtitle = "0.3.0-oime · 包名 com.oime.input · 平台 RIME",
                             onClick = {},
                             showChevron = false,
                         )
@@ -416,6 +462,74 @@ private fun KeyHeightSliders() {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+    }
+}
+
+/** 打字振动设置：总开关 / 按下 / 抬起 / 系统或自定义模式（自定义时长滑杆）。 */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun VibrationSettings() {
+    var enabled by remember { mutableStateOf(HapticsManager.enabled()) }
+    var pressOn by remember { mutableStateOf(HapticsManager.pressEnabled()) }
+    var releaseOn by remember { mutableStateOf(HapticsManager.releaseEnabled()) }
+    var custom by remember { mutableStateOf(HapticsManager.mode() == "custom") }
+    var ms by remember { mutableStateOf(HapticsManager.customMs().toFloat()) }
+
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
+        SettingSwitchRow("总开关", enabled) {
+            enabled = it
+            HapticsManager.setEnabled(it)
+        }
+        SettingSwitchRow("按下震动", pressOn) {
+            pressOn = it
+            HapticsManager.setPressEnabled(it)
+        }
+        SettingSwitchRow("抬起按键震动", releaseOn) {
+            releaseOn = it
+            HapticsManager.setReleaseEnabled(it)
+        }
+        Spacer(Modifier.height(6.dp))
+        Text("震动模式", style = MaterialTheme.typography.bodyMedium)
+        Spacer(Modifier.height(6.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(
+                selected = !custom,
+                onClick = { custom = false; HapticsManager.setMode("system") },
+                label = { Text("系统默认") },
+            )
+            FilterChip(
+                selected = custom,
+                onClick = { custom = true; HapticsManager.setMode("custom") },
+                label = { Text("自定义") },
+            )
+        }
+        if (custom) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "自定义时长：${ms.toInt()}ms",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Slider(
+                value = ms,
+                onValueChange = {
+                    ms = it
+                    HapticsManager.setCustomMs(it.toInt())
+                },
+                valueRange = 5f..60f,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SettingSwitchRow(title: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(title, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        Switch(checked = checked, onCheckedChange = onChange)
     }
 }
 

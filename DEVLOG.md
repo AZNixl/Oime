@@ -124,3 +124,19 @@ vendored RimeEngine 中 `getAvailableSchemas / getSchemaString / getSchemaList`
 ### 暂缓
 - 多 ABI（armeabi-v7a/x86_64）：需要与 vendored RimeEngine JNI 符号匹配的官方
   librime_jni.so 构建，风险大于收益（目标设备 arm64），待有可靠构建源再补。
+
+## Oime 轮：7 条新需求
+
+| # | 需求 | 实现 |
+|---|---|---|
+| 1 | 打字振动系统 | 新增 HapticsManager（core/haptic）：总开关、按下震动、抬起震动、系统默认/自定义模式（5-60ms 滑杆）；Vibrator VibrationEffect（API<26 走旧 API）；KeyboardScreen 按键 down/release 钩子；设置页新增「打字振动」卡片 |
+| 2 | 按键编辑界面增强 | Key 模型新增 height 系数（0.5-2.0）；KeyEditDialog 加高度字段 + 取消按钮；编辑器网格与真实键盘行高均按行内最大 height 系数渲染 |
+| 3 | LUA 脚本改名「预设置」 | 设置入口更名；LuaEditorActivity 顶栏加「说明」按钮：用途 / 条目定义 / 动作取值优先级 / 内置命令表 / 完整示例，可滚动 |
+| 4 | 字体管理读不到 | 根因：Android 13+ File API 读 Documents 受限（READ_EXTERNAL_STORAGE 不覆盖）。修复：①外置扫描改递归（支持子文件夹）；②新增 SAF「从文件夹导入」把字体复制进应用私有 filesDir/fonts（一定可读）；③列表双源合并、同名私有优先 |
+| 5 | 包名/文件夹改 Oime | applicationId → com.oime.input（与旧版并存，需重新选输入法）；外置目录 → Documents/Oime；vendored RimeEngine 包名不动（JNI 符号绑定） |
+| 6 | 导入后重命名 | 导入方案成功后弹 Material 对话框改写 Documents/Oime/schema 子文件夹名（非法字符校验、目标存在校验），重命名后自动重新部署；内部 schema_id 不变 |
+| 7 | 开发记录/上传/APK | 本文；push 后 CI 构建 |
+
+### 顺带修复
+- 上一轮遗留编译错：KeyboardScreen FUNCTION 键误传 ResolvedAction 对象给
+  KeyAction.Resolved(String)（1219 行）→ 改传 key.code 字符串，由 Service 端 resolveAction 解析。

@@ -334,10 +334,12 @@ private fun GridEditorScreen(initial: KeyboardLayout, onDone: (KeyboardLayout?) 
             )
 
             rows.forEachIndexed { r, keys ->
+                // 行高 = 基准 52dp × 行内最大 height 系数
+                val rowH = 52.dp * (keys.maxOfOrNull { it.height.coerceIn(0.5f, 2f) } ?: 1f)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(52.dp),
+                        .height(rowH),
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     keys.forEachIndexed { col, key ->
@@ -437,6 +439,7 @@ private fun KeyEditDialog(
     var label by remember { mutableStateOf(key.label) }
     var code by remember { mutableStateOf(key.code) }
     var widthText by remember { mutableStateOf(key.width.toString()) }
+    var heightText by remember { mutableStateOf(key.height.toString()) }
     var longClick by remember { mutableStateOf(key.longClick ?: "") }
     var swipeUp by remember { mutableStateOf(key.swipeUp ?: "") }
     var swipeDown by remember { mutableStateOf(key.swipeDown ?: "") }
@@ -461,11 +464,18 @@ private fun KeyEditDialog(
                         modifier = Modifier.weight(1f),
                     )
                 }
-                OutlinedTextField(
-                    value = widthText, onValueChange = { widthText = it },
-                    label = { Text("宽度（份数，如 1 / 1.5 / 4）") },
-                    singleLine = true, modifier = Modifier.fillMaxWidth(),
-                )
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    OutlinedTextField(
+                        value = widthText, onValueChange = { widthText = it },
+                        label = { Text("宽度（份数）") },
+                        singleLine = true, modifier = Modifier.weight(1f),
+                    )
+                    OutlinedTextField(
+                        value = heightText, onValueChange = { heightText = it },
+                        label = { Text("高度（系数）") },
+                        singleLine = true, modifier = Modifier.weight(1f),
+                    )
+                }
                 OutlinedTextField(
                     value = longClick, onValueChange = { longClick = it },
                     label = { Text("长按动作") }, singleLine = true,
@@ -510,11 +520,13 @@ private fun KeyEditDialog(
         confirmButton = {
             TextButton(onClick = {
                 val width = widthText.toFloatOrNull()?.coerceIn(0.5f, 10f) ?: key.width
+                val height = heightText.toFloatOrNull()?.coerceIn(0.5f, 2f) ?: key.height
                 onSave(
                     key.copy(
                         label = label.ifBlank { key.label },
                         code = code.ifBlank { key.code },
                         width = width,
+                        height = height,
                         type = key.type,
                         longClick = longClick.ifBlank { null },
                         swipeUp = swipeUp.ifBlank { null },
@@ -527,8 +539,13 @@ private fun KeyEditDialog(
             }) { Text("保存") }
         },
         dismissButton = {
-            TextButton(onClick = onDelete) {
-                Text("删除按键", color = MaterialTheme.colorScheme.error)
+            Row {
+                TextButton(onClick = onDelete) {
+                    Text("删除按键", color = MaterialTheme.colorScheme.error)
+                }
+                TextButton(onClick = onDismiss) {
+                    Text("取消")
+                }
             }
         },
     )

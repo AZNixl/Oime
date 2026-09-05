@@ -8,11 +8,12 @@ android {
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.azime.input"
+        // 包名 Oime（原 com.azime.input；与旧版并存，需重新选择输入法）
+        applicationId = "com.oime.input"
         minSdk = 24
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1.0-preview"
+        versionCode = 2
+        versionName = "0.3.0-oime"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         
