@@ -188,3 +188,9 @@ vendored RimeEngine 中 `getAvailableSchemas / getSchemaString / getSchemaList`
 | 6 | 记录/上传 | 本文；改名后首个提交推送 AZNixl/Oime |
 
 - versionCode 4 / versionName 0.6.0-oime。
+
+### 热修复（真机崩溃）：SecurityException on ENABLED_INPUT_METHODS
+- 现象：0.6.0 装机后打开向导即崩（targetSdk 34 读 Settings.Secure.ENABLED_INPUT_METHODS 抛
+  SecurityException，Android 14 限制该 key 仅 targetSdk ≤ 33 可读；读取又在 ON_RESUME 观察器中，启动即崩）。
+- 修复：启用检测改走 InputMethodManager.enabledInputMethodList（公开 API 无权限）；
+  DEFAULT_INPUT_METHOD 读取包 runCatching，受限时视为未完成而非崩溃。

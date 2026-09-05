@@ -125,14 +125,21 @@ fun OnboardingScreen(
 
     fun refreshStatus() {
         storageOk = storageGranted(context)
-        val enabled = Settings.Secure.getString(
-            context.contentResolver, Settings.Secure.ENABLED_INPUT_METHODS
-        ).orEmpty()
-        enabledOk = enabled.contains("${context.packageName}/")
-        val def = Settings.Secure.getString(
-            context.contentResolver, Settings.Secure.DEFAULT_INPUT_METHOD
-        ).orEmpty()
-        selectedOk = def.startsWith("${context.packageName}/")
+        // 注意：targetSdk 34 上读 Settings.Secure.ENABLED_INPUT_METHODS 会抛 SecurityException
+        // （Android 14 限制 targetSdk ≤ 33 才能读），改用 InputMethodManager 公开 API。
+        val imm = context.getSystemService(
+            android.content.Context.INPUT_METHOD_SERVICE
+        ) as android.view.inputmethod.InputMethodManager
+        enabledOk = runCatching {
+            imm.enabledInputMethodList.any { it.packageName == context.packageName }
+        }.getOrDefault(false)
+        // DEFAULT_INPUT_METHOD 同样防御性读取（受限时视为未完成，不崩溃）
+        selectedOk = runCatching {
+            val def = Settings.Secure.getString(
+                context.contentResolver, Settings.Secure.DEFAULT_INPUT_METHOD
+            ).orEmpty()
+            def.startsWith("${context.packageName}/")
+        }.getOrDefault(false)
     }
 
     val runtimePermLauncher = rememberLauncherForActivityResult(
