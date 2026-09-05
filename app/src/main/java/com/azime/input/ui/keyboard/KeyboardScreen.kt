@@ -46,7 +46,10 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.LocalTextStyle
+import androidx.compose.material3.TextButton
 import com.azime.input.core.font.FontManager
 import com.azime.input.core.keyboard.KeyboardManager
 import com.azime.input.core.lua.LuaScriptManager
@@ -426,7 +429,7 @@ private fun ToolbarRow(
         if (clipFresh) {
             Spacer(Modifier.width(4.dp))
             Text(
-                text = "clipboard: " + state.clipText.replace(NL, " "),
+                text = "clipboard: " + state.clipText.replace("\n", " "),
                 fontSize = 13.sp,
                 color = c.subText,
                 maxLines = 1,

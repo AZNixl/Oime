@@ -71,3 +71,29 @@ assets/rime 仅保留 pinyin_simp（+symbols/default 配置与 lua）；资产�
 - undo 栈仅记录本输入法会话内的上屏内容，不覆盖 App 外部输入。
 - 图片剪贴板仅落盘保存，暂未在面板内缩略预览。
 - trime2 键盘 lua 布局文件（keyboards/*.lua）暂未直接渲染，仅 preset_keys.lua 动作约定兼容。
+
+---
+
+# 补充轮（2026-09-05 晚）：真机反馈 9 条 + native 崩溃修复
+
+## Native SIGSEGV 修复（重要）
+
+真机 tombstone：`refreshState → isReady → getAvailableSchemas`（DefaultDispatcher）
+与维护线程 `ConfigData::LoadFromFile` 并发 → 「trying to execute non-executable memory」。
+vendored RimeEngine 中 `getAvailableSchemas / getSchemaString / getSchemaList`
+三个查询是裸调 native，没走 rimeLock。已统一加 `tryLocked`（拿不到锁返回空默认，
+维护期间不进 native）。
+
+## 9 条反馈落地方案
+
+| # | 反馈 | 实现 |
+|---|---|---|
+| 1 | A-L 行键宽与第一行一致 | 每行按 10 份计宽，不足的行尾部留白 |
+| 2 | 剪贴板条不消失/挡候选 | 条目只显示 10 秒；从面板上屏后条目清除+面板收起 |
+| 3 | 工具栏自定义（参考 xime） | 长按 ○ 勾选工具（剪贴板/方案/数字/emoji/符号/设置），○ 与红摇杆固定 |
+| 4 | 摇杆短距远点 | 快捷指针模式 10 字/步远距跳转；光标模式 1 字/步 |
+| 5 | ○ 菜单面板化 | 键盘内嵌面板（剪贴板/页面/设置/方案切换），非浮窗 |
+| 6 | 中文大写/英文小写键帽 | 显示层切换；中文输入逻辑不变（仍送小写编码） |
+| 7 | 字体支持/增高行调整/方案二级菜单 | 设置页键高+增高行滑杆（下次键盘弹出热生效）；方案管理收二级页 |
+| 8 | 退格滑动删除不正常 | 按 trime2「退格键滑动删除.lua v4」锚点模型重写：24px/字符、10px 进入阈值、横向占优判定、组合中禁用、右滑回退到锚点 |
+| 9 | 开发记录 | 本文 |
