@@ -234,7 +234,7 @@ fun AzimeKeyboardScreen(
     val barH = KeyboardManager.barHeightDp().dp
     var showToolbarCustomize by remember { mutableStateOf(false) }
     // 主键盘区标准总高（4 行 + 间距）；emoji/候选/菜单面板统一与此等高
-    val stdH = 4 * keyH + 5 * KeySpacing
+    val stdH = keyH * 4 + KeySpacing * 5
     val areaH = if (KeyboardManager.barEnabled()) stdH + KeySpacing + barH else stdH
 
     CompositionLocalProvider(
