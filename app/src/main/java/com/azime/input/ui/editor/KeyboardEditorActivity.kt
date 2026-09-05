@@ -53,7 +53,6 @@ class KeyboardEditorActivity : AppCompatActivity() {
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun KeyboardEditorScreen(onBack: () -> Unit) {
     var version by remember { mutableStateOf(0) }

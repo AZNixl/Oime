@@ -39,7 +39,7 @@ class SchemaImporter {
             val headers = zipFile.fileHeaders
             val hasNonUtf8 = headers.any { !it.isFileNameUTF8Encoded }
             if (hasNonUtf8) {
-                zipFile = ZipFile(tempZip, Charset.forName("GBK"))
+                zipFile = ZipFile(tempZip.absolutePath, Charset.forName("GBK"))
             }
             zipFile.extractAll(targetDir.absolutePath)
         } finally {
