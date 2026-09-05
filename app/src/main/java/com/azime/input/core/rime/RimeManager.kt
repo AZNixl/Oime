@@ -73,6 +73,17 @@ object RimeManager {
     /** 部署完成、可建会话。首次运行会触发词典编译，可能耗时数十秒。 */
     fun ensureSession(): Boolean = RimeEngine.getInstance().ensureSession()
 
+    @Volatile private var sessionReady = false
+
+    /** 会话是否已建立；未建立时（如首次部署耗时超过等待窗口）可按键重试。 */
+    fun isSessionReady(): Boolean = sessionReady
+
+    /** 建立输入会话（幂等，维护完成后快速返回）。 */
+    fun ensureSessionNow(): Boolean {
+        sessionReady = RimeEngine.getInstance().ensureSession()
+        return sessionReady
+    }
+
     /** 处理一次 X11 键值按键，返回完整状态（候选/上屏文本/preedit）。 */
     fun processKey(keycode: Int, mask: Int = 0): RimeProcessResult =
         RimeEngine.getInstance().processKeyAndGetResult(keycode, mask)
