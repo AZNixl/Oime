@@ -18,10 +18,12 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -33,7 +35,6 @@ import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -59,10 +60,12 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.LocalTextStyle
-import androidx.compose.material3.TextButton
+import androidx.compose.material3.OutlinedButton
 import com.azime.input.core.font.FontManager
 import com.azime.input.core.haptic.HapticsManager
 import com.azime.input.core.keyboard.KeyboardManager
@@ -117,6 +120,23 @@ sealed interface KeyAction {
     data class SetToolbarItems(val ids: List<String>) : KeyAction
     /** 键盘 UI 内部：切页（main/symbols/numpad/emoji），不经 Service。 */
     data class SwitchPage(val page: String) : KeyAction
+    /** 更多候选面板开关。 */
+    data object ToggleCandidatePanel : KeyAction
+    /** 候选上一页（PageUp keysym 0xFF54）。 */
+    data object PageUp : KeyAction
+
+    // ── 剪贴板面板（jqb.lua 风格：历史 / 收藏 + ︙菜单） ──
+    data class SetClipTab(val tab: String) : KeyAction
+    /** 面板内点选上屏：不清空面板与历史。 */
+    data class CommitClipText(val text: String) : KeyAction
+    /** 剪贴板条目收藏（加入常用短语）。 */
+    data class ClipFav(val text: String) : KeyAction
+    /** 删除条目（list = clipboard | phrase）。 */
+    data class ClipDelete(val list: String, val index: Int) : KeyAction
+    /** 条目置顶。 */
+    data class ClipTop(val list: String, val index: Int) : KeyAction
+    /** 清空列表。 */
+    data class ClipClear(val list: String) : KeyAction
 }
 
 /** 键盘 UI 状态，由 AZimeService 持有并驱动。 */
@@ -138,6 +158,13 @@ data class KeyboardUiState(
     val clipAtMs: Long = 0L,
     val showClipboardPanel: Boolean = false,
     val showMenuPanel: Boolean = false,
+    val showCandidatePanel: Boolean = false,
+    /** 剪贴板历史（最新在前，Service 持久化 clipboard.json）。 */
+    val clipHistory: List<String> = emptyList(),
+    /** 常用短语/收藏（Service 持久化 phrase.json）。 */
+    val phraseItems: List<String> = emptyList(),
+    /** 剪贴板面板选项卡：clipboard | phrase。 */
+    val clipTab: String = "clipboard",
     val joystickMode: String = "cursor", // cursor | pointer
     /** 工具栏配置版本号：自定义保存后触发重组 */
     val toolbarRev: Int = 0,
@@ -203,9 +230,9 @@ fun AzimeKeyboardScreen(
     val keyFontFamily = remember { FontManager.keyTypeface()?.let { FontFamily(it) } }
     val candFontFamily = remember { FontManager.candidateTypeface()?.let { FontFamily(it) } }
 
-    // 尺寸可调（设置页滑杆）；增高行开关关闭时工具栏/候选栏回落紧凑高度
+    // 尺寸可调（设置页滑杆）；工具栏固定紧凑高度，「增高行」= 键盘底部额外空行
     val keyH = KeyboardManager.keyHeightDp().dp
-    val barH = if (KeyboardManager.barEnabled()) KeyboardManager.barHeightDp().dp else 38.dp
+    val barH = KeyboardManager.barHeightDp().dp
     var showToolbarCustomize by remember { mutableStateOf(false) }
 
     CompositionLocalProvider(
@@ -229,13 +256,25 @@ fun AzimeKeyboardScreen(
             ToolbarRow(
                 state = state,
                 onAction = onAction,
-                barHeight = barH,
+                barHeight = 38.dp,
                 onOpenCustomize = { showToolbarCustomize = true },
             )
+            if (showToolbarCustomize) {
+                ToolbarCustomizePanel(
+                    current = KeyboardManager.toolbarItems(),
+                    onSave = {
+                        showToolbarCustomize = false
+                        onAction(KeyAction.SetToolbarItems(it))
+                    },
+                    onDismiss = { showToolbarCustomize = false },
+                )
+            }
             CompositionLocalProvider(
                 LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = candFontFamily ?: keyFontFamily ?: FontFamily.Default),
             ) {
-                if (state.page == "emoji" || state.page == "symgrid") {
+                if (state.showCandidatePanel) {
+                    CandidatePanel(state = state, onAction = onAction)
+                } else if (state.page == "emoji" || state.page == "symgrid") {
                     CategoryGridPane(
                         data = if (state.page == "emoji") EmojiGrid else SymbolGrid,
                         state = state,
@@ -269,103 +308,161 @@ fun AzimeKeyboardScreen(
                                 }
                             }
                         }
+                        // 增高行：键盘最后一行下方多一行（无按键），高度由设置滑杆控制
+                        if (KeyboardManager.barEnabled()) {
+                            Row(modifier = Modifier.fillMaxWidth().height(barH)) {}
+                        }
                     }
                 }
             }
         }
     }
-
-    if (showToolbarCustomize) {
-        ToolbarCustomizeDialog(
-            current = KeyboardManager.toolbarItems(),
-            onSave = {
-                showToolbarCustomize = false
-                onAction(KeyAction.SetToolbarItems(it))
-            },
-            onDismiss = { showToolbarCustomize = false },
-        )
-    }
 }
 
-// ── 剪贴板面板：分词 / 提取英文词 / 提取网址 ─────────────────
+// ── 剪贴板面板（jqb.lua 风格：剪贴板/收藏 双选项卡 + 卡片列表 + ︙菜单） ──
 
 @Composable
 private fun ClipboardPanel(state: KeyboardUiState, onAction: (KeyAction) -> Unit) {
     val c = keyboardColors()
-    if (state.clipText.isBlank()) return
-
-    val tokens = remember(state.clipText) {
-        // 分词：按空白与中英边界切
-        Regex("""[A-Za-z]+|[0-9]+|[\u4e00-\u9fa5]""").findAll(state.clipText).map { it.value }.toList()
-    }
-    val englishWords = remember(state.clipText) {
-        Regex("""[A-Za-z]{2,}""").findAll(state.clipText).map { it.value }.distinct().toList()
-    }
-    val urls = remember(state.clipText) {
-        Regex("""(https?://\S+|www\.\S+|[A-Za-z0-9-]+\.[A-Za-z]{2,}(?:/\S*)?)""")
-            .findAll(state.clipText).map { it.value }.distinct().toList()
-    }
+    val isPhrase = state.clipTab == "phrase"
+    val items = if (isPhrase) state.phraseItems else state.clipHistory
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .background(c.barBg)
-            .padding(horizontal = 10.dp, vertical = 6.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+            .padding(horizontal = 8.dp, vertical = 6.dp),
     ) {
+        // 顶行：双选项卡 + 收起
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                "剪贴板",
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold,
-                color = c.text,
-                modifier = Modifier.weight(1f),
-            )
+            ClipTabLabel("剪贴板", selected = !isPhrase, c = c) {
+                onAction(KeyAction.SetClipTab("clipboard"))
+            }
+            Spacer(Modifier.width(6.dp))
+            ClipTabLabel("收藏", selected = isPhrase, c = c) {
+                onAction(KeyAction.SetClipTab("phrase"))
+            }
+            Spacer(Modifier.weight(1f))
             Text(
                 "收起 ▲",
                 fontSize = 12.sp,
                 color = c.subText,
-                modifier = Modifier.clickable { onAction(KeyAction.ToggleClipboardPanel) },
+                modifier = Modifier
+                    .clickable { onAction(KeyAction.ToggleClipboardPanel) }
+                    .padding(4.dp),
             )
         }
-        Text(
-            text = state.clipText,
-            fontSize = 13.sp,
-            color = c.text,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier
-                .background(c.bg, RoundedCornerShape(8.dp))
-                .clickable { onAction(KeyAction.CommitClipboard(state.clipText)) }
-                .fillMaxWidth()
-                .padding(8.dp),
-        )
-        ChipRow("分词", tokens, onAction)
-        ChipRow("英文", englishWords, onAction)
-        ChipRow("网址", urls, onAction)
+        Spacer(Modifier.height(4.dp))
+        if (items.isEmpty()) {
+            Text(
+                text = if (isPhrase) "收藏为空：在剪贴板条目的 ︙ 菜单里点「收藏」"
+                else "剪贴板为空：复制文字后会自动记录在这里",
+                fontSize = 13.sp,
+                color = c.subText,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 14.dp),
+            )
+        } else {
+            Column(
+                modifier = Modifier
+                    .heightIn(max = 190.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                items.forEachIndexed { index, text ->
+                    ClipCard(index = index, text = text, tab = state.clipTab, onAction = onAction)
+                }
+            }
+        }
     }
 }
 
+/** 面板选项卡（jqb 滑块式：选中侧填充强调色）。 */
 @Composable
-private fun ChipRow(title: String, items: List<String>, onAction: (KeyAction) -> Unit) {
+private fun ClipTabLabel(text: String, selected: Boolean, c: KeyboardColors, onClick: () -> Unit) {
+    Text(
+        text = text,
+        fontSize = 13.sp,
+        color = if (selected) c.accentActiveText else c.subText,
+        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+        modifier = Modifier
+            .background(if (selected) c.accentActive else c.funcKeyBg, RoundedCornerShape(9.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 5.dp),
+    )
+}
+
+/** 条目卡片：序号 + 文本（可展开分词 chips）+ ︙ 菜单（收藏/置顶/分词/删除）。 */
+@Composable
+private fun ClipCard(index: Int, text: String, tab: String, onAction: (KeyAction) -> Unit) {
     val c = keyboardColors()
-    if (items.isEmpty()) return
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(title, fontSize = 12.sp, color = c.subText)
+    var menuOpen by remember { mutableStateOf(false) }
+    var splitOpen by remember { mutableStateOf(false) }
+    val tokens = remember(text) {
+        // 分词：按空白与中英边界切（与 jqb 分词交互对齐，不保存）
+        Regex("""[A-Za-z]+|[0-9]+|[\u4e00-\u9fa5]""").findAll(text).map { it.value }.toList()
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(c.bg, RoundedCornerShape(10.dp))
+            .clickable { onAction(KeyAction.CommitClipText(text)) }
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Text("${index + 1}.", fontSize = 11.sp, color = c.subText, modifier = Modifier.padding(top = 3.dp))
         Spacer(Modifier.width(6.dp))
-        Row(
-            modifier = Modifier.horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            items.take(12).forEach { token ->
-                Text(
-                    text = token,
-                    fontSize = 13.sp,
-                    color = c.text,
-                    modifier = Modifier
-                        .background(c.funcKeyBg, RoundedCornerShape(6.dp))
-                        .clickable { onAction(KeyAction.CommitClipboard(token)) }
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
+        Column(Modifier.weight(1f)) {
+            Text(text, fontSize = 14.sp, color = c.text, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            if (splitOpen && tokens.size > 1) {
+                Spacer(Modifier.height(4.dp))
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    tokens.take(24).forEach { token ->
+                        Text(
+                            text = token,
+                            fontSize = 13.sp,
+                            color = c.text,
+                            modifier = Modifier
+                                .background(c.funcKeyBg, RoundedCornerShape(6.dp))
+                                .clickable { onAction(KeyAction.CommitClipText(token)) }
+                                .padding(horizontal = 8.dp, vertical = 3.dp),
+                        )
+                    }
+                }
+            }
+        }
+        Box {
+            Text(
+                "︙",
+                fontSize = 16.sp,
+                color = c.subText,
+                modifier = Modifier
+                    .clickable { menuOpen = true }
+                    .padding(4.dp),
+            )
+            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                if (tab == "clipboard") {
+                    DropdownMenuItem(
+                        text = { Text("收藏") },
+                        onClick = { menuOpen = false; onAction(KeyAction.ClipFav(text)) },
+                    )
+                }
+                DropdownMenuItem(
+                    text = { Text("置顶") },
+                    onClick = { menuOpen = false; onAction(KeyAction.ClipTop(tab, index)) },
+                )
+                DropdownMenuItem(
+                    text = { Text(if (splitOpen) "收起分词" else "分词") },
+                    onClick = { menuOpen = false; splitOpen = !splitOpen },
+                )
+                DropdownMenuItem(
+                    text = { Text("删除") },
+                    onClick = { menuOpen = false; onAction(KeyAction.ClipDelete(tab, index)) },
                 )
             }
         }
@@ -480,10 +577,24 @@ private fun ToolbarRow(
                     )
                 }
             }
+            // 更多候选面板入口（打字时打开大面板选字）
+            Text(
+                "▾",
+                fontSize = 16.sp,
+                color = c.subText,
+                modifier = Modifier
+                    .clickable { onAction(KeyAction.ToggleCandidatePanel) }
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+            )
         } else {
             // 自定义工具区（长按 ○ 勾选）
             KeyboardManager.toolbarItems().forEach { id ->
                 when (id) {
+                    "clipboard" -> Box(
+                        modifier = Modifier
+                            .clickable { onAction(KeyAction.ToggleClipboardPanel) }
+                            .padding(horizontal = 9.dp, vertical = 4.dp),
+                    ) { Text("📋", fontSize = 14.sp, color = c.subText) }
                     "schema" -> Box(
                         modifier = Modifier
                             .clickable { showSchemaMenu = true }
@@ -750,50 +861,158 @@ private fun MenuPanel(
     }
 }
 
-/** 工具栏自定义对话框（长按 ○ 呼出）。 */
+/**
+ * 工具栏自定义面板（○ 菜单「定制工具栏」/ 长按 ○ 呼出）。
+ * 注意：不用 AlertDialog——Compose 对话框窗口 z-order 低于 IME 窗口会被键盘挡住，
+ * 键盘内的弹层一律使用内联面板或 Popup。
+ */
 @Composable
-private fun ToolbarCustomizeDialog(
+private fun ToolbarCustomizePanel(
     current: List<String>,
     onSave: (List<String>) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val options = KeyboardManager.availableToolbarTools
+    val c = keyboardColors()
     val selected = remember { mutableStateListOf<String>().apply { addAll(current) } }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("自定义工具栏") },
-        text = {
-            Column {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(c.barBg)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+    ) {
+        Text("定制工具栏", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = c.text)
+        Spacer(Modifier.height(2.dp))
+        Text(
+            "○ 菜单键与红摇杆固定；勾选的工具按顺序显示在工具栏中部。",
+            fontSize = 12.sp,
+            color = c.subText,
+        )
+        Spacer(Modifier.height(6.dp))
+        KeyboardManager.availableToolbarTools.forEach { (id, name) ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        if (id in selected) selected.remove(id) else selected.add(id)
+                    },
+            ) {
+                Checkbox(checked = id in selected, onCheckedChange = { on ->
+                    if (on) selected.add(id) else selected.remove(id)
+                })
+                Text(name, fontSize = 14.sp, color = c.text)
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Button(onClick = { onSave(selected.toList()) }, modifier = Modifier.weight(1f)) {
+                Text("保存")
+            }
+            OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) {
+                Text("取消")
+            }
+        }
+    }
+}
+
+// ── 更多候选面板：网格展示当前页全部候选，◀▶ 翻页，点选上屏 ──
+
+@Composable
+private fun CandidatePanel(state: KeyboardUiState, onAction: (KeyAction) -> Unit) {
+    val c = keyboardColors()
+    val keyH = KeyboardManager.keyHeightDp().dp
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(c.bg)
+            .padding(horizontal = KeySpacing, vertical = KeySpacing),
+        verticalArrangement = Arrangement.spacedBy(KeySpacing),
+    ) {
+        // 顶行：标题 + 翻页 + 收起
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("更多候选", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = c.text)
+            Spacer(Modifier.weight(1f))
+            if (state.hasPrevPage) {
                 Text(
-                    "○ 菜单键与红摇杆固定，不可移除；以下工具按勾选顺序显示在工具栏中间。",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    "◀",
+                    fontSize = 16.sp,
+                    color = c.text,
+                    modifier = Modifier
+                        .clickable { onAction(KeyAction.PageUp) }
+                        .padding(horizontal = 12.dp, vertical = 4.dp),
                 )
-                Spacer(Modifier.height(8.dp))
-                options.forEach { (id, name) ->
+            }
+            if (state.hasNextPage) {
+                Text(
+                    "▶",
+                    fontSize = 16.sp,
+                    color = c.text,
+                    modifier = Modifier
+                        .clickable { onAction(KeyAction.PageDown) }
+                        .padding(horizontal = 12.dp, vertical = 4.dp),
+                )
+            }
+            Text(
+                "收起 ▲",
+                fontSize = 12.sp,
+                color = c.subText,
+                modifier = Modifier
+                    .clickable { onAction(KeyAction.ToggleCandidatePanel) }
+                    .padding(horizontal = 6.dp, vertical = 4.dp),
+            )
+        }
+        // 候选网格：5 列（选中后候选变化，候选为空时 Service 自动收起面板）
+        if (state.candidates.isEmpty()) {
+            Text(
+                "暂无候选：请先输入编码",
+                fontSize = 13.sp,
+                color = c.subText,
+                modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+            )
+        } else {
+            var base = 0
+            Column(verticalArrangement = Arrangement.spacedBy(KeySpacing)) {
+                state.candidates.chunked(5).forEach { rowItems ->
                     Row(
-                        verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable {
-                                if (id in selected) selected.remove(id) else selected.add(id)
-                            },
+                            .height(keyH),
+                        horizontalArrangement = Arrangement.spacedBy(KeySpacing),
                     ) {
-                        Checkbox(checked = id in selected, onCheckedChange = {
-                            if (it) selected.add(id) else selected.remove(id)
-                        })
-                        Text(name)
+                        rowItems.forEachIndexed { i, candidate ->
+                            val idx = base + i
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxSize()
+                                    .background(c.keyBg, RoundedCornerShape(8.dp))
+                                    .clickable { onAction(KeyAction.Candidate(idx)) },
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    if (idx < 9) {
+                                        Text("${idx + 1} ", fontSize = 11.sp, color = c.subText)
+                                    }
+                                    Text(
+                                        candidate.text,
+                                        fontSize = 18.sp,
+                                        maxLines = 1,
+                                        color = c.text,
+                                    )
+                                }
+                            }
+                        }
+                        repeat(5 - rowItems.size) { Spacer(Modifier.weight(1f)) }
                     }
+                    base += rowItems.size
                 }
             }
-        },
-        confirmButton = {
-            TextButton(onClick = { onSave(selected.toList()) }) { Text("保存") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消") }
-        },
-    )
+        }
+    }
 }
 
 // ── emoji 键盘 ───────────────────────────────────────────────

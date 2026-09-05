@@ -158,3 +158,20 @@ vendored RimeEngine 中 `getAvailableSchemas / getSchemaString / getSchemaList`
 - 新包 com.oime.input 装机、ime enable、切默认输入法 ✅；旧外置资产（方案/fonts/lua）已复制到 Documents/Oime。
 - 键盘渲染 ✅（大写键帽/○ 工具栏/红摇杆/方案名）；○ 面板磁贴 ✅；设置页：运行正常·简体拼音（迁移方案自动部署）✅、打字振动卡片 ✅。
 - 无崩溃（logcat 无 FATAL）。期间屏幕跳变系人机同时操作，自动化盲测暂停，交由用户手测。
+
+## 反馈轮 3：7 条（jqb 剪贴板 / 更多候选 / KSU 设置）
+
+| # | 反馈 | 实现 |
+|---|---|---|
+| 1 | ○ 菜单「定制工具栏」「剪贴板」无效 | 双根因：①定制工具栏用 Compose AlertDialog——对话框窗口 z-order 低于 IME 窗口被键盘挡住（隐形）；②剪贴板面板在 clipText 为空时直接 return（不可见），工具栏 clipboard 工具也无分发分支。修复：定制工具栏改内联面板（ToolbarCustomizePanel，勾选+保存/取消）；剪贴板面板改为永远可见（空态提示）；工具栏补 clipboard 分支 |
+| 2 | 九宫格缩在左边大片空白 | numpad 每行 4 键 × 键宽 1f = 4/10 份，行尾补白 6 份。改键宽 2.5f（底行 5 键 × 2f），铺满整行 |
+| 3 | 增高行语义纠正 | 增高行 = 键盘最后一行下方多一个**无按键空行**（高度滑杆控制），不再是工具栏变高；工具栏固定 38dp 紧凑高度 |
+| 4 | 剪贴板分词等功能收进菜单（参考 jqb.lua） | 剪贴板面板整体重做：剪贴板/收藏双选项卡（滑块式高亮）、卡片列表（序号+文本）、每条 ︙ 菜单（收藏/置顶/分词/删除），分词在卡片内展开 token chips 点击上屏；Service 端剪贴板历史自动记录（去重插首、上限 100 条）+ 收藏短语，分别持久化 filesDir/clipboard.json / phrase.json（org.json） |
+| 5 | 更多候选面板 | 新增 CandidatePanel：工具栏候选行尾「▾」入口，5 列网格展示当前页全部候选（带数字前缀），◀▶ 翻页（PageUp/PageDown keysym 0xFF54/0xFF55），点选上屏；候选清空自动收起 |
+| 6 | 设置主页参考 KSU | 大方块状态卡（○ logo+引擎状态）+ 两个小方块（版本 0.5.0-oime / 项目 AZNixl/AZime）+ 下方设置项列表；增高行文案更新 |
+| 7 | 记录/上传 | 本文；push 后 CI 构建，拉 APK 装机验证 |
+
+### 顺带
+- versionCode 3 / versionName 0.5.0-oime；KeyboardUiState 新增 clipHistory/phraseItems/clipTab/showCandidatePanel；
+- KeyAction 新增 ToggleCandidatePanel/PageUp/SetClipTab/CommitClipText/ClipFav/ClipDelete/ClipTop/ClipClear；
+- 教训沉淀：**IME 内的 Compose 一律不要用 AlertDialog**（对话框窗口在键盘下层不可见），弹层用内联面板或 Popup。

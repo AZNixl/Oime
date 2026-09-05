@@ -128,25 +128,27 @@ object KeyboardPages {
         ),
     )
 
-    /** 九宫格数字键盘（第 3 行末为退格；第 4 行首「26」返回主键盘）。 */
+    /** 九宫格数字键盘（键宽 2.5f × 4 键铺满一行；第 3 行末为退格；第 4 行首「26」返回主键盘）。 */
     val numpad: KeyboardLayout = KeyboardLayout(
         name = "numpad",
         rows = listOf(
             row(
-                charKey("1"), charKey("2"), charKey("3"), Key("+", code = "+", type = KeyType.CHARACTER),
+                charKey("1", width = 2.5f), charKey("2", width = 2.5f), charKey("3", width = 2.5f),
+                Key("+", code = "+", width = 2.5f, type = KeyType.CHARACTER),
             ),
             row(
-                charKey("4"), charKey("5"), charKey("6"), Key("-", code = "-", type = KeyType.CHARACTER),
+                charKey("4", width = 2.5f), charKey("5", width = 2.5f), charKey("6", width = 2.5f),
+                Key("-", code = "-", width = 2.5f, type = KeyType.CHARACTER),
             ),
             row(
-                charKey("7"), charKey("8"), charKey("9"),
-                backspace(width = 1f),
+                charKey("7", width = 2.5f), charKey("8", width = 2.5f), charKey("9", width = 2.5f),
+                backspace(width = 2.5f),
             ),
             row(
-                pageKey("26", target = "main", width = 1f),
-                charKey("0", width = 1f), charKey(".", width = 1f),
-                space(width = 1f),
-                enter(1f),
+                pageKey("26", target = "main", width = 2f),
+                charKey("0", width = 2f), charKey(".", width = 2f),
+                space(width = 2f),
+                enter(2f),
             ),
         ),
     )

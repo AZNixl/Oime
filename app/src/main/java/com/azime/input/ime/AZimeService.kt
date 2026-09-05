@@ -51,6 +51,12 @@ class AZimeService : InputMethodService() {
     /** 摇杆「快捷指针」选区锚点（-1 表示未开始）。 */
     private var joystickAnchor = -1
 
+    // ── 剪贴板历史 / 收藏（jqb.lua 风格，持久化 clipboard.json / phrase.json） ──
+    private val clipHistory = mutableListOf<String>()
+    private val phraseItems = mutableListOf<String>()
+    private val clipHistoryFile by lazy { File(filesDir, "clipboard.json") }
+    private val phraseFile by lazy { File(filesDir, "phrase.json") }
+
     /** 键盘尺寸签名：变化时在 onStartInputView 重建视图（高度滑杆热生效）。 */
     private var lastSizeSignature: String = ""
 
@@ -67,6 +73,8 @@ class AZimeService : InputMethodService() {
         lifecycleOwner.onCreate()
         KeyboardManager.initialize(applicationContext)
         LuaScriptManager.loadScript()
+        clipHistory.addAll(loadJsonList(clipHistoryFile))
+        phraseItems.addAll(loadJsonList(phraseFile))
         clipboardManager.addPrimaryClipChangedListener(clipboardListener)
         scope.launch {
             val ok = RimeManager.ensureReady(applicationContext)
@@ -185,7 +193,26 @@ class AZimeService : InputMethodService() {
         val text = item.coerceToText(this)?.toString().orEmpty()
         if (text.isNotBlank()) {
             uiState.update { it.copy(clipText = text.take(80), clipAtMs = System.currentTimeMillis()) }
+            recordClip(text)
         }
+    }
+
+    /** 新复制文本入历史：去重后插到最前，上限 100 条（jqb 同款策略）。 */
+    private fun recordClip(text: String) {
+        clipHistory.remove(text)
+        clipHistory.add(0, text)
+        while (clipHistory.size > 100) clipHistory.removeAt(clipHistory.size - 1)
+        saveJsonList(clipHistoryFile, clipHistory)
+        uiState.update { it.copy(clipHistory = clipHistory.toList()) }
+    }
+
+    private fun loadJsonList(file: File): MutableList<String> = runCatching {
+        val arr = org.json.JSONArray(file.readText())
+        (0 until arr.length()).map { arr.optString(it) }.filter { it.isNotEmpty() }.toMutableList()
+    }.getOrDefault(mutableListOf())
+
+    private fun saveJsonList(file: File, list: List<String>) {
+        runCatching { file.writeText(org.json.JSONArray(list).toString()) }
     }
 
     // ── 按键处理 ─────────────────────────────────────────────
@@ -276,6 +303,65 @@ class AZimeService : InputMethodService() {
                 is KeyAction.SetToolbarItems -> {
                     KeyboardManager.setToolbarItems(action.ids)
                     uiState.update { it.copy(toolbarRev = it.toolbarRev + 1) }
+                }
+                KeyAction.ToggleCandidatePanel ->
+                    uiState.update { it.copy(showCandidatePanel = !it.showCandidatePanel) }
+                KeyAction.PageUp -> {
+                    RimeManager.processKey(0xFF54) // Prior/PageUp keysym
+                    applyResult(RimeManager.getProcessResult())
+                }
+
+                // ── 剪贴板面板（jqb 风格：历史/收藏 + ︙菜单） ──
+                is KeyAction.SetClipTab -> uiState.update {
+                    it.copy(clipTab = if (action.tab == "phrase") "phrase" else "clipboard")
+                }
+                is KeyAction.CommitClipText -> {
+                    currentInputConnection?.commitText(action.text, 1)
+                    pushUndo(action.text)
+                }
+                is KeyAction.ClipFav -> {
+                    if (!phraseItems.contains(action.text)) phraseItems.add(0, action.text)
+                    saveJsonList(phraseFile, phraseItems)
+                    uiState.update { it.copy(phraseItems = phraseItems.toList()) }
+                }
+                is KeyAction.ClipDelete -> {
+                    if (action.list == "phrase") {
+                        if (action.index in phraseItems.indices) {
+                            phraseItems.removeAt(action.index)
+                            saveJsonList(phraseFile, phraseItems)
+                            uiState.update { it.copy(phraseItems = phraseItems.toList()) }
+                        }
+                    } else {
+                        if (action.index in clipHistory.indices) {
+                            clipHistory.removeAt(action.index)
+                            saveJsonList(clipHistoryFile, clipHistory)
+                            uiState.update { it.copy(clipHistory = clipHistory.toList()) }
+                        }
+                    }
+                }
+                is KeyAction.ClipTop -> {
+                    if (action.list == "phrase" && action.index in phraseItems.indices) {
+                        val item = phraseItems.removeAt(action.index)
+                        phraseItems.add(0, item)
+                        saveJsonList(phraseFile, phraseItems)
+                        uiState.update { it.copy(phraseItems = phraseItems.toList()) }
+                    } else if (action.list != "phrase" && action.index in clipHistory.indices) {
+                        val item = clipHistory.removeAt(action.index)
+                        clipHistory.add(0, item)
+                        saveJsonList(clipHistoryFile, clipHistory)
+                        uiState.update { it.copy(clipHistory = clipHistory.toList()) }
+                    }
+                }
+                is KeyAction.ClipClear -> {
+                    if (action.list == "phrase") {
+                        phraseItems.clear()
+                        saveJsonList(phraseFile, phraseItems)
+                        uiState.update { it.copy(phraseItems = emptyList()) }
+                    } else {
+                        clipHistory.clear()
+                        saveJsonList(clipHistoryFile, clipHistory)
+                        uiState.update { it.copy(clipHistory = emptyList()) }
+                    }
                 }
             }
         }
@@ -492,6 +578,8 @@ class AZimeService : InputMethodService() {
                 asciiMode = result.isAsciiMode,
                 hasNextPage = result.hasNextPage,
                 hasPrevPage = result.hasPrevPage,
+                // 编码清空（候选消失）时自动收起更多候选面板
+                showCandidatePanel = it.showCandidatePanel && result.candidates.isNotEmpty(),
             )
         }
     }

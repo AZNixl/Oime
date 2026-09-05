@@ -298,7 +298,7 @@ fun SettingsScreen(
                             KsuItem(
                                 icon = Icons.Default.Info,
                                 title = "版本",
-                                subtitle = "0.4.0-oime · 包名 com.oime.input · 平台 RIME",
+                                subtitle = "0.5.0-oime · 包名 com.oime.input · 平台 RIME",
                                 onClick = {},
                                 showChevron = false,
                             )
@@ -322,7 +322,7 @@ fun SettingsScreen(
             }
             return@Scaffold
         }
-        // ── 一级菜单：纯入口 ──
+        // ── 一级菜单：KSU 布局（大方块状态卡 + 两小方块 + 设置项列表） ──
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
@@ -331,8 +331,55 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
             contentPadding = PaddingValues(vertical = 8.dp),
         ) {
+            // 大方块：引擎状态卡
             item { StatusCard() }
 
+            // 两个小方块：版本 / 项目
+            item {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = cs.surfaceVariant),
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Column(Modifier.padding(14.dp)) {
+                            Icon(
+                                Icons.Default.Info,
+                                contentDescription = null,
+                                tint = cs.primary,
+                                modifier = Modifier.size(20.dp),
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Text("版本", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+                            Text("0.5.0-oime", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = cs.surfaceVariant),
+                        modifier = Modifier.weight(1f).clickable {
+                            runCatching {
+                                context.startActivity(android.content.Intent(
+                                    android.content.Intent.ACTION_VIEW,
+                                    android.net.Uri.parse("https://github.com/AZNixl/AZime"),
+                                ))
+                            }
+                        },
+                    ) {
+                        Column(Modifier.padding(14.dp)) {
+                            Icon(
+                                Icons.Default.Link,
+                                contentDescription = null,
+                                tint = cs.primary,
+                                modifier = Modifier.size(20.dp),
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Text("项目", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+                            Text("AZNixl/AZime", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+
+            // 各设置项
             item {
                 Card {
                     Column(Modifier.padding(vertical = 4.dp)) {
@@ -503,7 +550,7 @@ private fun KeyHeightSliders() {
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("增高行（工具栏 + 候选栏）", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            Text("增高行（键盘底部空行）", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
             Switch(
                 checked = barOn,
                 onCheckedChange = {
@@ -524,7 +571,7 @@ private fun KeyHeightSliders() {
             )
         }
         Text(
-            "工具栏自定义：在键盘上长按 ○ 菜单键勾选",
+            "增高行 = 键盘最后一行下方多一个无按键的空行；工具栏自定义：长按 ○ 菜单键勾选",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
