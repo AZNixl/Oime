@@ -298,19 +298,19 @@ fun SettingsScreen(
                             KsuItem(
                                 icon = Icons.Default.Info,
                                 title = "版本",
-                                subtitle = "0.5.0-oime · 包名 com.oime.input · 平台 RIME",
+                                subtitle = "0.6.0-oime · 包名 com.oime.input · 平台 RIME",
                                 onClick = {},
                                 showChevron = false,
                             )
                             KsuItem(
                                 icon = Icons.Default.Link,
                                 title = "GitHub",
-                                subtitle = "github.com/AZNixl/AZime",
+                                subtitle = "github.com/AZNixl/Oime",
                                 onClick = {
                                     runCatching {
                                         context.startActivity(android.content.Intent(
                                             android.content.Intent.ACTION_VIEW,
-                                            android.net.Uri.parse("https://github.com/AZNixl/AZime"),
+                                            android.net.Uri.parse("https://github.com/AZNixl/Oime"),
                                         ))
                                     }
                                 },
@@ -350,7 +350,7 @@ fun SettingsScreen(
                             )
                             Spacer(Modifier.height(8.dp))
                             Text("版本", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
-                            Text("0.5.0-oime", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Text("0.6.0-oime", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         }
                     }
                     Card(
@@ -359,7 +359,7 @@ fun SettingsScreen(
                             runCatching {
                                 context.startActivity(android.content.Intent(
                                     android.content.Intent.ACTION_VIEW,
-                                    android.net.Uri.parse("https://github.com/AZNixl/AZime"),
+                                    android.net.Uri.parse("https://github.com/AZNixl/Oime"),
                                 ))
                             }
                         },
@@ -373,7 +373,7 @@ fun SettingsScreen(
                             )
                             Spacer(Modifier.height(8.dp))
                             Text("项目", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
-                            Text("AZNixl/AZime", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Text("AZNixl/Oime", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         }
                     }
                 }

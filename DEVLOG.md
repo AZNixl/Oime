@@ -175,3 +175,16 @@ vendored RimeEngine 中 `getAvailableSchemas / getSchemaString / getSchemaList`
 - versionCode 3 / versionName 0.5.0-oime；KeyboardUiState 新增 clipHistory/phraseItems/clipTab/showCandidatePanel；
 - KeyAction 新增 ToggleCandidatePanel/PageUp/SetClipTab/CommitClipText/ClipFav/ClipDelete/ClipTop/ClipClear；
 - 教训沉淀：**IME 内的 Compose 一律不要用 AlertDialog**（对话框窗口在键盘下层不可见），弹层用内联面板或 Popup。
+
+## 反馈轮 4：6 条（首启向导 / 仓库改名 / 面板等高）
+
+| # | 反馈 | 实现 |
+|---|---|---|
+| 1 | 首次启动界面优化（原 AZime 名称） | MainActivity 重写为 4 页 HorizontalPager 向导：①读取本地文件权限（Android 11+ 跳「所有文件访问」开关，≤Q 走运行时 READ_EXTERNAL_STORAGE；每页实时状态徽标 ✓）②启用输入法（检测 ENABLED_INPUT_METHODS）③选择输入法（showInputMethodPicker，检测 DEFAULT_INPUT_METHOD）④进入设置；页码圆点 + 上一步/下一步/完成，ON_RESUME 自动刷新状态；Manifest 增补 MANAGE_EXTERNAL_STORAGE |
+| 2 | GitHub 项目改名 Oime | API PATCH 仓库 name=Oime + 新描述（https://github.com/AZNixl/Oime）；README 整体重写为 Oime 品牌；设置页 4 处 GitHub 链接改 AZNixl/Oime；push 脚本默认仓库名改 Oime |
+| 3 | 更多候选面板跟主键盘同高度 | 统一高度公式 stdH=4×keyH+5×间距（含增高行则再加）；CandidatePanel 固定 totalHeight，网格区 weight(1f)+verticalScroll |
+| 4 | emoji 面板跟随主键盘高度 | CategoryGridPane 固定 totalHeight：标签行+Pager(weight 1f)+底行，单页内容可竖向滚动 |
+| 5 | ○ 菜单/剪贴板覆盖主键盘 | MenuPanel / ClipboardPanel 从工具栏上方移入内容区：与键盘互斥替换显示（固定 totalHeight），不再把键盘往下顶 |
+| 6 | 记录/上传 | 本文；改名后首个提交推送 AZNixl/Oime |
+
+- versionCode 4 / versionName 0.6.0-oime。

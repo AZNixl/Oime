@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -234,6 +233,9 @@ fun AzimeKeyboardScreen(
     val keyH = KeyboardManager.keyHeightDp().dp
     val barH = KeyboardManager.barHeightDp().dp
     var showToolbarCustomize by remember { mutableStateOf(false) }
+    // 主键盘区标准总高（4 行 + 间距）；emoji/候选/菜单面板统一与此等高
+    val stdH = 4 * keyH + 5 * KeySpacing
+    val areaH = if (KeyboardManager.barEnabled()) stdH + KeySpacing + barH else stdH
 
     CompositionLocalProvider(
         LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = keyFontFamily ?: FontFamily.Default),
@@ -243,16 +245,6 @@ fun AzimeKeyboardScreen(
                 .fillMaxWidth()
                 .background(c.bg),
         ) {
-            if (state.showMenuPanel) {
-                MenuPanel(
-                    state = state,
-                    onAction = onAction,
-                    onOpenCustomize = { showToolbarCustomize = true },
-                )
-            }
-            if (state.showClipboardPanel) {
-                ClipboardPanel(state = state, onAction = onAction)
-            }
             ToolbarRow(
                 state = state,
                 onAction = onAction,
@@ -272,14 +264,25 @@ fun AzimeKeyboardScreen(
             CompositionLocalProvider(
                 LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = candFontFamily ?: keyFontFamily ?: FontFamily.Default),
             ) {
+                // 面板优先：更多候选 / ○ 菜单 / 剪贴板 覆盖主键盘区（等高），否则显示键盘
                 if (state.showCandidatePanel) {
-                    CandidatePanel(state = state, onAction = onAction)
+                    CandidatePanel(state = state, onAction = onAction, totalHeight = areaH)
+                } else if (state.showMenuPanel) {
+                    MenuPanel(
+                        state = state,
+                        onAction = onAction,
+                        onOpenCustomize = { showToolbarCustomize = true },
+                        totalHeight = areaH,
+                    )
+                } else if (state.showClipboardPanel) {
+                    ClipboardPanel(state = state, onAction = onAction, totalHeight = areaH)
                 } else if (state.page == "emoji" || state.page == "symgrid") {
                     CategoryGridPane(
                         data = if (state.page == "emoji") EmojiGrid else SymbolGrid,
                         state = state,
                         onAction = onAction,
                         keyHeight = keyH,
+                        totalHeight = areaH,
                     )
                 } else {
                     val layout = KeyboardManager.layoutFor(state.page) ?: KeyboardManager.mainLayout()
@@ -322,7 +325,7 @@ fun AzimeKeyboardScreen(
 // ── 剪贴板面板（jqb.lua 风格：剪贴板/收藏 双选项卡 + 卡片列表 + ︙菜单） ──
 
 @Composable
-private fun ClipboardPanel(state: KeyboardUiState, onAction: (KeyAction) -> Unit) {
+private fun ClipboardPanel(state: KeyboardUiState, onAction: (KeyAction) -> Unit, totalHeight: androidx.compose.ui.unit.Dp) {
     val c = keyboardColors()
     val isPhrase = state.clipTab == "phrase"
     val items = if (isPhrase) state.phraseItems else state.clipHistory
@@ -330,6 +333,7 @@ private fun ClipboardPanel(state: KeyboardUiState, onAction: (KeyAction) -> Unit
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .height(totalHeight)
             .background(c.barBg)
             .padding(horizontal = 8.dp, vertical = 6.dp),
     ) {
@@ -366,7 +370,8 @@ private fun ClipboardPanel(state: KeyboardUiState, onAction: (KeyAction) -> Unit
         } else {
             Column(
                 modifier = Modifier
-                    .heightIn(max = 190.dp)
+                    .fillMaxWidth()
+                    .weight(1f)
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
@@ -758,6 +763,7 @@ private fun MenuPanel(
     state: KeyboardUiState,
     onAction: (KeyAction) -> Unit,
     onOpenCustomize: () -> Unit,
+    totalHeight: androidx.compose.ui.unit.Dp,
 ) {
     val c = keyboardColors()
     val density = LocalDensity.current
@@ -766,7 +772,9 @@ private fun MenuPanel(
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .height(totalHeight)
             .background(c.barBg)
+            .verticalScroll(rememberScrollState())
             .padding(horizontal = 12.dp, vertical = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -921,13 +929,14 @@ private fun ToolbarCustomizePanel(
 // ── 更多候选面板：网格展示当前页全部候选，◀▶ 翻页，点选上屏 ──
 
 @Composable
-private fun CandidatePanel(state: KeyboardUiState, onAction: (KeyAction) -> Unit) {
+private fun CandidatePanel(state: KeyboardUiState, onAction: (KeyAction) -> Unit, totalHeight: androidx.compose.ui.unit.Dp) {
     val c = keyboardColors()
     val keyH = KeyboardManager.keyHeightDp().dp
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .height(totalHeight)
             .background(c.bg)
             .padding(horizontal = KeySpacing, vertical = KeySpacing),
         verticalArrangement = Arrangement.spacedBy(KeySpacing),
@@ -975,7 +984,13 @@ private fun CandidatePanel(state: KeyboardUiState, onAction: (KeyAction) -> Unit
             )
         } else {
             var base = 0
-            Column(verticalArrangement = Arrangement.spacedBy(KeySpacing)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(KeySpacing),
+            ) {
                 state.candidates.chunked(5).forEach { rowItems ->
                     Row(
                         modifier = Modifier
@@ -1035,6 +1050,7 @@ private fun CategoryGridPane(
     state: KeyboardUiState,
     onAction: (KeyAction) -> Unit,
     keyHeight: androidx.compose.ui.unit.Dp,
+    totalHeight: androidx.compose.ui.unit.Dp,
 ) {
     val c = keyboardColors()
     val scope = rememberCoroutineScope()
@@ -1043,6 +1059,7 @@ private fun CategoryGridPane(
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .height(totalHeight)
             .padding(KeySpacing),
         verticalArrangement = Arrangement.spacedBy(KeySpacing),
     ) {
@@ -1075,13 +1092,20 @@ private fun CategoryGridPane(
                     .padding(horizontal = 10.dp),
             )
         }
-        // 网格内容：左右滑动切分类
+        // 网格内容：左右滑动切分类（占满剩余高度，单页可竖向滚动）
         HorizontalPager(
             state = pagerState,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
         ) { page ->
             val items = data.categories.getOrNull(page)?.second ?: emptyList()
-            Column(verticalArrangement = Arrangement.spacedBy(KeySpacing)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(KeySpacing),
+            ) {
                 items.chunked(8).forEach { chunk ->
                     Row(
                         modifier = Modifier
