@@ -1213,7 +1213,12 @@ private fun onKeyAction(key: Key, onAction: (KeyAction) -> Unit) {
         KeyType.FUNCTION -> when (key.code) {
             "symbols" -> onAction(KeyAction.ToggleSymbols)
             "emoji_back" -> onAction(KeyAction.SwitchPage("main"))
-            else -> onAction(KeyAction.ToggleAscii)
+            // lua 布局的自定义 FUNCTION 键：命令 / preset 引用 / 文本上屏（trime2 语义）
+            else -> {
+                val resolved = LuaScriptManager.resolveAction(key.code)
+                if (resolved != null) onAction(KeyAction.Resolved(resolved))
+                else onAction(KeyAction.ToggleAscii)
+            }
         }
     }
 }

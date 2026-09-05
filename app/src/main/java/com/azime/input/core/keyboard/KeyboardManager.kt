@@ -2,6 +2,8 @@ package com.azime.input.core.keyboard
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.azime.input.core.lua.LuaScriptManager
+import com.azime.input.core.storage.StorageManager
 import com.azime.input.data.keyboard.KeyboardPages
 import com.azime.input.data.model.KeyboardLayout
 import com.google.gson.Gson
@@ -210,6 +212,27 @@ object KeyboardManager {
     private fun setActiveMainLocked(name: String) {
         activeMain = name
         prefs.edit().putString(PREF_ACTIVE_MAIN, name).apply()
+    }
+
+    // ── trime2 lua 键盘布局导入 ──────────────────────────────
+
+    /**
+     * 扫描外置键盘 lua 目录（Documents/AZime/lua/keyboards/*.lua），
+     * 解析并导入为自定义布局。返回 (布局名或文件名, 错误信息或 null)。
+     */
+    fun importLuaLayouts(): List<Pair<String, String?>> = synchronized(lock) {
+        val results = mutableListOf<Pair<String, String?>>()
+        for (file in StorageManager.getKeyboardLuaFiles()) {
+            val layout = LuaScriptManager.parseKeyboardLayout(file)
+            if (layout == null) {
+                results += file.name to "解析失败"
+            } else {
+                customs[layout.name] = layout
+                layoutFile(layout.name).writeText(gson.toJson(layout))
+                results += layout.name to null
+            }
+        }
+        results
     }
 
     private fun layoutFile(name: String) = File(dir, "$name.json")

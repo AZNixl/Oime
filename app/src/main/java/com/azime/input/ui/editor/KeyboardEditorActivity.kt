@@ -17,6 +17,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -117,12 +118,26 @@ private fun LayoutListScreen(
     onDelete: (String) -> Unit,
 ) {
     val builtins = remember(version) { listOf("qwerty", "symbols", "numpad") }
-    val customs = remember(version) { KeyboardManager.customLayoutNames() }
-    var active by remember(version) { mutableStateOf(KeyboardManager.activeMainName()) }
+    var refreshTick by remember { mutableStateOf(0) }
+    val customs = remember(version, refreshTick) { KeyboardManager.customLayoutNames() }
+    var active by remember(version, refreshTick) { mutableStateOf(KeyboardManager.activeMainName()) }
+    var importMsg by remember { mutableStateOf<String?>(null) }
 
     fun activate(name: String) {
         KeyboardManager.setActiveMain(name)
         active = name
+    }
+
+    fun importLuaLayouts() {
+        val results = KeyboardManager.importLuaLayouts()
+        refreshTick++
+        importMsg = if (results.isEmpty()) {
+            "未发现布局文件：Documents/AZime/lua/keyboards/*.lua"
+        } else {
+            results.joinToString("；") { (n, err) ->
+                if (err == null) "$n ✓" else "${n}：$err"
+            }
+        }
     }
 
     Scaffold(
@@ -180,6 +195,46 @@ private fun LayoutListScreen(
                         onActivate = { activate(name) },
                         onEdit = { onEdit(name) },
                         onDelete = { onDelete(name) },
+                    )
+                }
+            }
+            item {
+                Spacer(Modifier.height(8.dp))
+                Card(
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    ),
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { importLuaLayouts() }
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            Icons.Default.FileDownload,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Column {
+                            Text("导入 lua 键盘布局", fontWeight = FontWeight.SemiBold)
+                            Text(
+                                "Documents/AZime/lua/keyboards/*.lua（trime2 格式）",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+                importMsg?.let {
+                    Text(
+                        it,
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 6.dp),
                     )
                 }
             }

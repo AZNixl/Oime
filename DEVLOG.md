@@ -97,3 +97,30 @@ vendored RimeEngine 中 `getAvailableSchemas / getSchemaString / getSchemaList`
 | 7 | 字体支持/增高行调整/方案二级菜单 | 设置页键高+增高行滑杆（下次键盘弹出热生效）；方案管理收二级页 |
 | 8 | 退格滑动删除不正常 | 按 trime2「退格键滑动删除.lua v4」锚点模型重写：24px/字符、10px 进入阈值、横向占优判定、组合中禁用、右滑回退到锚点 |
 | 9 | 开发记录 | 本文 |
+
+## 收尾轮：CI 修复 + LICENSE + ○ 图标 + lua 键盘布局导入
+
+### CI 修复（run 33963483159 → 33963940735 ✅）
+- `KeyboardScreen.kt` 两类编译错误：
+  1. 工具栏自定义对话框缺 material3 导入（AlertDialog/Checkbox/TextButton）；
+  2. 剪贴板条文本用了未定义的 `NL` 常量 → `"\n"`。
+
+### 新增
+- **GPL-3.0 LICENSE**：gnu.org 官方文本入库。
+- **○ 启动图标**：深色圆盘（#17181C）+ 白色圆环 + 红摇杆红点（#E5484D，环右缘）；
+  自适应图标（anydpi-v26 vector）+ API 24/25 五密度 PNG 回退（此前 mipmap 为空，
+  Android 7.x 会 Resources.NotFoundException）。
+- **trime2 lua 键盘布局直接渲染**（前轮遗留项落地）：
+  - 外置目录 `Documents/AZime/lua/keyboards/*.lua`，首次运行生成 example.lua 模板；
+  - `LuaScriptManager.parseKeyboardLayout()`：LuaJ 解析 `return { name=..., rows={ {keys={…}} } }`
+    （行支持无 keys 包装的直接键数组），键字段 label/click/long_click/swipe_*/width/hint；
+  - KeyType 按 click 推断：BackSpace→DELETE、Return→ENTER、space→SPACE、shift→MODIFIER、
+    单字符→CHARACTER、其余→FUNCTION；
+  - `onKeyAction` FUNCTION 分支接入 resolveAction：命令/preset 引用/文本上屏（trime2 语义：
+    非命令 click 按文本 commit），仅当解析结果为 null 时回退中英切换；
+  - 键盘编辑器列表页新增「导入 lua 键盘布局」卡片：批量解析导入为自定义布局，
+    逐文件反馈成功/失败，导入后可激活/继续可视化编辑。
+
+### 暂缓
+- 多 ABI（armeabi-v7a/x86_64）：需要与 vendored RimeEngine JNI 符号匹配的官方
+  librime_jni.so 构建，风险大于收益（目标设备 arm64），待有可靠构建源再补。
