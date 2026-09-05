@@ -132,7 +132,7 @@ private fun LayoutListScreen(
         val results = KeyboardManager.importLuaLayouts()
         refreshTick++
         importMsg = if (results.isEmpty()) {
-            "未发现布局文件：Documents/AZime/lua/keyboards/*.lua"
+            "未发现布局文件：Documents/Oime/lua/keyboards/ 下的 lua 文件"
         } else {
             results.joinToString("；") { (n, err) ->
                 if (err == null) "$n ✓" else "${n}：$err"
@@ -222,7 +222,7 @@ private fun LayoutListScreen(
                         Column {
                             Text("导入 lua 键盘布局", fontWeight = FontWeight.SemiBold)
                             Text(
-                                "Documents/AZime/lua/keyboards/*.lua（trime2 格式）",
+                                "Documents/Oime/lua/keyboards/ 下的 lua 文件（trime2 格式）",
                                 fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
