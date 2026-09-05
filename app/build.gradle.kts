@@ -87,6 +87,7 @@ dependencies {
     
     // Zip4j for zip handling
     implementation("net.lingala.zip4j:zip4j:2.11.5")
+    implementation("androidx.documentfile:documentfile:1.0.1")
     
     // Testing
     testImplementation("junit:junit:4.13.2")

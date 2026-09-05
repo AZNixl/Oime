@@ -39,9 +39,12 @@ object RimeManager {
         val userDir = File(context.filesDir, "rime/user")
         sharedDir.mkdirs()
         userDir.mkdirs()
+        var assetsChanged = false
 
         try {
-            syncAssets(context, sharedDir)
+            val changed = syncAssets(context, sharedDir)
+            deployPendingImport(sharedDir)
+            assetsChanged = changed
         } catch (e: Exception) {
             Log.e(TAG, "Failed to sync rime assets", e)
             return@withContext false
@@ -56,7 +59,7 @@ object RimeManager {
         // 关键：librime 不会在 initialize 后自动部署（Xime 原版由服务层显式调度维护）。
         // 不触发的话 availableSchemas 永远为空，会话只挂内置 .default 兜底方案。
         // startMaintenance 是异步的：发起后由 ensureSession 的等待循环收尾。
-        if (RimeEngine.getInstance().getAvailableSchemas().isEmpty()) {
+        if (RimeEngine.getInstance().getAvailableSchemas().isEmpty() || assetsChanged) {
             val kicked = RimeEngine.getInstance().startMaintenance(true)
             Log.i(TAG, "kick full maintenance: kicked=$kicked")
         }
@@ -104,24 +107,51 @@ object RimeManager {
 
     fun isMaintaining(): Boolean = RimeEngine.getInstance().isMaintaining()
 
+    /** 方案显示名：优先读 shared 目录下 schema.yaml 的 name 字段，退回 id。 */
+    fun schemaDisplayName(schemaId: String): String {
+        if (schemaId.isBlank()) return "○输入法"
+        val f = File(
+            com.azime.input.AZimeApplication.instance.filesDir,
+            "rime/shared/$schemaId.schema.yaml",
+        )
+        if (f.exists()) runCatching {
+            f.useLines { lines ->
+                for (line in lines) {
+                    val m = Regex("""^\s*name:\s*(.+)$""").find(line)
+                    if (m != null) return m.groupValues[1].trim()
+                }
+            }
+        }
+        return schemaId
+    }
+
+    /** 立即部署导入目录中的方案（导入完成后由设置页调用）。 */
+    suspend fun deployImportedSchemas(context: Context) = withContext(Dispatchers.IO) {
+        val sharedDir = File(context.filesDir, "rime/shared")
+        sharedDir.mkdirs()
+        runCatching { deployPendingImport(sharedDir) }
+            .onFailure { Log.e(TAG, "deployImportedSchemas failed", it) }
+    }
+
     // ── 资产同步 ──────────────────────────────────────────────
 
     /**
      * 将 assets/rime 拷贝到 sharedDir。
      * 判定策略：marker 文件记录上次同步的「文件名:长度」清单 hash，
      * 清单一致且目标文件都存在则跳过；否则全量覆盖并重写 marker。
+     * 返回资产清单是否发生变化（变化时需触发重新部署并清理旧文件）。
      */
-    private fun syncAssets(context: Context, sharedDir: File) {
+    private fun syncAssets(context: Context, sharedDir: File): Boolean {
         val wanted = TreeMap<String, Long>() // 相对路径 -> 长度
         collectAssets(context, ASSETS_ROOT, "", wanted)
-        if (wanted.isEmpty()) return
+        if (wanted.isEmpty()) return false
 
         val manifest = wanted.entries.joinToString("\n") { "${it.key}:${it.value}" }
         val marker = File(sharedDir, DEPLOY_MARKER)
-        val unchanged = marker.exists() &&
-            marker.readText() == manifest &&
+        val oldManifest = if (marker.exists()) marker.readText() else ""
+        val unchanged = oldManifest == manifest &&
             wanted.keys.all { File(sharedDir, it).exists() }
-        if (unchanged) return
+        if (unchanged) return false
 
         Log.i(TAG, "Syncing ${wanted.size} rime assets to ${sharedDir.absolutePath}")
         for ((rel, _) in wanted) {
@@ -132,6 +162,65 @@ object RimeManager {
             }
         }
         marker.writeText(manifest)
+
+        // 清理内置裁剪后遗留的旧资产（依据上一轮清单；导入方案不受影响）
+        val oldFiles = oldManifest.split('\n')
+            .map { it.substringBeforeLast(':') }
+            .filter { it.isNotBlank() }
+        oldFiles.filter { it !in wanted.keys }.forEach {
+            val f = File(sharedDir, it)
+            if (f.exists()) {
+                Log.i(TAG, "Removing stale asset: $it")
+                f.delete()
+            }
+        }
+        return true
+    }
+
+    /**
+     * 把导入目录中新增/变更的 yaml 同步进 sharedDir 并触发重新部署。
+     * 判定依据：sharedDir/.imported marker 记录上次已部署的「文件名:长度」清单。
+     */
+    private fun deployPendingImport(sharedDir: File) {
+        val importRoot = try {
+            com.azime.input.core.storage.StorageManager.schemaDir
+        } catch (e: Exception) {
+            return // Application 未初始化（少见），跳过
+        }
+        if (!importRoot.isDirectory) return
+        val yamls = importRoot.walkTopDown()
+            .filter { it.isFile && (it.extension == "yaml" || it.extension == "txt") }
+            .toList()
+        if (yamls.isEmpty()) return
+
+        val manifest = TreeMap<String, Long>()
+        yamls.forEach { manifest[it.name] = it.length() }
+        val manifestText = manifest.entries.joinToString("\n") { "${it.key}:${it.value}" }
+        val marker = File(sharedDir, ".imported")
+        if (marker.exists() && marker.readText() == manifestText &&
+            manifest.keys.all { File(sharedDir, it).exists() }
+        ) return
+
+        yamls.forEach { src ->
+            val dst = File(sharedDir, src.name)
+            src.copyTo(dst, overwrite = true)
+        }
+        marker.writeText(manifestText)
+        Log.i(TAG, "Deployed ${yamls.size} imported schema files")
+
+        // 把导入方案的 schema_id 追加进 schema_list（librime 只部署清单里的方案）
+        val importedIds = yamls.mapNotNull { f ->
+            val text = try { f.readText() } catch (e: Exception) { return@mapNotNull null }
+            Regex("""schema_id:\s*(\S+)""").find(text)?.groupValues?.get(1)
+        }.filter { it.isNotBlank() }.distinct()
+        if (importedIds.isNotEmpty()) {
+            val sb = StringBuilder()
+            sb.append("# 由 AZime 自动生成：内置拼音 + 已导入方案\n")
+            sb.append("patch:\n  schema_list:\n    - schema: pinyin_simp\n")
+            importedIds.forEach { sb.append("    - schema: $it\n") }
+            File(sharedDir, "default.custom.yaml").writeText(sb.toString())
+        }
+        runCatching { RimeEngine.getInstance().startMaintenance(true) }
     }
 
     /** 递归枚举 assets/rime 下所有文件（assets 的 list() 不递归）。 */

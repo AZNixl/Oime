@@ -5,7 +5,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,8 +16,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -46,15 +47,17 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.material3.LocalTextStyle
 import com.azime.input.core.font.FontManager
 import com.azime.input.core.keyboard.KeyboardManager
+import com.azime.input.core.lua.LuaScriptManager
 import com.azime.input.core.rime.Candidate
-import com.azime.input.data.keyboard.KeyboardPages
+import com.azime.input.data.keyboard.EmojiData
+import com.azime.input.data.keyboard.KeyActions
 import com.azime.input.data.keyboard.LongPressSymbols
 import com.azime.input.data.model.Key
 import com.azime.input.data.model.KeyType
-import com.azime.input.data.model.KeyboardLayout
 
 import kotlinx.coroutines.delay
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 /** 键盘 → Service 的动作。 */
 sealed interface KeyAction {
@@ -69,6 +72,24 @@ sealed interface KeyAction {
     data class Candidate(val index: Int) : KeyAction
     data object PageDown : KeyAction
     data class SelectSchema(val schemaId: String) : KeyAction
+
+    // ── 扩展动作（preset_keys identifier / 手势） ──
+    /** 解析后的命令（select_all/cut/copy/paste/…）或字面提交。 */
+    data class Resolved(val value: String) : KeyAction
+    data object DeleteAll : KeyAction
+    data object Undo : KeyAction
+    /** 退格键左滑：逐字符向左扩展选区；DeleteSelection 结束选择并删除。 */
+    data class SelectBack(val steps: Int) : KeyAction
+    data object DeleteSelection : KeyAction
+    data object CapsLock : KeyAction
+    data class OpenPage(val page: String) : KeyAction
+    /** 工具栏红摇杆：按步移动光标 / 扩展选区。 */
+    data class Joystick(val dx: Int) : KeyAction
+    data class SetJoystickMode(val mode: String) : KeyAction
+    data object OpenSettings : KeyAction
+    data object ToggleClipboardPanel : KeyAction
+    /** 键盘 UI 内部：切页（main/symbols/numpad/emoji），不经 Service。 */
+    data class SwitchPage(val page: String) : KeyAction
 }
 
 /** 键盘 UI 状态，由 AZimeService 持有并驱动。 */
@@ -77,13 +98,18 @@ data class KeyboardUiState(
     val preedit: String = "",
     val asciiMode: Boolean = false,
     val shiftOn: Boolean = false,
-    val symbolPage: Boolean = false,
+    val capsOn: Boolean = false,
+    val page: String = "main", // main | symbols | numpad | emoji
     val hasPrevPage: Boolean = false,
     val hasNextPage: Boolean = false,
     val schemaName: String = "",
     val schemas: List<String> = emptyList(),
     val ready: Boolean = false,
     val statusMessage: String = "",
+    // 工具栏
+    val clipText: String = "",
+    val showClipboardPanel: Boolean = false,
+    val joystickMode: String = "cursor", // cursor | select
 )
 
 // ── 配色：浅色/深色双主题（跟随系统），参考小企鹅 fcitx5-android ──
@@ -98,6 +124,7 @@ data class KeyboardColors(
     val accentActiveText: Color,
     val text: Color,
     val subText: Color,
+    val joystick: Color,
 )
 
 private val LightColors = KeyboardColors(
@@ -106,6 +133,7 @@ private val LightColors = KeyboardColors(
     accentKeyBg = Color(0xFFC7DDF6), accentKeyText = Color(0xFF202124),
     accentActive = Color(0xFF1A73E8), accentActiveText = Color.White,
     text = Color(0xFF202124), subText = Color(0xFF80868B),
+    joystick = Color(0xFFD32F2F),
 )
 
 private val DarkColors = KeyboardColors(
@@ -114,6 +142,7 @@ private val DarkColors = KeyboardColors(
     accentKeyBg = Color(0xFF3B5C8A), accentKeyText = Color(0xFFD7E3F4),
     accentActive = Color(0xFF8AB4F8), accentActiveText = Color(0xFF202124),
     text = Color(0xFFE8EAED), subText = Color(0xFF9AA0A6),
+    joystick = Color(0xFFE57373),
 )
 
 @Composable
@@ -124,7 +153,7 @@ private val KeyHeight = 46.dp
 private val KeySpacing = 4.dp
 
 /**
- * AZime 键盘主界面：增高行（候选栏）+ 4 行按键。
+ * ○输入法 键盘主界面：工具栏 + 候选栏（增高行）+ 按键区。
  */
 @Composable
 fun AzimeKeyboardScreen(
@@ -132,40 +161,387 @@ fun AzimeKeyboardScreen(
     onAction: (KeyAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // 布局来自 KeyboardManager（内置 + 自定义覆盖）；切换发生在 Service 初始化阶段，
-    // 此处读内存缓存即可，无需响应式刷新
-    val layout = if (state.symbolPage) KeyboardManager.symbolLayout() else KeyboardManager.mainLayout()
     val c = keyboardColors()
-    // 用户字体（FontManager 导入的 ttf/otf/ttc）作用于候选栏与键帽；无设置时为系统默认
-    val kbFontFamily = remember { FontManager.activeTypeface()?.let { FontFamily(it) } }
+    // 多字体：键帽用 keyFont，候选栏用 candidateFont
+    val keyFontFamily = remember { FontManager.keyTypeface()?.let { FontFamily(it) } }
+    val candFontFamily = remember { FontManager.candidateTypeface()?.let { FontFamily(it) } }
+
     CompositionLocalProvider(
-        LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = kbFontFamily ?: FontFamily.Default),
+        LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = keyFontFamily ?: FontFamily.Default),
     ) {
         Column(
             modifier = modifier
                 .fillMaxWidth()
                 .background(c.bg),
         ) {
-            CandidateBar(state = state, onAction = onAction)
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = KeySpacing, vertical = KeySpacing),
-                verticalArrangement = Arrangement.spacedBy(KeySpacing),
+            if (state.showClipboardPanel) {
+                ClipboardPanel(state = state, onAction = onAction)
+            }
+            ToolbarRow(state = state, onAction = onAction)
+            CompositionLocalProvider(
+                LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = candFontFamily ?: keyFontFamily ?: FontFamily.Default),
             ) {
-                for (row in layout.rows) {
-                    Row(
+                if (state.page == "emoji") {
+                    EmojiPane(state = state, onAction = onAction)
+                } else {
+                    val layout = KeyboardManager.layoutFor(state.page) ?: KeyboardManager.mainLayout()
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(KeyHeight),
-                        horizontalArrangement = Arrangement.spacedBy(KeySpacing),
+                            .padding(horizontal = KeySpacing, vertical = KeySpacing),
+                        verticalArrangement = Arrangement.spacedBy(KeySpacing),
                     ) {
-                        for (key in row.keys) {
-                            KeyboardKey(key = key, state = state, onAction = onAction)
+                        for (row in layout.rows) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(KeyHeight),
+                                horizontalArrangement = Arrangement.spacedBy(KeySpacing),
+                            ) {
+                                for (key in row.keys) {
+                                    KeyboardKey(key = key, state = state, onAction = onAction)
+                                }
+                            }
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+// ── 剪贴板面板：分词 / 提取英文词 / 提取网址 ─────────────────
+
+@Composable
+private fun ClipboardPanel(state: KeyboardUiState, onAction: (KeyAction) -> Unit) {
+    val c = keyboardColors()
+    if (state.clipText.isBlank()) return
+
+    val tokens = remember(state.clipText) {
+        // 分词：按空白与中英边界切
+        Regex("""[A-Za-z]+|[0-9]+|[\u4e00-\u9fa5]""").findAll(state.clipText).map { it.value }.toList()
+    }
+    val englishWords = remember(state.clipText) {
+        Regex("""[A-Za-z]{2,}""").findAll(state.clipText).map { it.value }.distinct().toList()
+    }
+    val urls = remember(state.clipText) {
+        Regex("""(https?://\S+|www\.\S+|[A-Za-z0-9-]+\.[A-Za-z]{2,}(?:/\S*)?)""")
+            .findAll(state.clipText).map { it.value }.distinct().toList()
+    }
+
+    fun chipRow(title: String, items: List<String>) {
+        if (items.isEmpty()) return
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(title, fontSize = 12.sp, color = c.subText)
+            Spacer(Modifier.width(6.dp))
+            Row(
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                items.take(12).forEach { token ->
+                    Text(
+                        text = token,
+                        fontSize = 13.sp,
+                        color = c.text,
+                        modifier = Modifier
+                            .background(c.funcKeyBg, RoundedCornerShape(6.dp))
+                            .clickable { onAction(KeyAction.DirectCommit(token)) }
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                    )
+                }
+            }
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(c.barBg)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "剪贴板",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                color = c.text,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                "收起 ▲",
+                fontSize = 12.sp,
+                color = c.subText,
+                modifier = Modifier.clickable { onAction(KeyAction.ToggleClipboardPanel) },
+            )
+        }
+        Text(
+            text = state.clipText,
+            fontSize = 13.sp,
+            color = c.text,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier
+                .background(c.bg, RoundedCornerShape(8.dp))
+                .clickable { onAction(KeyAction.DirectCommit(state.clipText)) }
+                .fillMaxWidth()
+                .padding(8.dp),
+        )
+        chipRow("分词", tokens)
+        chipRow("英文", englishWords)
+        chipRow("网址", urls)
+    }
+}
+
+// ── 工具栏：○ 菜单键 + 剪贴板条 + 红摇杆 ─────────────────────
+
+@Composable
+private fun ToolbarRow(state: KeyboardUiState, onAction: (KeyAction) -> Unit) {
+    val c = keyboardColors()
+    var showMenu by remember { mutableStateOf(false) }
+    var showJoystickBubble by remember { mutableStateOf(false) }
+    val density = LocalDensity.current
+    val haptics = LocalHapticFeedback.current
+    val stepPx = with(density) { 18.dp.toPx() }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(40.dp)
+            .background(c.barBg)
+            .padding(horizontal = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // ○ 菜单键（工具栏第一个键）
+        Box(
+            modifier = Modifier
+                .size(30.dp)
+                .background(c.bg, CircleShape)
+                .clickable { showMenu = true },
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("○", fontSize = 20.sp, color = c.text, fontWeight = FontWeight.Bold)
+        }
+        if (showMenu) {
+            Popup(
+                alignment = Alignment.TopStart,
+                offset = IntOffset(0, with(density) { (-34).dp.roundToPx() }),
+                onDismissRequest = { showMenu = false },
+            ) {
+                Column(
+                    modifier = Modifier
+                        .background(c.barBg, RoundedCornerShape(10.dp))
+                        .padding(vertical = 4.dp),
+                ) {
+                    listOf(
+                        Triple("设置", "open_settings"),
+                        Triple("剪贴板", "clipboard"),
+                        Triple("26键", "page:main"),
+                        Triple("数字", "page:numpad"),
+                        Triple("emoji", "page:emoji"),
+                        Triple("符号", "page:symbols"),
+                    ).forEach { (label, cmd) ->
+                        Text(
+                            text = label,
+                            fontSize = 14.sp,
+                            color = c.text,
+                            modifier = Modifier
+                                .clickable {
+                                    showMenu = false
+                                    when (cmd) {
+                                        "open_settings" -> onAction(KeyAction.OpenSettings)
+                                        "clipboard" -> onAction(KeyAction.ToggleClipboardPanel)
+                                        else -> onAction(KeyAction.SwitchPage(cmd.removePrefix("page:")))
+                                    }
+                                }
+                                .padding(horizontal = 18.dp, vertical = 9.dp),
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(Modifier.width(8.dp))
+
+        // 剪贴板条：显示最近复制的内容；点击打开分词/提取面板
+        if (state.clipText.isNotBlank()) {
+            Text(
+                text = "📋 " + state.clipText.replace("\n", " "),
+                fontSize = 13.sp,
+                color = c.subText,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable { onAction(KeyAction.ToggleClipboardPanel) },
+            )
+        } else {
+            Spacer(Modifier.weight(1f))
+        }
+
+        // 红摇杆（ThinkPad 小红点风格）：拖动移动光标/扩展选区；按住不动弹模式选择气泡
+        var joyPressing by remember { mutableStateOf(false) }
+        var joyLongFired by remember { mutableStateOf(false) }
+        LaunchedEffect(joyPressing) {
+            if (joyPressing) {
+                delay(400)
+                if (joyPressing && !joyLongFired) {
+                    joyLongFired = true
+                    showJoystickBubble = true
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                }
+            }
+        }
+        Box(
+            modifier = Modifier
+                .size(26.dp)
+                .background(c.joystick, CircleShape)
+                .pointerInput(state.joystickMode) {
+                    awaitEachGesture {
+                        awaitFirstDown(requireUnconsumed = false)
+                        joyLongFired = false
+                        joyPressing = true
+                        var anchor: androidx.compose.ui.geometry.Offset? = null
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull() ?: break
+                            if (!change.pressed) break
+                            if (anchor == null) {
+                                anchor = change.position
+                            }
+                            val a = anchor
+                            if (a != null) {
+                                val dx = change.position.x - a.x
+                                if (abs(dx) > stepPx) {
+                                    val steps = (dx / stepPx).roundToInt()
+                                    onAction(KeyAction.Joystick(steps))
+                                    joyLongFired = true // 拖动即触发功能，抑制气泡
+                                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    anchor = change.position
+                                }
+                            }
+                        }
+                        joyPressing = false
+                    }
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("•", color = Color.White.copy(alpha = 0.85f), fontSize = 12.sp)
+        }
+        if (showJoystickBubble) {
+            Popup(
+                alignment = Alignment.TopEnd,
+                offset = IntOffset(0, with(density) { (-34).dp.roundToPx() }),
+                onDismissRequest = { showJoystickBubble = false },
+            ) {
+                Column(
+                    modifier = Modifier
+                        .background(c.barBg, RoundedCornerShape(10.dp))
+                        .padding(vertical = 4.dp),
+                ) {
+                    Text("光标移动",
+                        fontSize = 14.sp, color = c.text,
+                        modifier = Modifier.clickable {
+                            onAction(KeyAction.SetJoystickMode("cursor")); showJoystickBubble = false
+                        }.padding(horizontal = 18.dp, vertical = 9.dp))
+                    Text("快捷指针（扩展选区）",
+                        fontSize = 14.sp, color = c.text,
+                        modifier = Modifier.clickable {
+                            onAction(KeyAction.SetJoystickMode("select")); showJoystickBubble = false
+                        }.padding(horizontal = 18.dp, vertical = 9.dp))
+                }
+            }
+        }
+    }
+}
+
+// ── emoji 键盘 ───────────────────────────────────────────────
+
+@Composable
+private fun EmojiPane(state: KeyboardUiState, onAction: (KeyAction) -> Unit) {
+    val c = keyboardColors()
+    var category by remember { mutableStateOf(0) }
+    val emojis = EmojiData.categories.getOrNull(category)?.second ?: emptyList()
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(KeySpacing),
+        verticalArrangement = Arrangement.spacedBy(KeySpacing),
+    ) {
+        // 分类标签行
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(34.dp)
+                .horizontalScroll(rememberScrollState()),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            EmojiData.categories.forEachIndexed { i, (label, _) ->
+                Text(
+                    text = label,
+                    fontSize = 16.sp,
+                    color = if (i == category) c.accentActive else c.subText,
+                    modifier = Modifier
+                        .clickable { category = i }
+                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                )
+            }
+            Spacer(Modifier.weight(1f))
+            Text(
+                text = "ABC",
+                fontSize = 13.sp,
+                color = c.text,
+                modifier = Modifier
+                    .clickable { onAction(KeyAction.SwitchPage("main")) }
+                    .padding(horizontal = 10.dp),
+            )
+        }
+        // emoji 网格（8 列）
+        emojis.chunked(8).forEach { chunk ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(KeyHeight),
+                horizontalArrangement = Arrangement.spacedBy(KeySpacing),
+            ) {
+                chunk.forEach { emoji ->
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxSize()
+                            .background(c.keyBg, RoundedCornerShape(8.dp))
+                            .clickable { onAction(KeyAction.DirectCommit(emoji)) },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(emoji, fontSize = 22.sp)
+                    }
+                }
+                if (chunk.size < 8) {
+                    Spacer(Modifier.weight((8 - chunk.size).toFloat()))
+                }
+            }
+        }
+        // 底行：返回 + 空格
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(KeyHeight),
+            horizontalArrangement = Arrangement.spacedBy(KeySpacing),
+        ) {
+            KeyboardKey(
+                key = Key("ABC", code = "emoji_back", width = 1.5f, type = KeyType.FUNCTION),
+                state = state, onAction = onAction,
+            )
+            KeyboardKey(
+                key = Key("空格", code = "space", width = 7f, type = KeyType.SPACE),
+                state = state, onAction = onAction,
+            )
+            KeyboardKey(
+                key = Key("⌫", code = "backspace", width = 1.5f, type = KeyType.DELETE),
+                state = state, onAction = onAction,
+            )
         }
     }
 }
@@ -218,7 +594,6 @@ private fun CandidateBar(state: KeyboardUiState, onAction: (KeyAction) -> Unit) 
                             .clickable { onAction(KeyAction.Candidate(index)) }
                             .padding(horizontal = 8.dp, vertical = 8.dp),
                     ) {
-                        // 编号前缀：符号页/候选存在时按数字键可直接选中（librime selector 原生支持）
                         if (index < 9) {
                             Text(
                                 text = "${index + 1} ",
@@ -275,7 +650,6 @@ private fun CandidateBar(state: KeyboardUiState, onAction: (KeyAction) -> Unit) 
                         color = c.subText,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        // 空态点方案名 → 弹方案切换菜单
                         modifier = if (state.ready && state.schemas.size > 1) {
                             Modifier.clickable { showSchemaMenu = true }
                         } else Modifier,
@@ -318,16 +692,19 @@ private fun CandidateBar(state: KeyboardUiState, onAction: (KeyAction) -> Unit) 
 }
 
 private fun schemaDisplay(schemaId: String): String = when {
-    schemaId.isBlank() -> "AZime"
-    else -> "AZime · $schemaId"
+    schemaId.isBlank() -> "○输入法"
+    else -> "○输入法 · $schemaId"
 }
 
 // ── 按键 ─────────────────────────────────────────────────────
 
+/** 手势方向。 */
+private enum class Dir { UP, DOWN, LEFT, RIGHT }
+
 @Composable
 private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (KeyAction) -> Unit) {
     val c = keyboardColors()
-    val isShiftActive = key.code == "shift" && state.shiftOn
+    val isShiftActive = key.code == "shift" && (state.shiftOn || state.capsOn)
     val bg = when {
         isShiftActive -> c.accentActive
         key.type == KeyType.ENTER -> c.accentKeyBg
@@ -340,24 +717,26 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
         else -> c.text
     }
     val label = when {
-        key.type == KeyType.CHARACTER && (state.shiftOn || state.asciiMode) -> key.label
+        key.type == KeyType.CHARACTER && (state.shiftOn || state.capsOn || state.asciiMode) -> key.label
         key.type == KeyType.CHARACTER -> key.label.lowercase()
-        key.code == "space" && state.schemaName.isNotBlank() -> schemaDisplay(state.schemaName)
+        key.code == "space" && state.page == "main" && state.schemaName.isNotBlank() -> schemaDisplay(state.schemaName)
         else -> key.label
     }
 
-    // 长按行为：字符键(仅主键盘页)弹符号气泡；退格键连删
-    val longPressSymbols = remember(key.code) {
-        if (!state.symbolPage && key.type == KeyType.CHARACTER) {
+    // 长按符号：内置映射（fcitx5 风格）或 preset_keys 条目
+    val longPressSymbols = remember(key.code, state.page) {
+        if (state.page != "symbols" && key.type == KeyType.CHARACTER) {
             LongPressSymbols[key.code.firstOrNull()] ?: emptyList()
         } else emptyList()
     }
+    val hasCustomLong = !key.longClick.isNullOrBlank()
+    val isPageKey = key.type == KeyType.FUNCTION && key.code == "symbols"
     val autoRepeat = key.type == KeyType.DELETE
-    val supportsLongPress = longPressSymbols.isNotEmpty() || autoRepeat
 
     var pressing by remember { mutableStateOf(false) }
     var longFired by remember { mutableStateOf(false) }
     var showBubble by remember { mutableStateOf(false) }
+    var showPageBubble by remember { mutableStateOf(false) }
     var swipePreview by remember { mutableStateOf<String?>(null) }
 
     val density = LocalDensity.current
@@ -365,6 +744,10 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
     val bubbleOffset = with(density) { IntOffset(0, -58.dp.roundToPx()) }
     val swipeThreshold = with(density) { 30.dp.toPx() }
 
+    val hasGestures = longPressSymbols.isNotEmpty() || autoRepeat || hasCustomLong || isPageKey ||
+        key.swipeUp != null || key.swipeDown != null || key.swipeLeft != null || key.swipeRight != null
+
+    // 长按定时器
     LaunchedEffect(pressing) {
         if (pressing) {
             delay(400)
@@ -373,6 +756,14 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
                     longPressSymbols.isNotEmpty() -> {
                         longFired = true
                         showBubble = true
+                    }
+                    isPageKey -> {
+                        longFired = true
+                        showPageBubble = true
+                    }
+                    hasCustomLong -> {
+                        longFired = true
+                        onAction(KeyAction.Resolved(key.longClick!!))
                     }
                     autoRepeat -> {
                         longFired = true
@@ -391,40 +782,71 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
         .weight(key.width)
         .fillMaxSize()
         .background(bg, RoundedCornerShape(8.dp))
-    if (supportsLongPress) {
-        baseModifier = baseModifier.pointerInput(key.code, state.symbolPage) {
+    if (hasGestures) {
+        baseModifier = baseModifier.pointerInput(key.code, key.longClick, state.page) {
             awaitEachGesture {
                 val down = awaitFirstDown(requireUnconsumed = false)
                 longFired = false
                 pressing = true
                 val startX = down.position.x
                 val startY = down.position.y
-                var swipeTarget: String? = null
+                var activeDir: Dir? = null
+                var selectSteps = 0
 
                 while (true) {
                     val event = awaitPointerEvent()
                     val change = event.changes.firstOrNull() ?: break
                     if (!change.pressed) break
-                    if (swipeTarget == null && longPressSymbols.isNotEmpty()) {
-                        val dx = change.position.x - startX
-                        val dy = change.position.y - startY
-                        if (abs(dy) > swipeThreshold && abs(dy) > abs(dx) * 1.2f) {
-                            // 上滑取主符号（数字），下滑取次符号；滑出即预览并抑制长按/点击
-                            swipeTarget = if (dy < 0) {
-                                longPressSymbols.first()
-                            } else {
-                                longPressSymbols.getOrElse(1) { longPressSymbols.first() }
+                    val dx = change.position.x - startX
+                    val dy = change.position.y - startY
+
+                    if (activeDir == null) {
+                        val dist = abs(dx) + abs(dy)
+                        if (dist > swipeThreshold) {
+                            val dir = when {
+                                abs(dx) > abs(dy) -> if (dx > 0) Dir.RIGHT else Dir.LEFT
+                                else -> if (dy > 0) Dir.DOWN else Dir.UP
                             }
-                            longFired = true
-                            swipePreview = swipeTarget
-                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            val action = when (dir) {
+                                Dir.UP -> key.swipeUp ?: if (key.type == KeyType.DELETE) KeyActions.BS_UP else null
+                                Dir.DOWN -> key.swipeDown ?: if (key.type == KeyType.DELETE) KeyActions.BS_DOWN else null
+                                Dir.LEFT -> key.swipeLeft ?: if (key.type == KeyType.DELETE) KeyActions.BS_LEFT else null
+                                Dir.RIGHT -> key.swipeRight
+                            }
+                            if (action != null) {
+                                activeDir = dir
+                                longFired = true
+                                swipePreview = actionPreview(action)
+                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            }
+                        }
+                    } else if (activeDir == Dir.LEFT && key.type == KeyType.DELETE) {
+                        // 退格左滑：继续向左滑逐字符扩展选区
+                        val steps = ((abs(dx) - swipeThreshold) / swipeThreshold).toInt()
+                        if (steps > selectSteps) {
+                            onAction(KeyAction.SelectBack(steps - selectSteps))
+                            selectSteps = steps
+                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                         }
                     }
                 }
                 pressing = false
                 swipePreview = null
+
                 when {
-                    swipeTarget != null -> onAction(KeyAction.DirectCommit(swipeTarget))
+                    activeDir == Dir.LEFT && key.type == KeyType.DELETE -> {
+                        // 松手：删除选中的文本；没选到任何字符时退一次格
+                        onAction(if (selectSteps > 0) KeyAction.DeleteSelection else KeyAction.Backspace)
+                    }
+                    activeDir != null -> {
+                        val action = when (activeDir) {
+                            Dir.UP -> key.swipeUp ?: if (key.type == KeyType.DELETE) KeyActions.BS_UP else null
+                            Dir.DOWN -> key.swipeDown ?: if (key.type == KeyType.DELETE) KeyActions.BS_DOWN else null
+                            Dir.LEFT -> key.swipeLeft
+                            Dir.RIGHT -> key.swipeRight
+                        }
+                        if (action != null) onAction(KeyAction.Resolved(action))
+                    }
                     !longFired -> onKeyAction(key, onAction)
                 }
             }
@@ -444,6 +866,17 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
             color = fg,
             maxLines = 1,
         )
+        // 键面右上角长按符号提示
+        if (swipePreview == null && key.hint != null && key.type == KeyType.CHARACTER) {
+            Text(
+                text = key.hint,
+                fontSize = 9.sp,
+                color = c.subText,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 3.dp, end = 5.dp),
+            )
+        }
         if (showBubble && longPressSymbols.isNotEmpty()) {
             Popup(
                 alignment = Alignment.TopCenter,
@@ -473,6 +906,55 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
                 }
             }
         }
+        if (showPageBubble) {
+            Popup(
+                alignment = Alignment.TopCenter,
+                offset = bubbleOffset,
+                onDismissRequest = { showPageBubble = false },
+            ) {
+                Column(
+                    modifier = Modifier
+                        .background(c.barBg, RoundedCornerShape(10.dp))
+                        .padding(vertical = 4.dp),
+                ) {
+                    listOf(
+                        "26键符号键盘" to "symbols",
+                        "九宫格数字键盘" to "numpad",
+                        "emoji 键盘" to "emoji",
+                    ).forEach { (name, page) ->
+                        Text(
+                            text = name,
+                            fontSize = 14.sp,
+                            color = if (page == KeyboardManager.preferredPage()) c.accentActive else c.text,
+                            modifier = Modifier
+                                .clickable {
+                                    showPageBubble = false
+                                    KeyboardManager.setPreferredPage(page)
+                                    onAction(KeyAction.SwitchPage(page))
+                                }
+                                .padding(horizontal = 16.dp, vertical = 9.dp),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** 滑动方向上的键面预览文本。 */
+private fun actionPreview(action: String): String = when (action) {
+    KeyActions.BS_UP, "delete_all" -> "全删"
+    KeyActions.BS_DOWN, "undo" -> "撤回"
+    KeyActions.BS_LEFT, "select_back" -> "选择"
+    "newline" -> "⏎"
+    "toggle_ascii" -> "中/EN"
+    "caps_lock" -> "⇪"
+    else -> {
+        val resolved = LuaScriptManager.resolveAction(action)
+        when (resolved) {
+            is com.azime.input.core.lua.ResolvedAction.Commit -> resolved.text
+            else -> action
+        }
     }
 }
 
@@ -485,6 +967,7 @@ private fun onKeyAction(key: Key, onAction: (KeyAction) -> Unit) {
         KeyType.MODIFIER -> onAction(KeyAction.Shift)
         KeyType.FUNCTION -> when (key.code) {
             "symbols" -> onAction(KeyAction.ToggleSymbols)
+            "emoji_back" -> onAction(KeyAction.SwitchPage("main"))
             else -> onAction(KeyAction.ToggleAscii)
         }
     }

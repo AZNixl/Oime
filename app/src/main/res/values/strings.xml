@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">AZime</string>
+    <string name="app_name">○输入法</string>
     <string name="settings">设置</string>
     <string name="keyboard_editor">键盘布局编辑器</string>
     <string name="enable_ime">启用输入法</string>

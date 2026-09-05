@@ -1,6 +1,10 @@
 package com.azime.input.ime
 
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
 import android.inputmethodservice.InputMethodService
+import android.net.Uri
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import androidx.compose.material3.MaterialTheme
@@ -11,6 +15,8 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.azime.input.core.keyboard.KeyboardManager
+import com.azime.input.core.lua.LuaScriptManager
+import com.azime.input.core.lua.ResolvedAction
 import com.azime.input.core.rime.RimeManager
 import com.azime.input.core.rime.RimeManager.KEY_BACKSPACE
 import com.azime.input.core.rime.RimeManager.KEY_RETURN
@@ -19,6 +25,7 @@ import com.azime.input.core.rime.toCandidate
 import com.azime.input.ui.keyboard.AzimeKeyboardScreen
 import com.azime.input.ui.keyboard.KeyAction
 import com.azime.input.ui.keyboard.KeyboardUiState
+import com.azime.input.ui.settings.SettingsActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -26,6 +33,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.io.File
 
 class AZimeService : InputMethodService() {
 
@@ -33,10 +41,29 @@ class AZimeService : InputMethodService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val uiState = MutableStateFlow(KeyboardUiState())
 
+    /** 撤回栈：记录最近上屏的文本（DirectCommit / 候选上屏 / 字母直出）。 */
+    private val undoStack = ArrayDeque<String>()
+
+    /** 退格左滑选择态：已向左扩展的字符数。 */
+    private var selectBackSteps = 0
+
+    /** 摇杆「快捷指针」选区锚点（-1 表示未开始）。 */
+    private var joystickAnchor = -1
+
+    private val clipboardManager by lazy {
+        getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    }
+
+    private val clipboardListener = ClipboardManager.OnPrimaryClipChangedListener {
+        readClipboard()
+    }
+
     override fun onCreate() {
         super.onCreate()
         lifecycleOwner.onCreate()
         KeyboardManager.initialize(applicationContext)
+        LuaScriptManager.loadScript()
+        clipboardManager.addPrimaryClipChangedListener(clipboardListener)
         scope.launch {
             val ok = RimeManager.ensureReady(applicationContext)
             val sessionOk = ok && RimeManager.ensureSession()
@@ -47,6 +74,7 @@ class AZimeService : InputMethodService() {
                     statusMessage = if (!ok) "引擎初始化失败" else "",
                 )
             }
+            refreshState()
         }
     }
 
@@ -86,6 +114,9 @@ class AZimeService : InputMethodService() {
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
         lifecycleOwner.resume()
+        selectBackSteps = 0
+        joystickAnchor = -1
+        readClipboard()
         scope.launch { refreshState() }
     }
 
@@ -101,9 +132,39 @@ class AZimeService : InputMethodService() {
     }
 
     override fun onDestroy() {
+        runCatching { clipboardManager.removePrimaryClipChangedListener(clipboardListener) }
         scope.cancel()
         lifecycleOwner.destroy()
         super.onDestroy()
+    }
+
+    // ── 剪贴板 ───────────────────────────────────────────────
+
+    private fun readClipboard() {
+        val clip = runCatching { clipboardManager.primaryClip }.getOrNull() ?: return
+        if (clip.itemCount == 0) return
+        val item = clip.getItemAt(0)
+        val uri: Uri? = item.uri
+        if (uri != null && (uri.scheme == "content")) {
+            // 图片类剪贴板：落盘保存（存图片）
+            scope.launch(Dispatchers.IO) {
+                runCatching {
+                    val dir = File(filesDir, "clipboard").apply { mkdirs() }
+                    val target = File(dir, "clip_${System.currentTimeMillis()}")
+                    contentResolver.openInputStream(uri)?.use { input ->
+                        target.outputStream().use { output -> input.copyTo(output) }
+                    }
+                    if (target.length() > 0) {
+                        uiState.update { it.copy(clipText = "🖼 [图片 ${target.length() / 1024}KB]") }
+                    }
+                }
+            }
+            return
+        }
+        val text = item.coerceToText(this)?.toString().orEmpty()
+        if (text.isNotBlank()) {
+            uiState.update { it.copy(clipText = text.take(80)) }
+        }
     }
 
     // ── 按键处理 ─────────────────────────────────────────────
@@ -113,23 +174,28 @@ class AZimeService : InputMethodService() {
             when (action) {
                 is KeyAction.CharKey -> handleChar(action.c)
                 is KeyAction.DirectCommit -> {
-                    // 长按符号等直出文本：绕过编码，直接上屏
                     currentInputConnection?.commitText(action.text, 1)
+                    pushUndo(action.text)
                     uiState.update { it.copy(shiftOn = false) }
                     refreshState()
                 }
-                KeyAction.Shift -> uiState.update { it.copy(shiftOn = !it.shiftOn) }
+                KeyAction.Shift -> uiState.update { it.copy(shiftOn = !it.shiftOn, capsOn = false) }
                 KeyAction.Backspace -> handleBackspace()
                 KeyAction.Space -> applyResult(RimeManager.processKey(KEY_SPACE))
                 KeyAction.Enter -> handleEnter()
-                KeyAction.ToggleSymbols -> uiState.update { it.copy(symbolPage = !it.symbolPage) }
+                KeyAction.ToggleSymbols -> {
+                    val target = if (uiState.value.page == "main") KeyboardManager.preferredPage() else "main"
+                    uiState.update { it.copy(page = target) }
+                }
                 KeyAction.ToggleAscii -> {
                     val ascii = RimeManager.toggleAsciiMode()
                     uiState.update { it.copy(asciiMode = ascii, shiftOn = false) }
                     refreshState()
                 }
                 is KeyAction.Candidate -> {
+                    val selected = uiState.value.candidates.getOrNull(action.index)?.text ?: ""
                     RimeManager.selectCandidate(action.index)
+                    if (selected.isNotEmpty()) pushUndo(selected)
                     applyResult(RimeManager.getProcessResult())
                 }
                 is KeyAction.SelectSchema -> {
@@ -140,20 +206,195 @@ class AZimeService : InputMethodService() {
                     RimeManager.processKey(0xFF55) // Prior/PageDown keysym
                     applyResult(RimeManager.getProcessResult())
                 }
+
+                // ── 扩展动作 ──
+                is KeyAction.Resolved -> {
+                    when (val resolved = LuaScriptManager.resolveAction(action.value)) {
+                        is ResolvedAction.Commit -> {
+                            val ic = currentInputConnection
+                            if (ic != null) {
+                                ic.beginBatchEdit()
+                                ic.commitText(resolved.text, 1)
+                                repeat(resolved.moveLeft) { ic.sendKeyEvent(android.view.KeyEvent(0, 0, 0, 0, 0, 0, android.view.KeyEvent.KEYCODE_DPAD_LEFT, 0)) }
+                                repeat(resolved.moveRight) { ic.sendKeyEvent(android.view.KeyEvent(0, 0, 0, 0, 0, 0, android.view.KeyEvent.KEYCODE_DPAD_RIGHT, 0)) }
+                                ic.endBatchEdit()
+                                pushUndo(resolved.text)
+                            }
+                        }
+                        is ResolvedAction.Command -> runCommand(resolved.ident)
+                        null -> {}
+                    }
+                }
+                KeyAction.DeleteAll -> deleteAllText()
+                KeyAction.Undo -> undo()
+                is KeyAction.SelectBack -> extendSelectBack(action.steps)
+                KeyAction.DeleteSelection -> deleteSelection()
+                KeyAction.CapsLock -> uiState.update { it.copy(capsOn = !it.capsOn, shiftOn = false) }
+                is KeyAction.OpenPage -> uiState.update { it.copy(page = action.page) }
+                is KeyAction.SwitchPage -> uiState.update { it.copy(page = action.page) }
+                is KeyAction.Joystick -> joystickMove(action.dx)
+                is KeyAction.SetJoystickMode -> uiState.update { it.copy(joystickMode = action.mode) }
+                KeyAction.OpenSettings -> {
+                    val intent = Intent(this@AZimeService, SettingsActivity::class.java)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    startActivity(intent)
+                }
+                KeyAction.ToggleClipboardPanel ->
+                    uiState.update { it.copy(showClipboardPanel = !it.showClipboardPanel) }
+            }
+        }
+    }
+
+    /** 执行 preset_keys / 布局动作里的内置命令。 */
+    private suspend fun runCommand(ident: String) {
+        val ic = currentInputConnection
+        when (ident) {
+            "toggle_ascii" -> onKeyAction(KeyAction.ToggleAscii)
+            "newline" -> {
+                ic?.commitText("\n", 1)
+                pushUndo("\n")
+            }
+            "backspace" -> handleBackspace()
+            "delete" -> ic?.deleteSurroundingText(0, 1)
+            "space" -> {
+                ic?.commitText(" ", 1)
+                pushUndo(" ")
+            }
+            "tab" -> ic?.commitText("\t", 1)
+            "esc" -> RimeManager.clearComposition()
+            "left" -> ic?.sendKeyEvent(android.view.KeyEvent(0, 0, 0, 0, 0, 0, android.view.KeyEvent.KEYCODE_DPAD_LEFT, 0))
+            "right" -> ic?.sendKeyEvent(android.view.KeyEvent(0, 0, 0, 0, 0, 0, android.view.KeyEvent.KEYCODE_DPAD_RIGHT, 0))
+            "up" -> ic?.sendKeyEvent(android.view.KeyEvent(0, 0, 0, 0, 0, 0, android.view.KeyEvent.KEYCODE_DPAD_UP, 0))
+            "down" -> ic?.sendKeyEvent(android.view.KeyEvent(0, 0, 0, 0, 0, 0, android.view.KeyEvent.KEYCODE_DPAD_DOWN, 0))
+            "page_up" -> applyResult(RimeManager.processKey(0xFF54))
+            "page_down" -> applyResult(RimeManager.processKey(0xFF55))
+            "home" -> ic?.sendKeyEvent(android.view.KeyEvent(0, 0, 0, 0, 0, 0, android.view.KeyEvent.KEYCODE_MOVE_HOME, 0))
+            "end" -> ic?.sendKeyEvent(android.view.KeyEvent(0, 0, 0, 0, 0, 0, android.view.KeyEvent.KEYCODE_MOVE_END, 0))
+            "select_all" -> ic?.let {
+                val all = (it.getTextBeforeCursor(Int.MAX_VALUE / 2, 0) ?: "") + (it.getSelectedText(0) ?: "") + (it.getTextAfterCursor(Int.MAX_VALUE / 2, 0) ?: "")
+                if (all.isNotEmpty()) it.setSelection(0, all.length)
+            }
+            "copy" -> ic?.getSelectedText(0)?.let { text ->
+                clipboardManager.setPrimaryClip(android.content.ClipData.newPlainText("azime", text))
+            }
+            "cut" -> ic?.getSelectedText(0)?.let { text ->
+                clipboardManager.setPrimaryClip(android.content.ClipData.newPlainText("azime", text))
+                ic.commitText("", 1)
+            }
+            "paste" -> {
+                val clip = runCatching { clipboardManager.primaryClip }.getOrNull()
+                val text = clip?.getItemAt(0)?.coerceToText(this)?.toString().orEmpty()
+                if (text.isNotEmpty()) {
+                    ic?.commitText(text, 1)
+                    pushUndo(text)
+                }
+            }
+            "caps_lock" -> uiState.update { it.copy(capsOn = !it.capsOn, shiftOn = false) }
+            "shift" -> uiState.update { it.copy(shiftOn = !it.shiftOn) }
+            "delete_all" -> deleteAllText()
+            "undo" -> undo()
+            "toggle_symbols" -> onKeyAction(KeyAction.ToggleSymbols)
+            "choose_page" -> {} // UI 层气泡处理
+            else -> if (ident.startsWith("page:")) {
+                uiState.update { it.copy(page = ident.removePrefix("page:")) }
+            }
+        }
+    }
+
+    private fun pushUndo(text: String) {
+        if (text.isEmpty()) return
+        undoStack.addLast(text)
+        while (undoStack.size > 50) undoStack.removeFirst()
+    }
+
+    /** 撤回：删除最近一次上屏的文本。 */
+    private suspend fun undo() {
+        val last = undoStack.removeLastOrNull() ?: return
+        currentInputConnection?.deleteSurroundingText(last.length, 0)
+        refreshState()
+    }
+
+    /** 上滑全删：删除光标前后全部文本。 */
+    private suspend fun deleteAllText() {
+        val ic = currentInputConnection ?: return
+        val before = ic.getTextBeforeCursor(MAX_TEXT, 0) ?: ""
+        val after = ic.getTextAfterCursor(MAX_TEXT, 0) ?: ""
+        if (before.isNotEmpty() || after.isNotEmpty()) {
+            pushUndo(before.toString() + after.toString())
+            ic.deleteSurroundingText(before.length, after.length)
+        }
+        RimeManager.clearComposition()
+        refreshState()
+    }
+
+    /** 退格左滑：继续向左扩展选区 n 步。 */
+    private fun extendSelectBack(steps: Int) {
+        val ic = currentInputConnection ?: return
+        selectBackSteps += steps
+        val cursor = (ic.getTextBeforeCursor(MAX_TEXT, 0) ?: "").length
+        val start = (cursor - selectBackSteps).coerceAtLeast(0)
+        ic.setSelection(start, cursor)
+    }
+
+    /** 退格左滑松手：删除选区。 */
+    private suspend fun deleteSelection() {
+        val ic = currentInputConnection ?: return
+        val sel = ic.getSelectedText(0)?.toString().orEmpty()
+        if (sel.isNotEmpty()) {
+            pushUndo(sel)
+            ic.commitText("", 1)
+        }
+        selectBackSteps = 0
+        refreshState()
+    }
+
+    /** 红摇杆：cursor 模式移动光标；select 模式扩展选区。 */
+    private fun joystickMove(dx: Int) {
+        val ic = currentInputConnection ?: return
+        val before = (ic.getTextBeforeCursor(MAX_TEXT, 0) ?: "").length
+        val after = (ic.getTextAfterCursor(MAX_TEXT, 0) ?: "").length
+        when (uiState.value.joystickMode) {
+            "cursor" -> {
+                val target = (before + dx).coerceIn(0, before + after)
+                ic.setSelection(target, target)
+            }
+            else -> { // select：以首次触碰位置为锚点扩展选区
+                if (joystickAnchor < 0) joystickAnchor = before
+                val target = (before + dx).coerceIn(0, before + after)
+                ic.setSelection(minOf(joystickAnchor, target), maxOf(joystickAnchor, target))
             }
         }
     }
 
     private suspend fun handleChar(c: Char) {
         val state = uiState.value
-        // 英文模式或临时 shift：字母直出，不进编码
-        if (state.asciiMode || state.shiftOn) {
-            val text = if (state.shiftOn) c.uppercaseChar() else c
+        // emoji / 非字母符号直出
+        if (c.code > 0x7F) {
+            currentInputConnection?.commitText(c.toString(), 1)
+            pushUndo(c.toString())
+            return
+        }
+        // 英文模式 / 临时 shift / 大写锁定：字母直出，不进编码
+        if (state.asciiMode || state.shiftOn || state.capsOn) {
+            val text = when {
+                state.shiftOn -> c.uppercaseChar()
+                state.capsOn && c.isLetter() -> c.uppercaseChar()
+                else -> c
+            }
             currentInputConnection?.commitText(text.toString(), 1)
+            pushUndo(text.toString())
             uiState.update { it.copy(shiftOn = false) }
             return
         }
-        applyResult(RimeManager.processKey(c.lowercaseChar().code))
+        val result = RimeManager.processKey(c.lowercaseChar().code)
+        if (result.processed) {
+            applyResult(result)
+            return
+        }
+        // 编码未消费（如数字/标点无菜单时）：直接上屏
+        currentInputConnection?.commitText(c.toString(), 1)
+        pushUndo(c.toString())
+        refreshState()
     }
 
     /**
@@ -181,11 +422,13 @@ class AZimeService : InputMethodService() {
     private suspend fun handleEnter() {
         val result = RimeManager.processKey(KEY_RETURN)
         if (result.processed && result.committedText.isNotEmpty()) {
+            pushUndo(result.committedText)
             applyResult(result)
             return
         }
         // 无编码时回车 = 换行
         currentInputConnection?.commitText("\n", 1)
+        pushUndo("\n")
         refreshState()
     }
 
@@ -193,6 +436,7 @@ class AZimeService : InputMethodService() {
     private fun applyResult(result: com.kingzcheung.xime.rime.RimeProcessResult) {
         if (result.committedText.isNotEmpty()) {
             currentInputConnection?.commitText(result.committedText, 1)
+            pushUndo(result.committedText)
         }
         updateFromResult(result)
     }
@@ -220,5 +464,9 @@ class AZimeService : InputMethodService() {
                 statusMessage = if (RimeManager.isMaintaining()) "正在部署词典，请稍候…" else "",
             )
         }
+    }
+
+    companion object {
+        private const val MAX_TEXT = 100000
     }
 }

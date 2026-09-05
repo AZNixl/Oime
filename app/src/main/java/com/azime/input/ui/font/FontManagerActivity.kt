@@ -1,195 +1,184 @@
 package com.azime.input.ui.font
 
-import android.app.Activity
-import android.content.Intent
 import android.graphics.Typeface
 import android.os.Bundle
-import android.widget.Toast
-import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.azime.input.core.font.FontManager
+import java.io.File
 
 /**
- * 字体管理 v1：
- * - 列出已导入字体（ttf/otf/ttc），每项实时预览；
- * - SAF 导入（存内部 filesDir/fonts，Android 11+ 下外部 File 读不可靠）；
- * - 启用 / 删除；「默认」= 系统字体。
- * 字体在键盘视图下次重建时生效。
+ * 字体管理（外置目录版）：
+ * 直接列出 Documents/AZime/fonts 下的 ttf/otf/ttc，
+ * 每个字体实时预览；键帽字体 / 候选字体两个角色独立选用。
  */
 class FontManagerActivity : AppCompatActivity() {
 
-    private val fontPicker =
-        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-            if (result.resultCode == Activity.RESULT_OK) {
-                result.data?.data?.let { uri ->
-                    FontManager.importFrom(uri)
-                        .onSuccess { name ->
-                            Toast.makeText(this, "已导入：$name", Toast.LENGTH_SHORT).show()
-                        }
-                        .onFailure { e ->
-                            Toast.makeText(this, "导入失败：${e.message}", Toast.LENGTH_SHORT).show()
-                        }
-                }
-            }
-        }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(
-            ComposeView(this).apply {
-                setContent {
-                    MaterialTheme {
-                        FontManagerScreen(
-                            onBackClick = { finish() },
-                            onPickFont = {
-                                fontPicker.launch(
-                                    Intent(Intent.ACTION_OPEN_DOCUMENT)
-                                        .addCategory(Intent.CATEGORY_OPENABLE)
-                                        .setType("*/*")
-                                )
-                            },
-                        )
-                    }
-                }
+        setContent {
+            MaterialTheme {
+                FontManagerScreen(onBack = { finish() })
             }
-        )
+        }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FontManagerScreen(
-    onBackClick: () -> Unit,
-    onPickFont: () -> Unit,
-) {
-    var version by remember { mutableIntStateOf(0) }
-    var activeName by remember { mutableStateOf(FontManager.activeName()) }
+fun FontManagerScreen(onBack: () -> Unit) {
+    var version by remember { mutableStateOf(0) }
+    var fonts by remember(version) { mutableStateOf(FontManager.fontFiles()) }
+    var keyFont by remember(version) { mutableStateOf(FontManager.keyFontName()) }
+    var candFont by remember(version) { mutableStateOf(FontManager.candidateFontName()) }
+    var pendingDelete by remember { mutableStateOf<File?>(null) }
+
+    fun refresh() { version++ }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("字体管理") },
                 navigationIcon = {
-                    IconButton(onClick = onBackClick) {
+                    IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
                     }
                 },
-                actions = {
-                    TextButton(onClick = onPickFont) { Text("导入") }
-                },
             )
-        },
+        }
     ) { padding ->
-        val fonts = remember(version) { FontManager.fontFiles() }
-        LazyColumn(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+                .padding(padding)
+                .padding(horizontal = 16.dp),
         ) {
-            item {
-                ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(14.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = "默认（系统字体）",
-                                fontWeight = FontWeight.Medium,
-                                fontSize = 16.sp,
-                                modifier = Modifier.weight(1f),
-                            )
-                            if (activeName.isBlank()) {
-                                Text("✓ 使用中", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
-                            }
-                        }
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            text = "曦码 AZime 输入法 AaBbCc 123",
-                            fontSize = 15.sp,
-                        )
-                        if (activeName.isNotBlank()) {
-                            Spacer(Modifier.height(8.dp))
-                            FilledTonalButton(onClick = {
-                                FontManager.setActive("")
-                                activeName = ""
-                                version++
-                            }) { Text("恢复默认") }
-                        }
-                    }
-                }
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+                shape = RoundedCornerShape(12.dp),
+            ) {
+                Text(
+                    "把 ttf / otf / ttc 字体文件放入 Documents/AZime/fonts 文件夹即可在此看到（无需导入）。",
+                    modifier = Modifier.padding(14.dp),
+                    fontSize = 13.sp,
+                )
             }
-            itemsIndexed(fonts, key = { _, f -> f.name }) { _, file ->
-                val typeface = remember(file.absolutePath) { runCatching { Typeface.createFromFile(file) }.getOrNull() }
-                ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(14.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = file.name,
-                                fontWeight = FontWeight.Medium,
-                                fontSize = 16.sp,
-                                modifier = Modifier.weight(1f),
-                            )
-                            if (activeName == file.name) {
-                                Text("✓ 使用中", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
-                            }
-                        }
-                        Spacer(Modifier.height(4.dp))
-                        if (typeface != null) {
-                            Text(
-                                text = "曦码 AZime 输入法 AaBbCc 123",
-                                fontSize = 15.sp,
-                                fontFamily = FontFamily(typeface),
-                            )
-                        } else {
-                            Text(
-                                text = "（无法加载预览）",
-                                fontSize = 13.sp,
-                                color = MaterialTheme.colorScheme.error,
-                            )
-                        }
-                        Spacer(Modifier.height(8.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            if (activeName != file.name) {
-                                FilledTonalButton(onClick = {
-                                    FontManager.setActive(file.name)
-                                    activeName = file.name
-                                    version++
-                                }) { Text("使用") }
-                            }
-                            OutlinedButton(onClick = {
-                                FontManager.deleteFont(file.name)
-                                activeName = FontManager.activeName()
-                                version++
-                            }) { Text("删除") }
-                        }
-                    }
-                }
-            }
+            Spacer(Modifier.height(12.dp))
+
             if (fonts.isEmpty()) {
-                item {
-                    Text(
-                        text = "还没有导入字体。\n点右上角「导入」选择手机里的 ttf/otf/ttc 文件。",
-                        fontSize = 14.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                    Text("fonts 文件夹为空", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    items(fonts, key = { it.name }) { font ->
+                        FontCard(
+                            file = font,
+                            isKey = keyFont == font.name,
+                            isCand = candFont == font.name,
+                            onSetKey = { FontManager.setKeyFont(font.name); refresh() },
+                            onSetCand = { FontManager.setCandidateFont(font.name); refresh() },
+                            onDelete = { pendingDelete = font },
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    pendingDelete?.let { file ->
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text("删除字体") },
+            text = { Text("确定删除「${file.name}」吗？此操作不可撤销。") },
+            confirmButton = {
+                TextButton(onClick = {
+                    FontManager.deleteFont(file.name)
+                    pendingDelete = null
+                    refresh()
+                }) { Text("删除", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDelete = null }) { Text("取消") }
+            },
+        )
+    }
+}
+
+@Composable
+private fun FontCard(
+    file: File,
+    isKey: Boolean,
+    isCand: Boolean,
+    onSetKey: () -> Unit,
+    onSetCand: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    // 预览字体（文件损坏时静默回退默认字体，避免崩溃）
+    val previewFamily = remember(file.absolutePath) {
+        runCatching { FontFamily(Typeface.createFromFile(file)) }
+            .getOrElse { FontFamily.Default }
+    }
+    Card(shape = RoundedCornerShape(12.dp)) {
+        Column(Modifier.padding(14.dp)) {
+            Text(
+                "○输入法 AaBbCc 123 输入",
+                fontFamily = previewFamily,
+                fontSize = 18.sp,
+                maxLines = 1,
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                file.name,
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(10.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                FilledTonalButton(
+                    onClick = onSetKey,
+                    colors = ButtonDefaults.filledTonalButtonColors(
+                        containerColor = if (isKey) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = if (isKey) MaterialTheme.colorScheme.onPrimary
+                        else MaterialTheme.colorScheme.onSurface,
+                    ),
+                    contentPadding = PaddingValues(horizontal = 12.dp),
+                ) { Text(if (isKey) "键帽 ✓" else "用作键帽") }
+                Spacer(Modifier.width(8.dp))
+                FilledTonalButton(
+                    onClick = onSetCand,
+                    colors = ButtonDefaults.filledTonalButtonColors(
+                        containerColor = if (isCand) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = if (isCand) MaterialTheme.colorScheme.onPrimary
+                        else MaterialTheme.colorScheme.onSurface,
+                    ),
+                    contentPadding = PaddingValues(horizontal = 12.dp),
+                ) { Text(if (isCand) "候选 ✓" else "用作候选") }
+                Spacer(Modifier.weight(1f))
+                IconButton(onClick = onDelete) {
+                    Icon(
+                        Icons.Default.Delete,
+                        contentDescription = "删除",
+                        tint = MaterialTheme.colorScheme.error,
                     )
                 }
             }

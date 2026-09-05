@@ -24,7 +24,9 @@ object KeyboardManager {
     private const val DIR_NAME = "keyboards"
     private const val PREFS_NAME = "keyboard_prefs"
     private const val PREF_ACTIVE_MAIN = "active_main_layout"
+    private const val PREF_PREFERRED_PAGE = "preferred_page"
     private const val DEFAULT_MAIN = "qwerty"
+    private const val DEFAULT_PAGE = "symbols"
 
     /** 布局名仅允许字母/数字/下划线/连字符，直接用作文件名。 */
     private val namePattern = Regex("[A-Za-z0-9_-]{1,64}")
@@ -41,6 +43,9 @@ object KeyboardManager {
     @Volatile
     private var activeMain: String = DEFAULT_MAIN
 
+    @Volatile
+    private var preferredPage: String = DEFAULT_PAGE
+
     // ── 生命周期 ─────────────────────────────────────────────
 
     fun initialize(context: Context) {
@@ -49,6 +54,7 @@ object KeyboardManager {
             dir.mkdirs()
             prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             activeMain = prefs.getString(PREF_ACTIVE_MAIN, DEFAULT_MAIN) ?: DEFAULT_MAIN
+            preferredPage = prefs.getString(PREF_PREFERRED_PAGE, DEFAULT_PAGE) ?: DEFAULT_PAGE
             reloadCustomsLocked()
         }
     }
@@ -81,6 +87,27 @@ object KeyboardManager {
 
     /** 符号页布局（内置；后续可扩展为自定义符号页）。 */
     fun symbolLayout(): KeyboardLayout = KeyboardPages.symbols
+
+    /** 九宫格数字布局。 */
+    fun numpadLayout(): KeyboardLayout = KeyboardPages.numpad
+
+    /** 按页面名取布局；emoji 页由 UI 层专门渲染，返回 null。 */
+    fun layoutFor(page: String): KeyboardLayout? = when (page) {
+        "main" -> mainLayout()
+        "symbols" -> symbolLayout()
+        "numpad" -> numpadLayout()
+        else -> null
+    }
+
+    /** 符号键切换的默认键盘页（symbols/numpad/emoji）。 */
+    fun preferredPage(): String = preferredPage
+
+    fun setPreferredPage(page: String) {
+        synchronized(lock) {
+            preferredPage = page
+            prefs.edit().putString(PREF_PREFERRED_PAGE, page).apply()
+        }
+    }
 
     private fun builtinByName(name: String): KeyboardLayout? = when (name) {
         KeyboardPages.qwerty.name -> KeyboardPages.qwerty
