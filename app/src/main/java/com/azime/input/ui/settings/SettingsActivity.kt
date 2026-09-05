@@ -101,7 +101,9 @@ class SettingsActivity : AppCompatActivity() {
                     Toast.makeText(this, "重命名失败（目标文件夹已存在？）", Toast.LENGTH_LONG).show()
                     return@setPositiveButton
                 }
-                RimeManager.deployImportedSchemas(applicationContext)
+                lifecycleScope.launch {
+                    RimeManager.deployImportedSchemas(applicationContext)
+                }
                 Toast.makeText(this, "已重命名为「$newName」", Toast.LENGTH_SHORT).show()
             }
             .setNegativeButton("保持原名", null)
