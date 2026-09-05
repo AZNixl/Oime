@@ -502,19 +502,27 @@ class RimeEngine {
     }
 
     fun getAvailableSchemas(): Array<String> {
-        return nativeGetAvailableSchemas() ?: emptyArray()
+        // 必须持 rimeLock：维护线程 RimeGetSchemaList → Schema 构造 → ConfigData::LoadFromFile
+        // 期间并发进入会在 config compiler 内部跳转到非可执行内存（真机 SIGSEGV 实证）。
+        // 拿不到锁（全量部署中）直接返回空数组，不进 native。
+        if (!isInitialized) return emptyArray()
+        return tryLocked(emptyArray()) {
+            nativeGetAvailableSchemas() ?: emptyArray()
+        }
     }
 
     /** 读取方案配置字符串项（librime 解析，含 custom.yaml patch 合并后的最终值）。 */
     fun getSchemaString(schemaId: String, key: String): String? {
         if (!isInitialized) return null
-        return nativeGetSchemaString(schemaId, key)
+        return tryLocked(null) { nativeGetSchemaString(schemaId, key) }
     }
 
     /** 读取方案配置列表项（librime 解析，含 custom.yaml patch 合并后的最终值）。 */
     fun getSchemaList(schemaId: String, key: String): List<String> {
         if (!isInitialized) return emptyList()
-        return nativeGetSchemaList(schemaId, key)?.toList() ?: emptyList()
+        return tryLocked(emptyList()) {
+            nativeGetSchemaList(schemaId, key)?.toList() ?: emptyList()
+        }
     }
 
     /** 读取方案自带 translator.packs 中声明的个人词库名。 */
