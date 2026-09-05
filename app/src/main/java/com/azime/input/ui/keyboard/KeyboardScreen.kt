@@ -1,5 +1,6 @@
 package com.azime.input.ui.keyboard
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -29,6 +30,7 @@ import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.Dialpad
 import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.Keyboard
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -69,6 +71,7 @@ import com.azime.input.core.rime.Candidate
 import com.azime.input.data.keyboard.EmojiData
 import com.azime.input.data.keyboard.KeyActions
 import com.azime.input.data.keyboard.LongPressSymbols
+import com.azime.input.data.keyboard.SymbolData
 import com.azime.input.data.model.Key
 import com.azime.input.data.model.KeyType
 
@@ -806,6 +809,7 @@ private data class CategoryGridData(
 private val EmojiGrid = CategoryGridData("emoji", EmojiData.categories)
 private val SymbolGrid = CategoryGridData("symgrid", SymbolData.categories)
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun CategoryGridPane(
     data: CategoryGridData,
