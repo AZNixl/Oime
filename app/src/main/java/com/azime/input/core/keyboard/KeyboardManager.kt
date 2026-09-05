@@ -217,7 +217,7 @@ object KeyboardManager {
     // ── trime2 lua 键盘布局导入 ──────────────────────────────
 
     /**
-     * 扫描外置键盘 lua 目录（Documents/AZime/lua/keyboards/*.lua），
+     * 扫描外置键盘 lua 目录（Documents/AZime/lua/keyboards 下的 lua 文件），
      * 解析并导入为自定义布局。返回 (布局名或文件名, 错误信息或 null)。
      */
     fun importLuaLayouts(): List<Pair<String, String?>> = synchronized(lock) {

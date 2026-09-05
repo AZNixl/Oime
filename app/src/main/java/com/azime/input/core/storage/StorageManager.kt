@@ -85,7 +85,7 @@ return preset_keys
         return File(luaDir, "preset_keys.lua")
     }
 
-    /** 外置 trime2 风格键盘布局 lua 文件（Documents/AZime/lua/keyboards/*.lua）。 */
+    /** 外置 trime2 风格键盘布局 lua 文件（Documents/AZime/lua/keyboards 目录）。 */
     fun getKeyboardLuaFiles(): List<File> {
         return keyboardLuaDir.listFiles()
             ?.filter { it.isFile && it.extension == "lua" }

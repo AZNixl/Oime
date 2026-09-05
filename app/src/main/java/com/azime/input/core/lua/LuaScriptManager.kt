@@ -153,8 +153,8 @@ object LuaScriptManager {
      */
     fun parseKeyboardLayout(file: File): KeyboardLayout? = try {
         val g = globals ?: JsePlatform.standardGlobals()
-        val result = g.loadfile(file.absolutePath)?.call() ?: return null
-        if (result !is LuaTable) null else tableToLayout(result, file.nameWithoutExtension)
+        val result = g.loadfile(file.absolutePath)?.call()
+        if (result is LuaTable) tableToLayout(result, file.nameWithoutExtension) else null
     } catch (e: Exception) {
         e.printStackTrace()
         null
