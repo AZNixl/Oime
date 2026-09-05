@@ -35,11 +35,12 @@ class SchemaImporter {
 
         try {
             // 先按默认（UTF-8）打开；若存在未标记 UTF-8 的条目（多半是 Windows 压的 GBK 包），改用 GBK
-            var zipFile = ZipFile(tempZip)
-            val headers = zipFile.fileHeaders
-            val hasNonUtf8 = headers.any { !it.isFileNameUTF8Encoded }
+            val zipFile = ZipFile(tempZip)
+            // zip4j 2.x 构造器第二参数是密码(charset 用 setter)：检测到未标记 UTF-8 的
+            // 条目（多为 Windows GBK 压缩包）时切换文件名编码，修复中文乱码
+            val hasNonUtf8 = zipFile.fileHeaders.any { !it.isFileNameUTF8Encoded }
             if (hasNonUtf8) {
-                zipFile = ZipFile(tempZip.absolutePath, Charset.forName("GBK"))
+                zipFile.charset = Charset.forName("GBK")
             }
             zipFile.extractAll(targetDir.absolutePath)
         } finally {
