@@ -1,15 +1,10 @@
 package com.azime.input.core.lua
 
 import com.azime.input.core.storage.StorageManager
-import com.azime.input.data.model.Key
-import com.azime.input.data.model.KeyType
-import com.azime.input.data.model.KeyboardLayout
-import com.azime.input.data.model.KeyboardRow
 import org.luaj.vm2.Globals
 import org.luaj.vm2.LuaTable
 import org.luaj.vm2.LuaValue
 import org.luaj.vm2.lib.jse.JsePlatform
-import java.io.File
 
 /** preset_keys 条目：trime2 表格式（label/send/commit）兼容。 */
 data class PresetEntry(
@@ -133,91 +128,6 @@ object LuaScriptManager {
             text = text.substring(0, m.range.first)
         }
         return ResolvedAction.Commit(text, moveLeft = left, moveRight = right)
-    }
-
-    // ── trime2 键盘布局 lua 解析 ─────────────────────────────
-
-    /**
-     * 解析 trime2 风格的键盘布局 lua 文件，约定：
-     * ```
-     * return {
-     *   name = "my_kb",
-     *   rows = {
-     *     { keys = { { label="q", click="q", width=1.0,
-     *                 long_click="1", swipe_up="...", ... } } },
-     *   },
-     * }
-     * ```
-     * 行也支持直接写键数组（`{ {...},{...} }`，无 keys 包装）。
-     * 解析失败返回 null。
-     */
-    fun parseKeyboardLayout(file: File): KeyboardLayout? = try {
-        val g = globals ?: JsePlatform.standardGlobals()
-        val result = g.loadfile(file.absolutePath)?.call()
-        if (result is LuaTable) tableToLayout(result, file.nameWithoutExtension) else null
-    } catch (e: Exception) {
-        e.printStackTrace()
-        null
-    }
-
-    private fun tableToLayout(table: LuaTable, fallbackName: String): KeyboardLayout? {
-        val rowsTable = table.get("rows") as? LuaTable ?: return null
-        val name = (table.get("name").takeIf { it.isstring() }?.tojstring() ?: fallbackName)
-            .replace(Regex("[^A-Za-z0-9_-]"), "_")
-            .trim('_')
-            .take(64)
-            .ifBlank { "imported" }
-        val rows = mutableListOf<KeyboardRow>()
-        var ri = LuaValue.NIL
-        while (true) {
-            val rNext = rowsTable.next(ri)
-            if (rNext.arg1().isnil()) break
-            ri = rNext.arg1()
-            val rowVal = rNext.arg(2)
-            val keysTable = (rowVal.get("keys").takeIf { it.istable() } ?: rowVal) as? LuaTable
-                ?: continue
-            val keys = mutableListOf<Key>()
-            var ki = LuaValue.NIL
-            while (true) {
-                val kNext = keysTable.next(ki)
-                if (kNext.arg1().isnil()) break
-                ki = kNext.arg1()
-                val kv = kNext.arg(2)
-                if (kv.istable()) keys += luaKeyToKey(kv as LuaTable)
-            }
-            if (keys.isNotEmpty()) rows.add(KeyboardRow(keys))
-        }
-        if (rows.isEmpty()) return null
-        return KeyboardLayout(name = name, rows = rows)
-    }
-
-    /** trime2 键字段 → 内部 [Key]。type 按 click 值推断。 */
-    private fun luaKeyToKey(kv: LuaTable): Key {
-        val click = kv.get("click").takeIf { it.isstring() }?.tojstring()
-            ?: kv.get("commit").takeIf { it.isstring() }?.tojstring()
-            ?: ""
-        val label = kv.get("label").takeIf { it.isstring() }?.tojstring() ?: click
-        fun act(name: String): String? = kv.get(name).takeIf { it.isstring() }?.tojstring()
-        val type = when {
-            click.equals("BackSpace", true) -> KeyType.DELETE
-            click.equals("Return", true) || click.equals("enter", true) -> KeyType.ENTER
-            click.equals("space", true) -> KeyType.SPACE
-            click.equals("shift", true) || click.equals("caps_lock", true) -> KeyType.MODIFIER
-            click.length == 1 -> KeyType.CHARACTER
-            else -> KeyType.FUNCTION
-        }
-        return Key(
-            label = label,
-            code = click,
-            width = kv.get("width").takeIf { it.isnumber() }?.tofloat() ?: 1.0f,
-            type = type,
-            longClick = act("long_click"),
-            swipeUp = act("swipe_up"),
-            swipeDown = act("swipe_down"),
-            swipeLeft = act("swipe_left"),
-            swipeRight = act("swipe_right"),
-            hint = act("hint"),
-        )
     }
 
     // ── 编辑器支持 ───────────────────────────────────────────

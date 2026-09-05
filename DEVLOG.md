@@ -140,3 +140,21 @@ vendored RimeEngine 中 `getAvailableSchemas / getSchemaString / getSchemaList`
 ### 顺带修复
 - 上一轮遗留编译错：KeyboardScreen FUNCTION 键误传 ResolvedAction 对象给
   KeyAction.Resolved(String)（1219 行）→ 改传 key.code 字符串，由 Service 端 resolveAction 解析。
+
+## 反馈轮 2：8 条体验修正
+
+| # | 反馈 | 实现 |
+|---|---|---|
+| 1 | 工具栏不显示候选字 / ○ 菜单参考 xime | 根因：CandidateBar 组件写了但从未挂载。改为候选词直接占工具栏中部（打字时显示，点选上屏，横向滚动 + ▶ 翻页；空闲时恢复工具+剪贴板条）。○ 菜单参考 xime MenuBar 重做：顶部 ↑ 关闭 + ⚙ 设置圆钮，图标网格（剪贴板/26键/数字/表情/符号/定制工具栏，4 列 icon+label 磁贴），底部方案 chips |
+| 2 | 九宫格无返回键 | numpad 第 3 行末改 ⌫，第 4 行首加「26」返回主键盘；工具栏「123」在 numpad 页变「26」亦可返回 |
+| 3 | 符号键盘理解纠正 | 新增分类网格符号页 symgrid（常用/引号/数学/箭头/货币/序号/特殊 7 类，SymbolData），工具栏「符」与菜单「符号」指向它；26 键符号页保留 |
+| 4 | emoji 横滑 + 高度压缩 | emoji 与符号页共用 CategoryGridPane：HorizontalPager 左右滑动切分类（点标签同步翻页），格子高度跟随主键盘键高 |
+| 5 | 编辑器去 lua 导入 / numpad 打不开 | 移除「导入 lua 键盘布局」入口与整套 lua 键盘解析（parseKeyboardLayout/importLuaLayouts/example.lua）；builtinByName 补 numpad 修复内置九宫格无法进入编辑 |
+| 6 | 增高行开关 | KeyboardManager.barEnabled 持久化；关闭时工具栏/候选栏回落 38dp 紧凑高度；键盘二级页开关 + 高度滑杆联动显隐 |
+| 7 | 设置一级菜单 | 主页改纯入口（输入方案/键盘/外观/预设置/关于），滑杆、振动开关等全部收进对应二级页（键盘页含布局编辑器+键高+增高行+振动；外观页字体管理；关于页版本/GitHub） |
+| 8 | 设置主题跟随回车键颜色 | MaterialTheme colorScheme 按 system dark 选择基础方案，primary=键盘 accentActive、primaryContainer=回车键底色 accentKeyBg（keyboardAccentActiveColor/keyboardAccentKeyColor 公开） |
+
+### 真机验证（20:31-20:37, b72e0041）
+- 新包 com.oime.input 装机、ime enable、切默认输入法 ✅；旧外置资产（方案/fonts/lua）已复制到 Documents/Oime。
+- 键盘渲染 ✅（大写键帽/○ 工具栏/红摇杆/方案名）；○ 面板磁贴 ✅；设置页：运行正常·简体拼音（迁移方案自动部署）✅、打字振动卡片 ✅。
+- 无崩溃（logcat 无 FATAL）。期间屏幕跳变系人机同时操作，自动化盲测暂停，交由用户手测。

@@ -7,6 +7,7 @@ import android.os.Bundle
 import android.widget.EditText
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.background
@@ -112,39 +113,45 @@ class SettingsActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(
-            ComposeView(this).apply {
-                setContent {
-                    MaterialTheme {
-                        SettingsScreen(
-                            onBackClick = { finish() },
-                            onOpenKeyboardEditor = {
-                                startActivity(Intent(this@SettingsActivity, KeyboardEditorActivity::class.java))
-                            },
-                            onManageFonts = {
-                                startActivity(Intent(this@SettingsActivity, FontManagerActivity::class.java))
-                            },
-                            onEditLuaScript = {
-                                startActivity(Intent(this@SettingsActivity, LuaEditorActivity::class.java))
-                            },
-                            onPickZip = {
-                                zipPickerLauncher.launch(
-                                    Intent(Intent.ACTION_GET_CONTENT).apply {
-                                        type = "application/zip"
-                                        addCategory(Intent.CATEGORY_OPENABLE)
-                                    }
-                                )
-                            },
-                            onPickFolder = {
-                                folderPickerLauncher.launch(
-                                    Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
-                                )
-                            },
+        setContent {
+            // 主题色跟随键盘回车键颜色，并跟随系统深浅色
+            val dark = androidx.compose.foundation.isSystemInDarkTheme()
+            val scheme = if (dark) androidx.compose.material3.darkColorScheme()
+            else androidx.compose.material3.lightColorScheme()
+            MaterialTheme(
+                colorScheme = scheme.copy(
+                    primary = com.azime.input.ui.keyboard.keyboardAccentActiveColor(dark),
+                    primaryContainer = com.azime.input.ui.keyboard.keyboardAccentKeyColor(dark),
+                    onPrimaryContainer = if (dark) Color(0xFFD7E3F4) else Color(0xFF202124),
+                ),
+            ) {
+                SettingsScreen(
+                    onBackClick = { finish() },
+                    onOpenKeyboardEditor = {
+                        startActivity(Intent(this@SettingsActivity, KeyboardEditorActivity::class.java))
+                    },
+                    onManageFonts = {
+                        startActivity(Intent(this@SettingsActivity, FontManagerActivity::class.java))
+                    },
+                    onEditLuaScript = {
+                        startActivity(Intent(this@SettingsActivity, LuaEditorActivity::class.java))
+                    },
+                    onPickZip = {
+                        zipPickerLauncher.launch(
+                            Intent(Intent.ACTION_GET_CONTENT).apply {
+                                type = "application/zip"
+                                addCategory(Intent.CATEGORY_OPENABLE)
+                            }
                         )
-                    }
-                }
+                    },
+                    onPickFolder = {
+                        folderPickerLauncher.launch(
+                            Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
+                        )
+                    },
+                )
             }
-        )
+        }
     }
 }
 
@@ -162,15 +169,24 @@ fun SettingsScreen(
 ) {
     val cs = MaterialTheme.colorScheme
     val context = LocalContext.current
-    var subPage by remember { mutableStateOf("main") } // main | schemas
+    // 一级菜单（main）+ 二级页：schemas | keyboard | appearance | about
+    var subPage by remember { mutableStateOf("main") }
+    val subTitles = mapOf(
+        "schemas" to "输入方案",
+        "keyboard" to "键盘",
+        "appearance" to "外观",
+        "about" to "关于",
+    )
 
     Scaffold(
         containerColor = cs.surface,
         topBar = {
             TopAppBar(
-                title = { Text(if (subPage == "schemas") "输入方案" else "○输入法", fontWeight = FontWeight.SemiBold) },
+                title = {
+                    Text(subTitles[subPage] ?: "○输入法", fontWeight = FontWeight.SemiBold)
+                },
                 navigationIcon = {
-                    IconButton(onClick = { if (subPage == "schemas") subPage = "main" else onBackClick() }) {
+                    IconButton(onClick = { if (subPage != "main") subPage = "main" else onBackClick() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
                     }
                 },
@@ -178,8 +194,8 @@ fun SettingsScreen(
             )
         }
     ) { padding ->
+        // ── 二级页：输入方案 ──
         if (subPage == "schemas") {
-            // 二级页：方案管理（列表切换 + 导入）
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
@@ -210,6 +226,103 @@ fun SettingsScreen(
             }
             return@Scaffold
         }
+        // ── 二级页：键盘 ──
+        if (subPage == "keyboard") {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(vertical = 8.dp),
+            ) {
+                item {
+                    Card {
+                        Column(Modifier.padding(vertical = 4.dp)) {
+                            KsuItem(
+                                icon = Icons.Default.Keyboard,
+                                title = "键盘布局编辑器",
+                                subtitle = "可视化编辑按键与滑动手势",
+                                onClick = onOpenKeyboardEditor,
+                            )
+                        }
+                    }
+                }
+                item {
+                    Card { Column { KeyHeightSliders() } }
+                }
+                item {
+                    Card { Column { VibrationSettings() } }
+                }
+            }
+            return@Scaffold
+        }
+        // ── 二级页：外观 ──
+        if (subPage == "appearance") {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(vertical = 8.dp),
+            ) {
+                item {
+                    Card {
+                        Column(Modifier.padding(vertical = 4.dp)) {
+                            KsuItem(
+                                icon = Icons.Default.FontDownload,
+                                title = "字体管理",
+                                subtitle = "键帽 / 候选字体（Documents/Oime/fonts）",
+                                onClick = onManageFonts,
+                            )
+                        }
+                    }
+                }
+            }
+            return@Scaffold
+        }
+        // ── 二级页：关于 ──
+        if (subPage == "about") {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(vertical = 8.dp),
+            ) {
+                item {
+                    Card {
+                        Column(Modifier.padding(vertical = 4.dp)) {
+                            KsuItem(
+                                icon = Icons.Default.Info,
+                                title = "版本",
+                                subtitle = "0.4.0-oime · 包名 com.oime.input · 平台 RIME",
+                                onClick = {},
+                                showChevron = false,
+                            )
+                            KsuItem(
+                                icon = Icons.Default.Link,
+                                title = "GitHub",
+                                subtitle = "github.com/AZNixl/AZime",
+                                onClick = {
+                                    runCatching {
+                                        context.startActivity(android.content.Intent(
+                                            android.content.Intent.ACTION_VIEW,
+                                            android.net.Uri.parse("https://github.com/AZNixl/AZime"),
+                                        ))
+                                    }
+                                },
+                                showChevron = false,
+                            )
+                        }
+                    }
+                }
+            }
+            return@Scaffold
+        }
+        // ── 一级菜单：纯入口 ──
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
@@ -218,105 +331,40 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
             contentPadding = PaddingValues(vertical = 8.dp),
         ) {
-            // 状态卡（参考 KSU 顶卡）
             item { StatusCard() }
 
-            // 方案管理（二级页入口）
             item {
-                SectionLabel("输入方案")
                 Card {
                     Column(Modifier.padding(vertical = 4.dp)) {
                         KsuItem(
                             icon = Icons.Default.List,
-                            title = "方案管理",
-                            subtitle = "切换 / 导入输入方案",
+                            title = "输入方案",
+                            subtitle = "切换 / 导入 / 重命名方案",
                             onClick = { subPage = "schemas" },
                         )
-                    }
-                }
-            }
-
-            // 键盘
-            item {
-                SectionLabel("键盘")
-                Card {
-                    Column(Modifier.padding(vertical = 4.dp)) {
                         KsuItem(
                             icon = Icons.Default.Keyboard,
-                            title = "键盘布局编辑器",
-                            subtitle = "可视化编辑按键与滑动手势",
-                            onClick = onOpenKeyboardEditor,
+                            title = "键盘",
+                            subtitle = "布局编辑 · 键高 · 增高行 · 打字振动",
+                            onClick = { subPage = "keyboard" },
                         )
-                        KeyHeightSliders()
-                    }
-                }
-            }
-
-            // 外观
-            item {
-                SectionLabel("外观")
-                Card {
-                    Column(Modifier.padding(vertical = 4.dp)) {
                         KsuItem(
                             icon = Icons.Default.FontDownload,
-                            title = "字体管理",
-                            subtitle = "读取 Documents/Oime/fonts 中的字体",
-                            onClick = onManageFonts,
+                            title = "外观",
+                            subtitle = "字体管理",
+                            onClick = { subPage = "appearance" },
                         )
-                    }
-                }
-            }
-
-            // 打字振动
-            item {
-                SectionLabel("打字振动")
-                Card {
-                    Column(Modifier.padding(vertical = 4.dp)) {
-                        VibrationSettings()
-                    }
-                }
-            }
-
-            // 高级
-            item {
-                SectionLabel("高级")
-                Card {
-                    Column(Modifier.padding(vertical = 4.dp)) {
                         KsuItem(
                             icon = Icons.Default.Code,
                             title = "预设置",
-                            subtitle = "preset_keys.lua（按键动作与多符号预设）",
+                            subtitle = "preset_keys.lua（按键动作预设）",
                             onClick = onEditLuaScript,
                         )
-                    }
-                }
-            }
-
-            // 关于
-            item {
-                SectionLabel("关于")
-                Card {
-                    Column(Modifier.padding(vertical = 4.dp)) {
                         KsuItem(
                             icon = Icons.Default.Info,
-                            title = "版本",
-                            subtitle = "0.3.0-oime · 包名 com.oime.input · 平台 RIME",
-                            onClick = {},
-                            showChevron = false,
-                        )
-                        KsuItem(
-                            icon = Icons.Default.Link,
-                            title = "GitHub",
-                            subtitle = "github.com/AZNixl/AZime",
-                            onClick = {
-                                runCatching {
-                                    context.startActivity(android.content.Intent(
-                                        android.content.Intent.ACTION_VIEW,
-                                        android.net.Uri.parse("https://github.com/AZNixl/AZime"),
-                                    ))
-                                }
-                            },
-                            showChevron = false,
+                            title = "关于",
+                            subtitle = "版本 / 项目地址",
+                            onClick = { subPage = "about" },
                         )
                     }
                 }
@@ -435,11 +483,12 @@ private fun SchemaList() {
     }
 }
 
-/** 键盘尺寸滑杆：键高 + 增高行高度（下次键盘弹出即生效）。 */
+/** 键盘尺寸设置：键高滑杆 + 增高行开关与高度滑杆（下次键盘弹出即生效）。 */
 @Composable
 private fun KeyHeightSliders() {
     var keyH by remember { mutableStateOf(com.azime.input.core.keyboard.KeyboardManager.keyHeightDp().toFloat()) }
     var barH by remember { mutableStateOf(com.azime.input.core.keyboard.KeyboardManager.barHeightDp().toFloat()) }
+    var barOn by remember { mutableStateOf(com.azime.input.core.keyboard.KeyboardManager.barEnabled()) }
     Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
         Text("键高：${keyH.toInt()}dp", style = MaterialTheme.typography.bodyMedium)
         Slider(
@@ -450,15 +499,30 @@ private fun KeyHeightSliders() {
             },
             valueRange = 36f..64f,
         )
-        Text("增高行高度：${barH.toInt()}dp", style = MaterialTheme.typography.bodyMedium)
-        Slider(
-            value = barH,
-            onValueChange = {
-                barH = it
-                com.azime.input.core.keyboard.KeyboardManager.setBarHeightDp(it.toInt())
-            },
-            valueRange = 38f..72f,
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("增高行（工具栏 + 候选栏）", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            Switch(
+                checked = barOn,
+                onCheckedChange = {
+                    barOn = it
+                    com.azime.input.core.keyboard.KeyboardManager.setBarEnabled(it)
+                },
+            )
+        }
+        if (barOn) {
+            Text("增高行高度：${barH.toInt()}dp", style = MaterialTheme.typography.bodyMedium)
+            Slider(
+                value = barH,
+                onValueChange = {
+                    barH = it
+                    com.azime.input.core.keyboard.KeyboardManager.setBarHeightDp(it.toInt())
+                },
+                valueRange = 38f..72f,
+            )
+        }
         Text(
             "工具栏自定义：在键盘上长按 ○ 菜单键勾选",
             style = MaterialTheme.typography.bodySmall,

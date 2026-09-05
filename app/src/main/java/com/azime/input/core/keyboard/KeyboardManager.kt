@@ -2,8 +2,6 @@ package com.azime.input.core.keyboard
 
 import android.content.Context
 import android.content.SharedPreferences
-import com.azime.input.core.lua.LuaScriptManager
-import com.azime.input.core.storage.StorageManager
 import com.azime.input.data.keyboard.KeyboardPages
 import com.azime.input.data.model.KeyboardLayout
 import com.google.gson.Gson
@@ -29,6 +27,7 @@ object KeyboardManager {
     private const val PREF_PREFERRED_PAGE = "preferred_page"
     private const val PREF_KEY_HEIGHT_DP = "key_height_dp"
     private const val PREF_BAR_HEIGHT_DP = "bar_height_dp"
+    private const val PREF_BAR_ENABLED = "bar_enabled"
     private const val PREF_TOOLBAR_ITEMS = "toolbar_items"
     private const val DEFAULT_MAIN = "qwerty"
     private const val DEFAULT_PAGE = "symbols"
@@ -131,8 +130,15 @@ object KeyboardManager {
         synchronized(lock) { prefs.edit().putInt(PREF_BAR_HEIGHT_DP, dp.coerceIn(38, 72)).apply() }
     }
 
+    /** 增高行开关：关闭时工具栏/候选栏回落为紧凑高度（38dp）。 */
+    fun barEnabled(): Boolean = prefs.getBoolean(PREF_BAR_ENABLED, true)
+
+    fun setBarEnabled(v: Boolean) {
+        synchronized(lock) { prefs.edit().putBoolean(PREF_BAR_ENABLED, v).apply() }
+    }
+
     /** 尺寸指纹：变化时 Service 重建键盘视图（onStartInputView 检查）。 */
-    fun sizeSignature(): String = "${keyHeightDp()}x${barHeightDp()}"
+    fun sizeSignature(): String = "${keyHeightDp()}x${barHeightDp()}x${barEnabled()}"
 
     // ── 工具栏自定义（○ 菜单键之外的可显示工具） ────────────
 
@@ -164,6 +170,7 @@ object KeyboardManager {
     private fun builtinByName(name: String): KeyboardLayout? = when (name) {
         KeyboardPages.qwerty.name -> KeyboardPages.qwerty
         KeyboardPages.symbols.name -> KeyboardPages.symbols
+        KeyboardPages.numpad.name -> KeyboardPages.numpad
         else -> null
     }
 
@@ -212,27 +219,6 @@ object KeyboardManager {
     private fun setActiveMainLocked(name: String) {
         activeMain = name
         prefs.edit().putString(PREF_ACTIVE_MAIN, name).apply()
-    }
-
-    // ── trime2 lua 键盘布局导入 ──────────────────────────────
-
-    /**
-     * 扫描外置键盘 lua 目录（Documents/AZime/lua/keyboards 下的 lua 文件），
-     * 解析并导入为自定义布局。返回 (布局名或文件名, 错误信息或 null)。
-     */
-    fun importLuaLayouts(): List<Pair<String, String?>> = synchronized(lock) {
-        val results = mutableListOf<Pair<String, String?>>()
-        for (file in StorageManager.getKeyboardLuaFiles()) {
-            val layout = LuaScriptManager.parseKeyboardLayout(file)
-            if (layout == null) {
-                results += file.name to "解析失败"
-            } else {
-                customs[layout.name] = layout
-                layoutFile(layout.name).writeText(gson.toJson(layout))
-                results += layout.name to null
-            }
-        }
-        results
     }
 
     private fun layoutFile(name: String) = File(dir, "$name.json")

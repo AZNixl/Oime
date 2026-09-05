@@ -128,7 +128,7 @@ object KeyboardPages {
         ),
     )
 
-    /** 九宫格数字键盘。 */
+    /** 九宫格数字键盘（第 3 行末为退格；第 4 行首「26」返回主键盘）。 */
     val numpad: KeyboardLayout = KeyboardLayout(
         name = "numpad",
         rows = listOf(
@@ -139,11 +139,13 @@ object KeyboardPages {
                 charKey("4"), charKey("5"), charKey("6"), Key("-", code = "-", type = KeyType.CHARACTER),
             ),
             row(
-                charKey("7"), charKey("8"), charKey("9"), Key("×", code = "*", type = KeyType.CHARACTER),
+                charKey("7"), charKey("8"), charKey("9"),
+                backspace(width = 1f),
             ),
             row(
-                pageKey("符", target = "symbols", width = 1f),
+                pageKey("26", target = "main", width = 1f),
                 charKey("0", width = 1f), charKey(".", width = 1f),
+                space(width = 1f),
                 enter(1f),
             ),
         ),
