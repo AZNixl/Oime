@@ -124,14 +124,15 @@ fun SettingsScreen(
 ) {
     val cs = MaterialTheme.colorScheme
     val context = LocalContext.current
+    var subPage by remember { mutableStateOf("main") } // main | schemas
 
     Scaffold(
         containerColor = cs.surface,
         topBar = {
             TopAppBar(
-                title = { Text("○输入法", fontWeight = FontWeight.SemiBold) },
+                title = { Text(if (subPage == "schemas") "输入方案" else "○输入法", fontWeight = FontWeight.SemiBold) },
                 navigationIcon = {
-                    IconButton(onClick = onBackClick) {
+                    IconButton(onClick = { if (subPage == "schemas") subPage = "main" else onBackClick() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
                     }
                 },
@@ -139,6 +140,38 @@ fun SettingsScreen(
             )
         }
     ) { padding ->
+        if (subPage == "schemas") {
+            // 二级页：方案管理（列表切换 + 导入）
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(vertical = 8.dp),
+            ) {
+                item {
+                    Card { Column(Modifier.padding(vertical = 4.dp)) { SchemaList() } }
+                }
+                item {
+                    Card { Column(Modifier.padding(vertical = 4.dp)) {
+                        KsuItem(
+                            icon = Icons.Default.FileDownload,
+                            title = "导入方案（ZIP）",
+                            subtitle = "兼容 GBK 文件名压缩包",
+                            onClick = onPickZip,
+                        )
+                        KsuItem(
+                            icon = Icons.Default.FolderOpen,
+                            title = "导入方案（文件夹）",
+                            subtitle = "选择含方案 yaml 的文件夹；导入后自动部署",
+                            onClick = onPickFolder,
+                        )
+                    } }
+                }
+            }
+            return@Scaffold
+        }
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
@@ -150,24 +183,19 @@ fun SettingsScreen(
             // 状态卡（参考 KSU 顶卡）
             item { StatusCard() }
 
-            // 方案管理
+            // 方案管理（二级页入口）
             item {
                 SectionLabel("输入方案")
-                Card { Column(Modifier.padding(vertical = 4.dp)) {
-                    SchemaList()
-                    KsuItem(
-                        icon = Icons.Default.FileDownload,
-                        title = "导入方案（ZIP）",
-                        subtitle = "兼容 GBK 文件名压缩包",
-                        onClick = onPickZip,
-                    )
-                    KsuItem(
-                        icon = Icons.Default.FolderOpen,
-                        title = "导入方案（文件夹）",
-                        subtitle = "选择含方案 yaml 的文件夹",
-                        onClick = onPickFolder,
-                    )
-                } }
+                Card {
+                    Column(Modifier.padding(vertical = 4.dp)) {
+                        KsuItem(
+                            icon = Icons.Default.List,
+                            title = "方案管理",
+                            subtitle = "切换 / 导入输入方案",
+                            onClick = { subPage = "schemas" },
+                        )
+                    }
+                }
             }
 
             // 键盘
@@ -181,6 +209,7 @@ fun SettingsScreen(
                             subtitle = "可视化编辑按键与滑动手势",
                             onClick = onOpenKeyboardEditor,
                         )
+                        KeyHeightSliders()
                     }
                 }
             }
@@ -358,9 +387,40 @@ private fun SchemaList() {
     }
 }
 
+/** 键盘尺寸滑杆：键高 + 增高行高度（下次键盘弹出即生效）。 */
 @Composable
-private fun SectionLabel(text: String) {
-    Text(
+private fun KeyHeightSliders() {
+    var keyH by remember { mutableStateOf(com.azime.input.core.keyboard.KeyboardManager.keyHeightDp().toFloat()) }
+    var barH by remember { mutableStateOf(com.azime.input.core.keyboard.KeyboardManager.barHeightDp().toFloat()) }
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
+        Text("键高：${keyH.toInt()}dp", style = MaterialTheme.typography.bodyMedium)
+        Slider(
+            value = keyH,
+            onValueChange = {
+                keyH = it
+                com.azime.input.core.keyboard.KeyboardManager.setKeyHeightDp(it.toInt())
+            },
+            valueRange = 36f..64f,
+        )
+        Text("增高行高度：${barH.toInt()}dp", style = MaterialTheme.typography.bodyMedium)
+        Slider(
+            value = barH,
+            onValueChange = {
+                barH = it
+                com.azime.input.core.keyboard.KeyboardManager.setBarHeightDp(it.toInt())
+            },
+            valueRange = 38f..72f,
+        )
+        Text(
+            "工具栏自定义：在键盘上长按 ○ 菜单键勾选",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun SectionLabel(text: String) {    Text(
         text = text,
         style = MaterialTheme.typography.titleSmall,
         color = MaterialTheme.colorScheme.primary,

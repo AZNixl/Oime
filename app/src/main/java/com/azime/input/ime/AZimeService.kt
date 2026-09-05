@@ -44,11 +44,15 @@ class AZimeService : InputMethodService() {
     /** 撤回栈：记录最近上屏的文本（DirectCommit / 候选上屏 / 字母直出）。 */
     private val undoStack = ArrayDeque<String>()
 
-    /** 退格左滑选择态：已向左扩展的字符数。 */
-    private var selectBackSteps = 0
+    /** 退格左滑选择态（trime2 退格脚本锚点模型）：锚点与选区活动端（UTF-16 坐标）。 */
+    private var selectAnchor = -1
+    private var selectCursor = -1
 
     /** 摇杆「快捷指针」选区锚点（-1 表示未开始）。 */
     private var joystickAnchor = -1
+
+    /** 键盘尺寸签名：变化时在 onStartInputView 重建视图（高度滑杆热生效）。 */
+    private var lastSizeSignature: String = ""
 
     private val clipboardManager by lazy {
         getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -124,9 +128,16 @@ class AZimeService : InputMethodService() {
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
         lifecycleOwner.resume()
-        selectBackSteps = 0
+        selectAnchor = -1
+        selectCursor = -1
         joystickAnchor = -1
         readClipboard()
+        // 键盘高度/增高行设置变化后热重建视图
+        val sig = KeyboardManager.sizeSignature()
+        if (lastSizeSignature.isNotEmpty() && sig != lastSizeSignature) {
+            setInputView(onCreateInputView())
+        }
+        lastSizeSignature = sig
         scope.launch { refreshState() }
     }
 
@@ -173,7 +184,7 @@ class AZimeService : InputMethodService() {
         }
         val text = item.coerceToText(this)?.toString().orEmpty()
         if (text.isNotBlank()) {
-            uiState.update { it.copy(clipText = text.take(80)) }
+            uiState.update { it.copy(clipText = text.take(80), clipAtMs = System.currentTimeMillis()) }
         }
     }
 
@@ -237,7 +248,8 @@ class AZimeService : InputMethodService() {
                 }
                 KeyAction.DeleteAll -> deleteAllText()
                 KeyAction.Undo -> undo()
-                is KeyAction.SelectBack -> extendSelectBack(action.steps)
+                KeyAction.BackspaceSelectStart -> startSelectBack()
+                is KeyAction.BackspaceSelectTo -> moveSelectBack(action.charsFromAnchor)
                 KeyAction.DeleteSelection -> deleteSelection()
                 KeyAction.CapsLock -> uiState.update { it.copy(capsOn = !it.capsOn, shiftOn = false) }
                 is KeyAction.OpenPage -> uiState.update { it.copy(page = action.page) }
@@ -251,6 +263,20 @@ class AZimeService : InputMethodService() {
                 }
                 KeyAction.ToggleClipboardPanel ->
                     uiState.update { it.copy(showClipboardPanel = !it.showClipboardPanel) }
+                KeyAction.ToggleMenuPanel ->
+                    uiState.update { it.copy(showMenuPanel = !it.showMenuPanel) }
+                is KeyAction.CommitClipboard -> {
+                    currentInputConnection?.commitText(action.text, 1)
+                    pushUndo(action.text)
+                    // 上屏后条目消失 + 面板收起，不干扰后续输入
+                    uiState.update {
+                        it.copy(clipText = "", clipAtMs = 0L, showClipboardPanel = false, showMenuPanel = false)
+                    }
+                }
+                is KeyAction.SetToolbarItems -> {
+                    KeyboardManager.setToolbarItems(action.ids)
+                    uiState.update { it.copy(toolbarRev = it.toolbarRev + 1) }
+                }
             }
         }
     }
@@ -340,16 +366,26 @@ class AZimeService : InputMethodService() {
         refreshState()
     }
 
-    /** 退格左滑：继续向左扩展选区 n 步。 */
-    private fun extendSelectBack(steps: Int) {
+    /** 退格左滑进入选择模式：记锚点（组合中由 UI 侧拦截不会到达）。 */
+    private fun startSelectBack() {
         val ic = currentInputConnection ?: return
-        selectBackSteps += steps
-        val cursor = (ic.getTextBeforeCursor(MAX_TEXT, 0) ?: "").length
-        val start = (cursor - selectBackSteps).coerceAtLeast(0)
-        ic.setSelection(start, cursor)
+        val before = (ic.getTextBeforeCursor(MAX_TEXT, 0) ?: "").length
+        selectAnchor = before
+        selectCursor = before
     }
 
-    /** 退格左滑松手：删除选区。 */
+    /** 退格左滑位移换算：moved 为相对锚点的字符偏移（负值向左），右滑回退不超过锚点。 */
+    private fun moveSelectBack(moved: Int) {
+        val ic = currentInputConnection ?: return
+        if (selectAnchor < 0) return
+        val target = (selectAnchor + moved).coerceIn(0, selectAnchor)
+        if (target != selectCursor) {
+            ic.setSelection(target, selectAnchor)
+            selectCursor = target
+        }
+    }
+
+    /** 退格左滑松手：删除选区（空选区安全跳过）。 */
     private suspend fun deleteSelection() {
         val ic = currentInputConnection ?: return
         val sel = ic.getSelectedText(0)?.toString().orEmpty()
@@ -357,26 +393,20 @@ class AZimeService : InputMethodService() {
             pushUndo(sel)
             ic.commitText("", 1)
         }
-        selectBackSteps = 0
+        selectAnchor = -1
+        selectCursor = -1
         refreshState()
     }
 
-    /** 红摇杆：cursor 模式移动光标；select 模式扩展选区。 */
+    /** 红摇杆：cursor 模式 1 字/步；pointer（快捷指针）10 字/步远距跳转。 */
     private fun joystickMove(dx: Int) {
         val ic = currentInputConnection ?: return
+        val stride = if (uiState.value.joystickMode == "pointer") 10 else 1
         val before = (ic.getTextBeforeCursor(MAX_TEXT, 0) ?: "").length
         val after = (ic.getTextAfterCursor(MAX_TEXT, 0) ?: "").length
-        when (uiState.value.joystickMode) {
-            "cursor" -> {
-                val target = (before + dx).coerceIn(0, before + after)
-                ic.setSelection(target, target)
-            }
-            else -> { // select：以首次触碰位置为锚点扩展选区
-                if (joystickAnchor < 0) joystickAnchor = before
-                val target = (before + dx).coerceIn(0, before + after)
-                ic.setSelection(minOf(joystickAnchor, target), maxOf(joystickAnchor, target))
-            }
-        }
+        val target = (before + dx * stride).coerceIn(0, before + after)
+        ic.setSelection(target, target)
+        joystickAnchor = -1
     }
 
     private suspend fun handleChar(c: Char) {

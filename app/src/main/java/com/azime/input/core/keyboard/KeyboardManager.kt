@@ -25,8 +25,13 @@ object KeyboardManager {
     private const val PREFS_NAME = "keyboard_prefs"
     private const val PREF_ACTIVE_MAIN = "active_main_layout"
     private const val PREF_PREFERRED_PAGE = "preferred_page"
+    private const val PREF_KEY_HEIGHT_DP = "key_height_dp"
+    private const val PREF_BAR_HEIGHT_DP = "bar_height_dp"
+    private const val PREF_TOOLBAR_ITEMS = "toolbar_items"
     private const val DEFAULT_MAIN = "qwerty"
     private const val DEFAULT_PAGE = "symbols"
+    private const val DEFAULT_KEY_HEIGHT_DP = 46
+    private const val DEFAULT_BAR_HEIGHT_DP = 48
 
     /** 布局名仅允许字母/数字/下划线/连字符，直接用作文件名。 */
     private val namePattern = Regex("[A-Za-z0-9_-]{1,64}")
@@ -106,6 +111,51 @@ object KeyboardManager {
         synchronized(lock) {
             preferredPage = page
             prefs.edit().putString(PREF_PREFERRED_PAGE, page).apply()
+        }
+    }
+
+    // ── 键盘尺寸（设置页滑杆可调） ──────────────────────────
+
+    fun keyHeightDp(): Int = prefs.getInt(PREF_KEY_HEIGHT_DP, DEFAULT_KEY_HEIGHT_DP)
+
+    fun setKeyHeightDp(dp: Int) {
+        synchronized(lock) { prefs.edit().putInt(PREF_KEY_HEIGHT_DP, dp.coerceIn(36, 64)).apply() }
+    }
+
+    /** 增高行（工具栏+候选栏）高度。 */
+    fun barHeightDp(): Int = prefs.getInt(PREF_BAR_HEIGHT_DP, DEFAULT_BAR_HEIGHT_DP)
+
+    fun setBarHeightDp(dp: Int) {
+        synchronized(lock) { prefs.edit().putInt(PREF_BAR_HEIGHT_DP, dp.coerceIn(38, 72)).apply() }
+    }
+
+    /** 尺寸指纹：变化时 Service 重建键盘视图（onStartInputView 检查）。 */
+    fun sizeSignature(): String = "${keyHeightDp()}x${barHeightDp()}"
+
+    // ── 工具栏自定义（○ 菜单键之外的可显示工具） ────────────
+
+    /** 全部可选工具 id → 显示名（顺序即勾选顺序）。 */
+    val availableToolbarTools: List<Pair<String, String>> = listOf(
+        "clipboard" to "剪贴板",
+        "schema" to "方案",
+        "numpad" to "数字",
+        "emoji" to "emoji",
+        "symbols" to "符号",
+        "settings" to "设置",
+    )
+
+    private val defaultToolbarItems = listOf("clipboard", "schema", "numpad", "emoji", "symbols")
+
+    fun toolbarItems(): List<String> {
+        val raw = prefs.getString(PREF_TOOLBAR_ITEMS, null) ?: return defaultToolbarItems
+        val valid = availableToolbarTools.map { it.first }.toSet()
+        val list = raw.split(',').filter { it in valid }
+        return list.ifEmpty { defaultToolbarItems }
+    }
+
+    fun setToolbarItems(ids: List<String>) {
+        synchronized(lock) {
+            prefs.edit().putString(PREF_TOOLBAR_ITEMS, ids.joinToString(",")).apply()
         }
     }
 
