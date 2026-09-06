@@ -216,3 +216,7 @@ vendored RimeEngine 中 `getAvailableSchemas / getSchemaString / getSchemaList`
 
 - versionCode 5 / versionName 0.7.0-oime。
 - 注意：九宫格页由 NumpadPane 专用渲染，键盘编辑器里对 numpad 的自定义修改不影响实际九宫格页（内置布局为数据基准）。
+
+### 修复 2：NumpadSliderSymbols 作用域
+- 首推 CI 失败发现 push_via_api.py 按 git 索引（ls-files -s）取文件，需先 git add -A；
+- 二推失败：NumpadSliderSymbols 误放在 object KeyboardPages 内部，KeyboardScreen 顶层 import 无法解析 → 改 KeyboardPages.NumpadSliderSymbols 引用。

@@ -79,8 +79,8 @@ import com.azime.input.core.rime.Candidate
 import com.azime.input.data.keyboard.EmojiData
 import com.azime.input.data.keyboard.BracketPairs
 import com.azime.input.data.keyboard.KeyActions
+import com.azime.input.data.keyboard.KeyboardPages
 import com.azime.input.data.keyboard.LongPressSymbols
-import com.azime.input.data.keyboard.NumpadSliderSymbols
 import com.azime.input.data.keyboard.SymbolData
 import com.azime.input.data.keyboard.longPressHint
 import com.azime.input.data.model.Key
@@ -1297,7 +1297,7 @@ private fun NumpadPane(state: KeyboardUiState, onAction: (KeyAction) -> Unit, ke
 @Composable
 private fun NumpadSliderKey(onAction: (KeyAction) -> Unit, modifier: Modifier) {
     val c = keyboardColors()
-    val symbols = NumpadSliderSymbols
+    val symbols = KeyboardPages.NumpadSliderSymbols
     var selIdx by remember { mutableStateOf(symbols.size / 2) }
     var selecting by remember { mutableStateOf(false) }
     val density = LocalDensity.current
