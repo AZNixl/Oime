@@ -220,3 +220,19 @@ vendored RimeEngine 中 `getAvailableSchemas / getSchemaString / getSchemaList`
 ### 修复 2：NumpadSliderSymbols 作用域
 - 首推 CI 失败发现 push_via_api.py 按 git 索引（ls-files -s）取文件，需先 git add -A；
 - 二推失败：NumpadSliderSymbols 误放在 object KeyboardPages 内部，KeyboardScreen 顶层 import 无法解析 → 改 KeyboardPages.NumpadSliderSymbols 引用。
+
+### 真机自动化验证（0.7.0-oime，commit 0ea23a7e，设备 b72e0041，Android 14）
+装机 18:16:50 Success。逐项验证：
+- 跳过向导持久化 ✅：跳过后进设置；HOME 重新打开 App 直达设置不再出向导；关于页有「重新运行向导」。
+- 主题与配色 ✅：色彩模式三 chip、7 预设色板、自定义 RGB；点「中国红」→ 键帽勾选迁移、RGB 滑杆同步、键盘 preedit/选项卡/收起按钮全部变红（强调色即时生效）。
+- 备份设置 ⚠️ 入口存在（Download 文件未在自动化点击中确认，留人工验证）。
+- 26 键 ✅：A-L 偏移对齐（G 对 V），键帽角标全套新规范（Q¹-P⁰/全选/-/@/#//——/+/括号/=、Z`X剪切C复制V粘贴"B'N：M、，！。？）。
+- 长按 ✅：长按 Q 松手直接上屏「1」（单符号免二次点击）；括号气泡在 K 键。
+- 输入码+候选覆盖工具栏 ✅：组合中整条工具栏替换为 preedit（红色）+ 候选横滚 + ◀▶ + ▾；剪贴板条打字即消亡。
+- 更多候选面板 ✅：「▾」展开 5 列网格等高面板，◀▶ 翻页、收起可用。
+- ○ 菜单 ✅：8 磁贴（剪贴板/26键/数字/表情/符号/输入方案/部署/定制工具栏）；「输入方案」浮窗列表 pinyin_simp 高亮当前。
+- 九宫格 ✅：五列（3 行高滑选符号键 + 26 返回 | 1-0+.`, | ⌫/中英/空格/⏎），铺满无空白；滑键上滑一位松手直出「～」。
+- 剪贴板面板 ✅：双选项卡、卡片 3 行截断、标签行（dp/fx/jqb/lua/emoji/abc/xime 英文词 + 2481036245 电话号）、点卡片/标签上屏。
+- 符号网格 ✅：「←」固定左上角、分类标签横滑、无底部 ABC/空格/退格行。
+- 崩溃检查 ✅：logcat 无 Oime FATAL（仅 uiautomator 自身注册冲突）。
+- 验证后已恢复默认输入法为 xime.az。
