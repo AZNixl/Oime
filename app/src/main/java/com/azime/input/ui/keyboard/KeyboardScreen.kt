@@ -52,6 +52,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.luminance
@@ -124,6 +125,8 @@ sealed interface KeyAction {
     data object OpenSettings : KeyAction
     /** 重新部署方案（方案设置页 / ○ 菜单）。 */
     data object Deploy : KeyAction
+    /** 收起键盘（工具栏末尾关闭键）。 */
+    data object HideKeyboard : KeyAction
     data object ToggleClipboardPanel : KeyAction
     data object ToggleMenuPanel : KeyAction
     /** 从剪贴板面板/条上屏：提交后清除条目并收起面板。 */
@@ -269,6 +272,8 @@ fun AzimeKeyboardScreen(
         Column(
             modifier = modifier
                 .fillMaxWidth()
+                // 沉浸式圆角：顶部两角圆角化，配合透明 IME 窗口贴合系统底部弹层样式
+                .clip(RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp))
                 .background(c.bg),
         ) {
             ToolbarRow(
@@ -522,20 +527,20 @@ private fun ToolbarRow(
     val composing = state.preedit.isNotEmpty() || state.candidates.isNotEmpty()
 
     when {
-        // ── 组合行：上行输入码 + 下行候选横滚（xime 布局），右侧翻页/更多候选 ──
+        // ── 组合行：上行输入码 + 下行候选横滚（xime 布局），两行完整显示不裁剪 ──
         composing -> Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(barHeight)
+                .heightIn(min = barHeight)
                 .background(c.barBg)
-                .padding(horizontal = 6.dp),
+                .padding(horizontal = 6.dp, vertical = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 if (state.preedit.isNotEmpty()) {
                     Text(
                         text = state.preedit,
-                        fontSize = 11.sp,
+                        fontSize = 12.sp,
                         color = c.subText,
                         maxLines = 1,
                         modifier = Modifier.padding(start = 2.dp),
@@ -552,12 +557,12 @@ private fun ToolbarRow(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
                                 .clickable { onAction(KeyAction.Candidate(index)) }
-                                .padding(horizontal = 8.dp, vertical = 2.dp),
+                                .padding(horizontal = 8.dp, vertical = 6.dp),
                         ) {
                             if (index < 9) {
                                 Text("${index + 1} ", fontSize = 11.sp, color = c.subText)
                             }
-                            Text(candidate.text, fontSize = 17.sp, maxLines = 1, color = c.text)
+                            Text(candidate.text, fontSize = 18.sp, maxLines = 1, color = c.text)
                             if (candidate.comment.isNotBlank()) {
                                 Spacer(Modifier.width(3.dp))
                                 Text(candidate.comment, fontSize = 10.sp, maxLines = 1, color = c.subText)
@@ -685,6 +690,18 @@ private fun ToolbarRow(
 
                 // 右侧工具（后右）
                 rightItems.forEach { id -> toolbarToolItem(id, state, onAction, c) { showSchemaMenu = true } }
+
+                Spacer(Modifier.width(2.dp))
+
+                // 关闭键盘（固定工具栏最后一位）
+                Text(
+                    "⌄",
+                    fontSize = 18.sp,
+                    color = c.subText,
+                    modifier = Modifier
+                        .clickable { onAction(KeyAction.HideKeyboard) }
+                        .padding(horizontal = 8.dp, vertical = 2.dp),
+                )
             }
         }
     }
@@ -1265,7 +1282,7 @@ private fun NumpadPane(state: KeyboardUiState, onAction: (KeyAction) -> Unit, ke
 @Composable
 private fun NumpadSliderKey(onAction: (KeyAction) -> Unit, modifier: Modifier) {
     val c = keyboardColors()
-    val symbols = KeyboardPages.NumpadSliderSymbols
+    val symbols = KeyboardManager.sliderSymbols()
     var selIdx by remember { mutableStateOf(symbols.size / 2) }
     var selecting by remember { mutableStateOf(false) }
     val density = LocalDensity.current
@@ -1274,14 +1291,13 @@ private fun NumpadSliderKey(onAction: (KeyAction) -> Unit, modifier: Modifier) {
     Box(
         modifier = modifier
             .background(c.funcKeyBg, RoundedCornerShape(8.dp))
-            .pointerInput(Unit) {
+            .pointerInput(symbols) {
                 val stepPx = with(density) { 34.dp.toPx() }
                 awaitEachGesture {
                     awaitFirstDown(requireUnconsumed = false)
                     selecting = true
                     var anchorY: Float? = null
                     var startIdx = selIdx
-                    var moved = false
                     while (true) {
                         val ev = awaitPointerEvent()
                         val ch = ev.changes.firstOrNull() ?: break
@@ -1291,20 +1307,14 @@ private fun NumpadSliderKey(onAction: (KeyAction) -> Unit, modifier: Modifier) {
                         val target = (startIdx + steps).coerceIn(0, symbols.size - 1)
                         if (target != selIdx) {
                             selIdx = target
-                            moved = true
                             haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                         }
                     }
-                    // 滑动松手：仅预览不上屏；点击（未滑动）由 clickable 上屏当前符号
+                    // 滑动选择-松手上屏（轮7回退轮6的「点击上屏」交互）；未滑动 = 直接上屏当前符号
                     selecting = false
-                    if (moved) selIdx = selIdx // 保留选中位，等待点击上屏
+                    onAction(KeyAction.DirectCommit(symbols[selIdx]))
+                    selIdx = symbols.size / 2
                 }
-            }
-            .clickable {
-                // 点击上屏当前选中符号（含滑完后的第二次点击），上屏后回到中间
-                onAction(KeyAction.DirectCommit(symbols[selIdx]))
-                selIdx = symbols.size / 2
-                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
             },
         contentAlignment = Alignment.Center,
     ) {
@@ -1360,7 +1370,15 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
         else -> c.text
     }
     val label = when {
-        key.code == "space" && state.page == "main" && state.schemaName.isNotBlank() -> schemaDisplay(state.schemaName)
+        // 空格键显示：自定义文本 > 当前方案名（短名） > 默认「空格」
+        key.code == "space" && state.page == "main" -> {
+            val custom = KeyboardManager.spaceLabel()
+            when {
+                custom.isNotBlank() -> custom
+                state.schemaName.isNotBlank() -> state.schemaName.substringAfterLast('.')
+                else -> key.label
+            }
+        }
         key.type != KeyType.CHARACTER -> key.label
         // 键帽显示：中文模式大写、英文模式小写（输入逻辑不变：中文仍送小写编码）
         state.asciiMode -> key.label.lowercase()
@@ -1373,36 +1391,44 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
         return
     }
 
-    // ── 组合中的次选/三选预设键（trime2 26键.lua composing=select_2/select_3） ──
-    // 打字时主键盘的 123 键变「三选」、句号键变「次选」，点击直接选第 3/2 候选
+    // ── 组合中的预设选候选键（trime2 26键.lua composing=select_2/3/4 思路） ──
+    // 打字时：123 键 = 第三候选、句号键 = 第二候选、空格键 = 第一候选，
+    // 键面直接显示对应候选文本，点击即上屏该候选（无对应候选时退回原动作）。
     val composingNow = state.preedit.isNotEmpty() || state.candidates.isNotEmpty()
-    if (composingNow && state.page == "main" &&
-        ((key.type == KeyType.FUNCTION && key.code == "symbols") ||
-            (key.type == KeyType.CHARACTER && key.code == "."))
-    ) {
-        val selectIndex = if (key.code == "symbols") 2 else 1
-        val selLabel = if (key.code == "symbols") "三选" else "次选"
-        Box(
-            modifier = Modifier
-                .weight(key.width)
-                .fillMaxSize()
-                .background(c.accentKeyBg, RoundedCornerShape(8.dp))
-                .clickable {
-                    HapticsManager.press()
-                    onAction(KeyAction.Candidate(selectIndex))
-                    HapticsManager.release()
-                },
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = selLabel,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium,
-                color = c.accentKeyText,
-                maxLines = 1,
-            )
+    if (composingNow && state.page == "main") {
+        val selectIndex = when {
+            key.type == KeyType.FUNCTION && key.code == "symbols" -> 2
+            key.type == KeyType.CHARACTER && key.code == "." -> 1
+            key.type == KeyType.SPACE && key.code == "space" -> 0
+            else -> -1
         }
-        return
+        if (selectIndex >= 0) {
+            val candText = state.candidates.getOrNull(selectIndex)?.text.orEmpty()
+            // 无对应候选时退回原动作（空格仍上屏空格，句号/123 走原逻辑）
+            if (candText.isNotEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .weight(key.width)
+                        .fillMaxSize()
+                        .background(c.accentKeyBg, RoundedCornerShape(8.dp))
+                        .clickable {
+                            HapticsManager.press()
+                            onAction(KeyAction.Candidate(selectIndex))
+                            HapticsManager.release()
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = candText,
+                        fontSize = if (candText.length <= 4) 14.sp else 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = c.accentKeyText,
+                        maxLines = 1,
+                    )
+                }
+                return
+            }
+        }
     }
 
     // 长按符号：内置映射（用户规范）或 preset_keys 条目；K 键 = 常用括号气泡（26键.lua）

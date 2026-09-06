@@ -272,6 +272,27 @@ private fun GridEditorScreen(initial: KeyboardLayout, onDone: (KeyboardLayout?) 
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
             )
+            // 九宫格专用：滑键符号带自定义（空格分隔；留空 = 内置默认）
+            if (initial.name == "numpad") {
+                var sliderRaw by remember { mutableStateOf(
+                    com.azime.input.core.keyboard.KeyboardManager.sliderSymbolsRaw()
+                ) }
+                OutlinedTextField(
+                    value = sliderRaw,
+                    onValueChange = {
+                        sliderRaw = it
+                        com.azime.input.core.keyboard.KeyboardManager.setSliderSymbols(it)
+                    },
+                    label = { Text("滑键符号（空格分隔）") },
+                    placeholder = { Text("例：！ @ 。 、 ？") },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text(
+                    "左列三行高滑键的符号带；留空 = 内置默认符号。滑动选择-松手上屏。",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             Text(
                 "点击按键编辑属性（长按 / 四向滑动 / 右上角提示）；动作值兼容 trime2 preset_keys。",
                 fontSize = 12.sp,

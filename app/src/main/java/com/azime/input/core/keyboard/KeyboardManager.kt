@@ -138,11 +138,39 @@ object KeyboardManager {
     }
 
     /** 增高行开关：关闭时工具栏/候选栏回落为紧凑高度（38dp）。 */
-    fun barEnabled(): Boolean = prefs.getBoolean(PREF_BAR_ENABLED, true)
+    fun barEnabled(): Boolean = prefs.getBoolean(PREF_BAR_ENABLED, false)
 
     fun setBarEnabled(v: Boolean) {
         synchronized(lock) { prefs.edit().putBoolean(PREF_BAR_ENABLED, v).apply() }
     }
+
+    /** 空格键自定义显示文本：空 = 显示当前方案名（默认）。 */
+    private const val PREF_SPACE_LABEL = "space_label"
+
+    fun spaceLabel(): String = prefs.getString(PREF_SPACE_LABEL, "") ?: ""
+
+    fun setSpaceLabel(v: String) {
+        synchronized(lock) { prefs.edit().putString(PREF_SPACE_LABEL, v.trim()).apply() }
+    }
+
+    /**
+     * 九宫格滑键符号带（空格分隔自定义；空 = 内置默认符号）。
+     * 示例："！ @ 。 、 ？" —— 以空格切分，每段一个符号。
+     */
+    private const val PREF_SLIDER_SYMBOLS = "numpad_slider_symbols"
+
+    fun sliderSymbols(): List<String> {
+        val raw = prefs.getString(PREF_SLIDER_SYMBOLS, "")?.trim() ?: ""
+        if (raw.isEmpty()) return com.azime.input.data.keyboard.KeyboardPages.NumpadSliderSymbols
+        val list = raw.split(Regex("\\s+")).filter { it.isNotBlank() }
+        return list.ifEmpty { com.azime.input.data.keyboard.KeyboardPages.NumpadSliderSymbols }
+    }
+
+    fun setSliderSymbols(raw: String) {
+        synchronized(lock) { prefs.edit().putString(PREF_SLIDER_SYMBOLS, raw.trim()).apply() }
+    }
+
+    fun sliderSymbolsRaw(): String = prefs.getString(PREF_SLIDER_SYMBOLS, "") ?: ""
 
     /**
      * 符号提示显示开关：长按符号角标 + 四向滑动预览，各自独立。
@@ -176,7 +204,7 @@ object KeyboardManager {
     /** 尺寸指纹：变化时 Service 重建键盘视图（onStartInputView 检查）。 */
     fun sizeSignature(): String =
         "${keyHeightDp()}x${barHeightDp()}x${barEnabled()}x${hintLong()}" +
-            "x${hintUp()}x${hintDown()}x${hintLeft()}x${hintRight()}"
+            "x${hintUp()}x${hintDown()}x${hintLeft()}x${hintRight()}x${spaceLabel()}x${sliderSymbolsRaw()}"
 
     // ── 工具栏自定义（○ 菜单键之外的可显示工具） ────────────
 

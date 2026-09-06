@@ -140,8 +140,15 @@ object RimeManager {
     suspend fun deployImportedSchemas(context: Context) = withContext(Dispatchers.IO) {
         val sharedDir = File(context.filesDir, "rime/shared")
         sharedDir.mkdirs()
-        runCatching { deployPendingImport(sharedDir) }
+        val changed = runCatching { deployPendingImport(sharedDir) }
             .onFailure { Log.e(TAG, "deployImportedSchemas failed", it) }
+            .getOrDefault(false)
+        // 部署键必须真正触发引擎重新部署（导入无变化时也要全量维护，
+        // 让 Lua 环境 / opencc / 模型等在本次部署中重新加载）并重建会话
+        if (runCatching { RimeEngine.getInstance().startMaintenance(true) }.getOrDefault(false)) {
+            ensureSessionNow()
+        }
+        changed
     }
 
     // ── 资产同步 ──────────────────────────────────────────────
@@ -189,38 +196,43 @@ object RimeManager {
     }
 
     /**
-     * 把导入目录中新增/变更的 yaml 同步进 sharedDir 并触发重新部署。
-     * 判定依据：sharedDir/.imported marker 记录上次已部署的「文件名:长度」清单。
+     * 把导入目录中新增/变更的文件同步进 sharedDir 并触发重新部署。
+     * 判定依据：sharedDir/.imported marker 记录上次已部署的「相对路径:长度」清单。
+     * 轮7：保留子目录结构（lua/ opencc/ models/ …）并拷贝全部扩展名
+     *（此前只平面拷贝 yaml/txt，导致方案包里的 Lua 脚本与词典资源全部缺失、切换后无候选）。
+     * 返回是否发生了同步（需要重新部署）。
      */
-    private fun deployPendingImport(sharedDir: File) {
+    private fun deployPendingImport(sharedDir: File): Boolean {
         val importRoot = try {
             com.azime.input.core.storage.StorageManager.schemaDir
         } catch (e: Exception) {
-            return // Application 未初始化（少见），跳过
+            return false // Application 未初始化（少见），跳过
         }
-        if (!importRoot.isDirectory) return
-        val yamls = importRoot.walkTopDown()
-            .filter { it.isFile && (it.extension == "yaml" || it.extension == "txt") }
+        if (!importRoot.isDirectory) return false
+        val files = importRoot.walkTopDown()
+            .filter { it.isFile && !it.name.startsWith(".") }
             .toList()
-        if (yamls.isEmpty()) return
+        if (files.isEmpty()) return false
 
         val manifest = TreeMap<String, Long>()
-        yamls.forEach { manifest[it.name] = it.length() }
+        files.forEach { manifest[it.relativeTo(importRoot).invariantSeparatorsPath] = it.length() }
         val manifestText = manifest.entries.joinToString("\n") { "${it.key}:${it.value}" }
         val marker = File(sharedDir, ".imported")
         if (marker.exists() && marker.readText() == manifestText &&
             manifest.keys.all { File(sharedDir, it).exists() }
-        ) return
+        ) return false
 
-        yamls.forEach { src ->
-            val dst = File(sharedDir, src.name)
+        files.forEach { src ->
+            val rel = src.relativeTo(importRoot).invariantSeparatorsPath
+            val dst = File(sharedDir, rel)
+            dst.parentFile?.mkdirs()
             src.copyTo(dst, overwrite = true)
         }
         marker.writeText(manifestText)
-        Log.i(TAG, "Deployed ${yamls.size} imported schema files")
+        Log.i(TAG, "Deployed ${files.size} imported schema files (structure preserved)")
 
         // 把导入方案的 schema_id 追加进 schema_list（librime 只部署清单里的方案）
-        val importedIds = yamls.mapNotNull { f ->
+        val importedIds = files.filter { it.extension == "yaml" }.mapNotNull { f ->
             val text = try { f.readText() } catch (e: Exception) { return@mapNotNull null }
             Regex("""schema_id:\s*(\S+)""").find(text)?.groupValues?.get(1)
         }.filter { it.isNotBlank() }.distinct()
@@ -232,6 +244,7 @@ object RimeManager {
             File(sharedDir, "default.custom.yaml").writeText(sb.toString())
         }
         runCatching { RimeEngine.getInstance().startMaintenance(true) }
+        return true
     }
 
     /** 递归枚举 assets/rime 下所有文件（assets 的 list() 不递归）。 */

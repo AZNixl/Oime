@@ -328,7 +328,7 @@ fun SettingsScreen(
                             KsuItem(
                                 icon = Icons.Default.Info,
                                 title = "版本",
-                                subtitle = "0.8.0-oime · 包名 com.oime.input · 平台 RIME",
+                                subtitle = "0.8.1-oime · 包名 com.oime.input · 平台 RIME",
                                 onClick = {},
                                 showChevron = false,
                             )
@@ -393,7 +393,7 @@ fun SettingsScreen(
                             )
                             Spacer(Modifier.height(8.dp))
                             Text("版本", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
-                            Text("0.8.0-oime", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Text("0.8.1-oime", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         }
                     }
                     Card(
@@ -632,6 +632,22 @@ private fun KeyHeightSliders() {
             "增高行 = 键盘最后一行下方多一个无按键的空行（1-72dp）；工具栏自定义：长按 ○ 菜单键勾选",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(8.dp))
+        // 空格键显示文本：留空 = 显示当前方案名（默认）
+        var spaceLabel by remember {
+            mutableStateOf(com.azime.input.core.keyboard.KeyboardManager.spaceLabel())
+        }
+        OutlinedTextField(
+            value = spaceLabel,
+            onValueChange = {
+                spaceLabel = it
+                com.azime.input.core.keyboard.KeyboardManager.setSpaceLabel(it)
+            },
+            label = { Text("空格键显示文本") },
+            placeholder = { Text("留空显示当前方案名") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
         )
     }
 }

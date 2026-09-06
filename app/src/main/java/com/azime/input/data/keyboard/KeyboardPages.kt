@@ -127,14 +127,14 @@ object KeyboardPages {
                 backspace(),
             ),
             row(
-                pageKey("123", width = 2f),
+                pageKey("123", width = 1.7f), // 稍宽于 shift(1.5)，紧凑起步
                 charKey(","),
-                space(),
+                space(width = 4.3f),
                 charKey("."),
                 enter(width = 2f),
             ),
         ),
-        rev = 2,
+        rev = 3,
     )
 
     /** 数字/符号页（第四行首键切换）。rev=2：与 qwerty 第四行同步填满。 */
@@ -158,20 +158,20 @@ object KeyboardPages {
                 backspace(),
             ),
             row(
-                pageKey("ABC", width = 2f),
+                pageKey("ABC", width = 1.7f),
                 charKey(","),
-                space(),
+                space(width = 4.3f),
                 charKey("."),
                 enter(width = 2f),
             ),
         ),
-        rev = 2,
+        rev = 3,
     )
 
     /**
      * 九宫格数字键盘——5 列布局数据（编辑器用简化表达）。
      * 实际渲染由 KeyboardScreen 的 NumpadPane 专门处理：
-     * 左列 = 3 行高滑动预览键（滑动选符号，点击上屏）+ 返回键；中间三列 = 1-0 + 两个符号；
+     * 左列 = 3 行高滑动选符号键（滑动选择-松手上屏）+ 返回键；中间三列 = 1-0 + 两个符号；
      * 右列 = 功能键（⌫ / 符号面板 / 空格 / ⏎）。
      */
     val numpad: KeyboardLayout = KeyboardLayout(

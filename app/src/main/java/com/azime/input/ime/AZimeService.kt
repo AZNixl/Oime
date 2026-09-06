@@ -71,6 +71,8 @@ class AZimeService : InputMethodService() {
     override fun onCreate() {
         super.onCreate()
         lifecycleOwner.onCreate()
+        // 沉浸式圆角：IME 窗口透明，键盘顶部圆角下透出应用内容
+        runCatching { window.window?.setBackgroundDrawableResource(android.R.color.transparent) }
         KeyboardManager.initialize(applicationContext)
         LuaScriptManager.loadScript()
         clipHistory.addAll(loadJsonList(clipHistoryFile))
@@ -169,6 +171,9 @@ class AZimeService : InputMethodService() {
 
     // ── 剪贴板 ───────────────────────────────────────────────
 
+    /** 最近一次从剪贴板条/面板上屏的文本：再次读到同文本时不再显示（xime 式消亡）。 */
+    @Volatile private var lastCommittedClip: String? = null
+
     private fun readClipboard() {
         val clip = runCatching { clipboardManager.primaryClip }.getOrNull() ?: return
         if (clip.itemCount == 0) return
@@ -184,7 +189,7 @@ class AZimeService : InputMethodService() {
                         target.outputStream().use { output -> input.copyTo(output) }
                     }
                     if (target.length() > 0) {
-                        uiState.update { it.copy(clipText = "🖼 [图片 ${target.length() / 1024}KB]") }
+                        uiState.update { it.copy(clipText = "🖼 [图片 ${target.length() / 1024}KB]", clipAtMs = System.currentTimeMillis()) }
                     }
                 }
             }
@@ -192,6 +197,8 @@ class AZimeService : InputMethodService() {
         }
         val text = item.coerceToText(this)?.toString().orEmpty()
         if (text.isNotBlank()) {
+            // 已上屏过的同一段文本不再弹条（复制新内容才会重新出现）
+            if (text.take(80) == lastCommittedClip) return
             uiState.update { it.copy(clipText = text.take(80), clipAtMs = System.currentTimeMillis()) }
             recordClip(text)
         }
@@ -247,8 +254,14 @@ class AZimeService : InputMethodService() {
                     applyResult(RimeManager.getProcessResult())
                 }
                 is KeyAction.SelectSchema -> {
-                    RimeManager.switchSchema(action.schemaId)
-                    refreshState()
+                    // 部署进行中 switchSchema 会直接返回 false——给出提示而非静默失败
+                    val ok = runCatching { RimeManager.switchSchema(action.schemaId) }.getOrDefault(false)
+                    if (ok) {
+                        uiState.update { it.copy(statusMessage = "") }
+                        refreshState()
+                    } else {
+                        uiState.update { it.copy(statusMessage = "引擎部署中，请稍后重试") }
+                    }
                 }
                 KeyAction.PageDown -> {
                     RimeManager.processKey(0xFF55) // Prior/PageDown keysym
@@ -288,6 +301,7 @@ class AZimeService : InputMethodService() {
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     startActivity(intent)
                 }
+                KeyAction.HideKeyboard -> requestHideSelf(0)
                 KeyAction.Deploy -> {
                     // 重新部署方案（○ 菜单 / 方案设置页）
                     uiState.update { it.copy(statusMessage = "正在重新部署方案…") }
@@ -302,6 +316,7 @@ class AZimeService : InputMethodService() {
                 is KeyAction.CommitClipboard -> {
                     currentInputConnection?.commitText(action.text, 1)
                     pushUndo(action.text)
+                    lastCommittedClip = action.text
                     // 上屏后条目消失 + 面板收起，不干扰后续输入
                     uiState.update {
                         it.copy(clipText = "", clipAtMs = 0L, showClipboardPanel = false, showMenuPanel = false)

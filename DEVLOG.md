@@ -255,3 +255,23 @@ vendored RimeEngine 中 `getAvailableSchemas / getSchemaString / getSchemaList`
 
 - 版本 0.8.0-oime（versionCode 6）；括号配平状态机扫描 7 文件全 0。
 - 教训补充：内置键盘布局升级结构时必须递增 rev——编辑器保存的同名自定义 JSON 会遮蔽内置布局（本轮 G/V 对齐失效即此因）。
+
+
+## 反馈轮 7（0.8.1-oime vc7）：10 条 + 追加 2 条
+| # | 需求 | 实现 |
+|---|------|------|
+| 1 | 工具栏输入码+候选显示不全 | 组合行 fixed 38dp → heightIn(min=38dp) 自动增高；上行输入码 12sp + 下行候选 18sp 完整两行，不再裁剪 |
+| 2 | 关闭键盘按钮放最后 | KeyAction.HideKeyboard（requestHideSelf）；工具栏最右固定「⌄」 |
+| 3 | 增高行开关默认关闭 | barEnabled 默认 true→false |
+| 4 | 键盘背景沉浸系统圆角（尝试） | 键盘根容器顶部 18dp 圆角 clip + IME 窗口背景透明（圆角下透出应用内容，仿系统底部弹层） |
+| 5 | 第四行首键减宽 | 123/ABC 键 2.0 → 1.7（稍宽于 shift 1.5），空格 4.0 → 4.3 补位；布局 rev=3（旧 rev 自定义自动失效） |
+| 6 | 九宫格滑键改回滑动-松手上屏 | NumpadSliderKey 恢复轮5交互：滑动选择、松手 DirectCommit 并回中 |
+| 7 | numpad 编辑器同步 + 滑键符号自定义 | 编辑器 numpad 页新增「滑键符号（空格分隔）」输入框（示例"！ @ 。 、 ？"），存 prefs（numpad_slider_symbols），留空=内置默认；NumpadSliderKey 改读自定义带 |
+| 8 | 前三候选映射预设键 | 组合中：空格键=候选1、句号键=候选2、123键=候选3，键面显示实际候选文本点击上屏（无对应候选退回原动作；替代轮6的「次选/三选」文字标签） |
+| 9 | 部署键没生效/切换方案打不出字 | 根因两处：①导入只平面拷贝 yaml/txt，方案包内 lua/、opencc/、models/ 子目录全部丢失→候选翻译链挂掉（真机 logcat 证实：exe_processor/LuaTranslation 报 nil，虎单整 8+ 组件缺失）；②Deploy 键导入无变化时不触发引擎维护。修复：导入保留相对路径结构+全扩展名；Deploy 强制 startMaintenance(true)+重建会话（Lua/opencc/模型重新加载）；SelectSchema 部署中失败给「引擎部署中，请稍后重试」提示 |
+| A | 剪贴板条上屏后不消亡 | lastCommittedClip 记录已上屏文本，readClipboard 读到同文本不再弹条（复制新内容才重现，xime 式） |
+| B | 空格键自定义显示文本 | space_label 偏好：自定义 > 当前方案短名 > 默认；设置→键盘新增输入框；顺带修掉此前显示「○输入法 · pinyin_simp」全串被截断的问题 |
+
+- 版本 0.8.1-oime（versionCode 7）；括号配平状态机扫描 7 文件全 0。
+- 真机排查记录：0.8.0 上候选为空为用户导入虎单整时 lua/opencc/models 被平面导入丢失所致（非 UI 回归）；已手工向设备 shared/ 补齐 14 个 lua + rime.lua + opencc(32) + models(224MB)，装上本版后在○菜单按「部署」触发全量维护即可生效。
+- 注意：空格键=候选1、句号键=候选2、123键=候选3 仅在主键盘组合中生效；九宫格页滑键交互为滑动-松手上屏。
