@@ -155,12 +155,18 @@ private fun LayoutListScreen(
                     modifier = Modifier.padding(top = 8.dp))
             }
             items(builtins, key = { "builtin:$it" }) { name ->
+                // symbols/numpad/emoji 为专用页布局（专用渲染），不可激活为主键盘
+                val assignable = name !in KeyboardManager.ReservedPageNames
                 LayoutCard(
                     name = name,
-                    subtitle = if (active == name) "使用中" else "内置 · 可复制副本编辑",
+                    subtitle = when {
+                        active == name -> "使用中"
+                        !assignable -> "内置 · 专用页布局（✏ 编辑）"
+                        else -> "内置 · 可复制副本编辑"
+                    },
                     active = active == name,
                     custom = false,
-                    onActivate = { activate(name) },
+                    onActivate = { if (assignable) activate(name) },
                     onEdit = { onEdit(name) },
                     onDelete = null,
                 )
@@ -172,12 +178,18 @@ private fun LayoutListScreen(
                         modifier = Modifier.padding(top = 8.dp))
                 }
                 items(customs, key = { "custom:$it" }) { name ->
+                    // 与专用页同名的自定义副本（如 numpad）不可激活为主键盘
+                    val assignable = name !in KeyboardManager.ReservedPageNames
                     LayoutCard(
                         name = name,
-                        subtitle = if (active == name) "使用中" else "自定义",
+                        subtitle = when {
+                            active == name -> "使用中"
+                            !assignable -> "专用页副本 · 不参与主键盘"
+                            else -> "自定义"
+                        },
                         active = active == name,
                         custom = true,
-                        onActivate = { activate(name) },
+                        onActivate = { if (assignable) activate(name) },
                         onEdit = { onEdit(name) },
                         onDelete = { onDelete(name) },
                     )

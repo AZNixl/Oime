@@ -49,6 +49,9 @@ object KeyboardManager {
     @Volatile
     private var activeMain: String = DEFAULT_MAIN
 
+    /** 专用页保留名：symbols/numpad/emoji 有专用渲染，不允许激活为主键盘布局（防编辑器副本劫持主键盘）。 */
+    val ReservedPageNames: Set<String> = setOf("symbols", "numpad", "emoji")
+
     @Volatile
     private var preferredPage: String = DEFAULT_PAGE
 
@@ -59,7 +62,8 @@ object KeyboardManager {
             dir = File(context.filesDir, DIR_NAME)
             dir.mkdirs()
             prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            activeMain = prefs.getString(PREF_ACTIVE_MAIN, DEFAULT_MAIN) ?: DEFAULT_MAIN
+            activeMain = (prefs.getString(PREF_ACTIVE_MAIN, DEFAULT_MAIN) ?: DEFAULT_MAIN)
+                .takeUnless { it in ReservedPageNames } ?: DEFAULT_MAIN
             preferredPage = prefs.getString(PREF_PREFERRED_PAGE, DEFAULT_PAGE) ?: DEFAULT_PAGE
             reloadCustomsLocked()
         }
@@ -283,6 +287,7 @@ object KeyboardManager {
     }
 
     private fun setActiveMainLocked(name: String) {
+        if (name in ReservedPageNames) return
         activeMain = name
         prefs.edit().putString(PREF_ACTIVE_MAIN, name).apply()
     }
