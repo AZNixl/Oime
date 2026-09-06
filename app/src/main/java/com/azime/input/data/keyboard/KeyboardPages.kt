@@ -103,7 +103,10 @@ object KeyboardPages {
         longClick = KeyActions.SYMBOLS_LONG,
     )
 
-    /** 26 键主键盘（第二行左右各偏移 0.5 键宽：G 对齐 V，第四行与上一行边缘对齐）。 */
+    /**
+     * 26 键主键盘（第二行左右各偏移 0.5 键宽：G 对齐 V，第四行与上一行边缘对齐）。
+     * rev=2：第四行 123/⏎ 加宽填满整行（旧版行尾留白）。
+     */
     val qwerty: KeyboardLayout = KeyboardLayout(
         name = "qwerty",
         rows = listOf(
@@ -124,16 +127,17 @@ object KeyboardPages {
                 backspace(),
             ),
             row(
-                pageKey("123"),
+                pageKey("123", width = 2f),
                 charKey(","),
                 space(),
                 charKey("."),
-                enter(),
+                enter(width = 2f),
             ),
         ),
+        rev = 2,
     )
 
-    /** 数字/符号页（第四行首键切换）。 */
+    /** 数字/符号页（第四行首键切换）。rev=2：与 qwerty 第四行同步填满。 */
     val symbols: KeyboardLayout = KeyboardLayout(
         name = "symbols",
         rows = listOf(
@@ -154,20 +158,21 @@ object KeyboardPages {
                 backspace(),
             ),
             row(
-                pageKey("ABC"),
+                pageKey("ABC", width = 2f),
                 charKey(","),
                 space(),
                 charKey("."),
-                enter(),
+                enter(width = 2f),
             ),
         ),
+        rev = 2,
     )
 
     /**
      * 九宫格数字键盘——5 列布局数据（编辑器用简化表达）。
      * 实际渲染由 KeyboardScreen 的 NumpadPane 专门处理：
-     * 左列 = 3 行高滑动选符号键 + 返回键；中间三列 = 1-0 + 两个符号；
-     * 右列 = 功能键（⌫ / 中英 / 空格 / ⏎）。
+     * 左列 = 3 行高滑动预览键（滑动选符号，点击上屏）+ 返回键；中间三列 = 1-0 + 两个符号；
+     * 右列 = 功能键（⌫ / 符号面板 / 空格 / ⏎）。
      */
     val numpad: KeyboardLayout = KeyboardLayout(
         name = "numpad",
@@ -178,18 +183,19 @@ object KeyboardPages {
             ),
             row(
                 charKey("4", width = 2f), charKey("5", width = 2f), charKey("6", width = 2f),
-                Key("中/EN", code = "toggle_ascii", width = 2f, type = KeyType.FUNCTION),
+                Key("符", code = "symgrid", width = 2f, type = KeyType.FUNCTION),
             ),
             row(
                 charKey("7", width = 2f), charKey("8", width = 2f), charKey("9", width = 2f),
                 space(width = 2f),
             ),
             row(
-                pageKey("26", target = "main", width = 2f),
+                pageKey("返回", target = "main", width = 2f),
                 charKey("0", width = 2f), charKey(".", width = 2f), charKey(",", width = 2f),
                 enter(width = 2f),
             ),
         ),
+        rev = 2,
     )
 
     /** 九宫格左列滑动选符号键的符号带（上下滑动选择，松手上屏）。 */

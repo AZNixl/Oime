@@ -77,6 +77,13 @@ object KeyboardManager {
                 file.delete()
                 continue
             }
+            // 与内置同名的旧版本自定义布局视为过期：删除并回退新版内置（防旧 JSON 遮蔽新布局结构）
+            val builtin = builtinByName(layout.name)
+            if (builtin != null && builtin.rev > layout.rev) {
+                file.delete()
+                if (activeMain == layout.name) setActiveMainLocked(builtin.name)
+                continue
+            }
             customs[layout.name] = layout
         }
     }

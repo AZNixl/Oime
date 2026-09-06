@@ -10,6 +10,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -170,13 +171,12 @@ fun SettingsScreen(
     val cs = MaterialTheme.colorScheme
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    // 一级菜单（main）+ 二级页：schemas | keyboard | theme | appearance | about
+    // 一级菜单（main）+ 二级页：schemas | keyboard | theme | about
     var subPage by remember { mutableStateOf("main") }
     val subTitles = mapOf(
         "schemas" to "输入方案",
         "keyboard" to "键盘",
         "theme" to "主题与配色",
-        "appearance" to "外观",
         "about" to "关于",
     )
 
@@ -285,7 +285,7 @@ fun SettingsScreen(
             }
             return@Scaffold
         }
-        // ── 二级页：主题与配色（参考小企鹅输入法.fx） ──
+        // ── 二级页：主题与配色（参考小企鹅输入法.fx：主题卡片网格 + 自定义色） ──
         if (subPage == "theme") {
             LazyColumn(
                 modifier = Modifier
@@ -296,26 +296,14 @@ fun SettingsScreen(
                 contentPadding = PaddingValues(vertical = 8.dp),
             ) {
                 item { Card { Column { ThemeColorSettings() } } }
-            }
-            return@Scaffold
-        }
-        // ── 二级页：外观 ──
-        if (subPage == "appearance") {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                contentPadding = PaddingValues(vertical = 8.dp),
-            ) {
                 item {
+                    // 字体管理入口：位于主题与配色下层
                     Card {
                         Column(Modifier.padding(vertical = 4.dp)) {
                             KsuItem(
                                 icon = Icons.Default.FontDownload,
                                 title = "字体管理",
-                                subtitle = "键帽 / 候选字体（Documents/Oime/fonts）",
+                                subtitle = "多选字体回退链（Documents/Oime/fonts）",
                                 onClick = onManageFonts,
                             )
                         }
@@ -340,7 +328,7 @@ fun SettingsScreen(
                             KsuItem(
                                 icon = Icons.Default.Info,
                                 title = "版本",
-                                subtitle = "0.7.0-oime · 包名 com.oime.input · 平台 RIME",
+                                subtitle = "0.8.0-oime · 包名 com.oime.input · 平台 RIME",
                                 onClick = {},
                                 showChevron = false,
                             )
@@ -405,7 +393,7 @@ fun SettingsScreen(
                             )
                             Spacer(Modifier.height(8.dp))
                             Text("版本", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
-                            Text("0.7.0-oime", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Text("0.8.0-oime", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         }
                     }
                     Card(
@@ -453,14 +441,8 @@ fun SettingsScreen(
                         KsuItem(
                             icon = Icons.Default.Palette,
                             title = "主题与配色",
-                            subtitle = "深浅色模式 · 强调色预设 / 自定义",
+                            subtitle = "主题卡片 · 强调色 · 字体管理",
                             onClick = { subPage = "theme" },
-                        )
-                        KsuItem(
-                            icon = Icons.Default.FontDownload,
-                            title = "外观",
-                            subtitle = "字体管理",
-                            onClick = { subPage = "appearance" },
                         )
                         KsuItem(
                             icon = Icons.Default.Backup,
@@ -756,7 +738,7 @@ private fun SymbolHintSettings() {
     }
 }
 
-/** 主题与配色（参考小企鹅输入法.fx）：深浅色模式 + 强调色预设 / 自定义 RGB。 */
+/** 主题与配色（参考小企鹅输入法.fx）：色彩模式 + 主题卡片网格（迷你键盘预览）+ 自定义 RGB。 */
 @Composable
 private fun ThemeColorSettings() {
     val km = com.azime.input.core.theme.KeyboardTheme
@@ -784,28 +766,31 @@ private fun ThemeColorSettings() {
         }
         Spacer(Modifier.height(12.dp))
 
-        Text("强调色（回车键 / 高亮）", style = MaterialTheme.typography.titleSmall)
+        Text("主题配色", style = MaterialTheme.typography.titleSmall)
         Spacer(Modifier.height(8.dp))
-        // 预设色板
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            km.accentPresets.forEach { (name, light, dark) ->
-                val selected = km.accentLight() == light && km.accentDark() == dark
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Box(
-                        modifier = Modifier
-                            .size(34.dp)
-                            .background(Color(light), CircleShape)
-                            .clickable { km.setAccents(light, dark); accentRev++ },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        if (selected) Text("✓", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                    }
-                    Spacer(Modifier.height(2.dp))
-                    Text(name, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        // 主题卡片网格（2 列）：迷你键盘预览（工具栏 + 三行键 + 强调色回车键），点击应用
+        km.accentPresets.chunked(2).forEach { rowPresets ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                rowPresets.forEach { (name, light, dark) ->
+                    val selected = km.accentLight() == light && km.accentDark() == dark
+                    ThemeCard(
+                        name = name,
+                        accentLight = light,
+                        accentDark = dark,
+                        darkMode = mode == km.MODE_DARK,
+                        selected = selected,
+                        onClick = { km.setAccents(light, dark); accentRev++ },
+                        modifier = Modifier.weight(1f),
+                    )
                 }
+                // 奇数个补位
+                repeat(2 - rowPresets.size) { Spacer(Modifier.weight(1f)) }
             }
+            Spacer(Modifier.height(10.dp))
         }
-        Spacer(Modifier.height(10.dp))
 
         // 自定义 RGB（亮 / 暗共用一个自定义色）
         key(accentRev) {
@@ -825,10 +810,89 @@ private fun ThemeColorSettings() {
             Slider(value = b, onValueChange = { b = it; apply() }, valueRange = 0f..1f)
         }
         Text(
-            "配色应用于键盘强调色（回车键、候选高亮等）与设置页主色；下次键盘弹出生效。",
+            "主题卡片即时预览，点击应用；配色应用于键盘强调色（回车键、候选高亮等）与设置页主色，下次键盘弹出生效。",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+    }
+}
+
+/** 迷你键盘预览主题卡片（参考小企鹅输入法的主题选择卡）。 */
+@Composable
+private fun ThemeCard(
+    name: String,
+    accentLight: Int,
+    accentDark: Int,
+    darkMode: Boolean,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val cs = MaterialTheme.colorScheme
+    // 预览按当前色彩模式渲染：暗色模式用暗色 accent 预览
+    val accent = Color(if (darkMode) accentDark else accentLight)
+    val previewBg = if (darkMode) Color(0xFF1B1D1F) else Color(0xFFE9EBEE)
+    val keyBg = if (darkMode) Color(0xFF2A2D2F) else Color.White
+    val keyText = if (darkMode) Color(0xFFE8EAED) else Color(0xFF202124)
+    val cardBorder = if (selected) BorderStroke(2.dp, cs.primary) else BorderStroke(1.dp, cs.outlineVariant)
+
+    Column(modifier = modifier) {
+        Card(
+            shape = RoundedCornerShape(12.dp),
+            border = cardBorder,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick),
+        ) {
+            Column(
+                modifier = Modifier
+                    .background(previewBg)
+                    .padding(6.dp),
+                verticalArrangement = Arrangement.spacedBy(3.dp),
+            ) {
+                // 迷你工具栏
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(8.dp)
+                        .background(if (darkMode) Color(0xFF26282A) else Color.White, RoundedCornerShape(3.dp))
+                        .padding(horizontal = 3.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(3.dp),
+                ) {
+                    Box(Modifier.size(4.dp).background(keyText, CircleShape))
+                    Box(Modifier.weight(1f).height(3.dp).background(keyText.copy(alpha = 0.25f), RoundedCornerShape(2.dp)))
+                    Box(Modifier.size(4.dp).background(accent, CircleShape))
+                }
+                // 三行迷你键位：最后一键为强调色（回车）
+                repeat(3) { row ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                        repeat(4) { col ->
+                            val isEnter = row == 2 && col == 3
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(11.dp)
+                                    .background(if (isEnter) accent else keyBg, RoundedCornerShape(3.dp)),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(3.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                name,
+                fontSize = 12.sp,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                color = if (selected) cs.primary else cs.onSurface,
+                modifier = Modifier.weight(1f),
+            )
+            if (selected) {
+                Icon(Icons.Default.Check, contentDescription = "已选", tint = cs.primary, modifier = Modifier.size(14.dp))
+            }
+        }
     }
 }
 

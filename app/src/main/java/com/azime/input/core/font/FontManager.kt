@@ -3,31 +3,36 @@ package com.azime.input.core.font
 import android.content.Context
 import android.graphics.Typeface
 import android.net.Uri
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
 import androidx.documentfile.provider.DocumentFile
 import com.azime.input.AZimeApplication
 import com.azime.input.core.storage.StorageManager
 import java.io.File
 
 /**
- * 字体管理器（外置目录版）。
+ * 字体管理器（外置目录版，参考 xime.az AppFonts 实现方式）。
  *
- * 不做导入：直接读取外置字体目录 `Documents/AZime/fonts/`，
+ * 不做导入：直接读取外置字体目录 `Documents/Oime/fonts/`，
  * 用户通过 USB / 文件管理器放入 ttf/otf/ttc 即可被扫描到。
  *
- * 多字体：两个可选角色 —— 键帽字体（keyFont）与候选字体（candidateFont），
- * 各自独立生效；空值 = 系统默认。
+ * 多字体（xime 方式）：可多选若干字体，选择顺序即回退顺序——
+ * 首选字体缺字形时依次回退后续字体，最后回退系统默认，
+ * Compose 端构建为 [FontFamily] 回退链。
  */
 object FontManager {
 
     private const val PREFS_NAME = "font_prefs"
-    private const val KEY_KEY_FONT = "key_font"
-    private const val KEY_CAND_FONT = "candidate_font"
-    private const val KEY_PANEL_FONT = "panel_font"
+    private const val KEY_SELECTED_FONTS = "selected_fonts"
 
     private val prefs
         get() = AZimeApplication.instance.getSharedPreferences(PREFS_NAME, android.content.Context.MODE_PRIVATE)
 
     private val typefaceCache = HashMap<String, Typeface>()
+
+    /** FontFamily 回退链缓存：签名（文件名逗号连接）→ FontFamily。 */
+    @Volatile
+    private var familyCache: Pair<String, FontFamily>? = null
 
     val supportedExtensions = setOf("ttf", "otf", "ttc")
 
@@ -61,6 +66,53 @@ object FontManager {
         return fontsDir().walkTopDown().firstOrNull { it.isFile && it.name == name }
     }
 
+    // ── 多选字体（xime AppFonts 方式：选择顺序 = 回退顺序） ──
+
+    /** 已选字体文件名列表（顺序即回退顺序）。 */
+    fun selectedFonts(): List<String> {
+        val raw = prefs.getString(KEY_SELECTED_FONTS, "") ?: ""
+        return raw.split('\n').filter { it.isNotBlank() }
+    }
+
+    /** 保存多选字体列表（保持传入顺序）。 */
+    fun setSelectedFonts(names: List<String>) {
+        prefs.edit().putString(KEY_SELECTED_FONTS, names.joinToString("\n")).apply()
+        familyCache = null
+    }
+
+    fun isFontSelected(name: String): Boolean = selectedFonts().contains(name)
+
+    /**
+     * 当前键盘字体回退链（键帽/候选/面板统一使用）：
+     * 多个字体按选择顺序构建 FontFamily，缺字形依次回退；
+     * 未选择任何字体时返回 null（调用方用系统默认字体）。
+     * 按文件名列表签名缓存，变更时自动重建。
+     */
+    fun keyboardFontFamily(): FontFamily? {
+        val names = selectedFonts()
+        if (names.isEmpty()) return null
+        val signature = names.joinToString(",")
+        familyCache?.let { (sig, family) -> if (sig == signature) return family }
+        val fonts = mutableListOf<Font>()
+        for (name in names) {
+            val file = findFontFile(name) ?: continue
+            try {
+                fonts.add(Font(file))
+            } catch (_: Exception) { /* 跳过损坏文件 */ }
+        }
+        if (fonts.isEmpty()) return null
+        return try {
+            FontFamily(fonts).also { familyCache = signature to it }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /** 字体设置变更后调用（setSelectedFonts 已自动失效，保留给外部强制刷新用）。 */
+    fun invalidateCustomFont() {
+        familyCache = null
+    }
+
     /**
      * SAF 导入：把用户选中的文件夹（含子目录）中的字体复制到应用私有目录，
      * 绕过 Android 13+ 对 Documents 的 File 读取限制。返回成功导入的数量。
@@ -91,35 +143,10 @@ object FontManager {
         return count
     }
 
-    /** 删除字体文件；若正被任一角色使用则回退系统默认。 */
+    /** 删除字体文件；若在多选列表中则移除。 */
     fun deleteFont(name: String) {
         findFontFile(name)?.delete()
         typefaceCache.remove(name)
-        if (keyFontName() == name) setKeyFont("")
-        if (candidateFontName() == name) setCandidateFont("")
-        if (panelFontName() == name) setPanelFont("")
-    }
-
-    // ── 角色一：键帽字体 ──
-    fun keyFontName(): String = prefs.getString(KEY_KEY_FONT, "") ?: ""
-    fun setKeyFont(name: String) = prefs.edit().putString(KEY_KEY_FONT, name).apply()
-    fun keyTypeface(): Typeface? = typefaceFor(keyFontName())
-
-    // ── 角色二：候选栏字体 ──
-    fun candidateFontName(): String = prefs.getString(KEY_CAND_FONT, "") ?: ""
-    fun setCandidateFont(name: String) = prefs.edit().putString(KEY_CAND_FONT, name).apply()
-    fun candidateTypeface(): Typeface? = typefaceFor(candidateFontName())
-
-    // ── 角色三：候选面板字体（更多候选 / emoji / 符号网格） ──
-    fun panelFontName(): String = prefs.getString(KEY_PANEL_FONT, "") ?: ""
-    fun setPanelFont(name: String) = prefs.edit().putString(KEY_PANEL_FONT, name).apply()
-    fun panelTypeface(): Typeface? = typefaceFor(panelFontName())
-
-    private fun typefaceFor(name: String): Typeface? {
-        if (name.isBlank()) return null
-        return typefaceCache.getOrPut(name) {
-            val file = findFontFile(name) ?: return null
-            Typeface.createFromFile(file)
-        }
+        if (isFontSelected(name)) setSelectedFonts(selectedFonts() - name)
     }
 }
