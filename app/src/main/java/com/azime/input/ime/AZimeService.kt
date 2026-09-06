@@ -71,8 +71,15 @@ class AZimeService : InputMethodService() {
     override fun onCreate() {
         super.onCreate()
         lifecycleOwner.onCreate()
-        // 沉浸式圆角：IME 窗口透明，键盘顶部圆角下透出应用内容
-        runCatching { window.window?.setBackgroundDrawableResource(android.R.color.transparent) }
+        // 沉浸式圆角：IME 窗口透明，键盘顶部圆角下透出应用内容；
+        // 底部导航条增高区涂键盘背景色（随深浅色主题），实现底部沉浸
+        runCatching {
+            window.window?.let { w ->
+                w.setBackgroundDrawableResource(android.R.color.transparent)
+                w.navigationBarColor = navBarColorInt()
+                w.isNavigationBarContrastEnforced = false
+            }
+        }
         KeyboardManager.initialize(applicationContext)
         LuaScriptManager.loadScript()
         clipHistory.addAll(loadJsonList(clipHistoryFile))
@@ -138,6 +145,9 @@ class AZimeService : InputMethodService() {
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
         lifecycleOwner.resume()
+        currentEditorInfo = info
+        // 主题深浅色可能已切换：每次弹键刷新导航条增高区颜色
+        runCatching { window.window?.navigationBarColor = navBarColorInt() }
         selectAnchor = -1
         selectCursor = -1
         joystickAnchor = -1
@@ -173,6 +183,15 @@ class AZimeService : InputMethodService() {
 
     /** 最近一次从剪贴板条/面板上屏的文本：再次读到同文本时不再显示（xime 式消亡）。 */
     @Volatile private var lastCommittedClip: String? = null
+
+    /** 导航条增高区颜色 = 键盘背景色（深浅色感知，与 buildKeyboardColors 的 bg 保持一致）。 */
+    private fun navBarColorInt(): Int {
+        val nightMask = resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK
+        val dark = com.azime.input.core.theme.KeyboardTheme.isDark(
+            nightMask == android.content.res.Configuration.UI_MODE_NIGHT_YES,
+        )
+        return if (dark) 0xFF1B1D1F.toInt() else 0xFFE9EBEE.toInt()
+    }
 
     private fun readClipboard() {
         val clip = runCatching { clipboardManager.primaryClip }.getOrNull() ?: return
@@ -226,11 +245,25 @@ class AZimeService : InputMethodService() {
 
     private fun onKeyAction(action: KeyAction) {
         scope.launch {
+            // 剪贴板条显示时，点击任意按键都让其消亡（点条本身上屏由 CommitClipboard 处理）
+            if (action !is KeyAction.CommitClipboard && uiState.value.clipText.isNotBlank()) {
+                uiState.update { it.copy(clipText = "", clipAtMs = 0L) }
+            }
             when (action) {
                 is KeyAction.CharKey -> handleChar(action.c)
                 is KeyAction.DirectCommit -> {
-                    currentInputConnection?.commitText(action.text, 1)
-                    pushUndo(action.text)
+                    // 中文模式下的单字符先送 Rime（识别反查引导符，如 ` 笔画反查），
+                    // 引擎未消费再直出（对齐 xime.az ImeKeyRouter 的符号键盘处理）
+                    val text = action.text
+                    if (!uiState.value.asciiMode && text.length == 1 && text[0].code < 0x80) {
+                        val result = RimeManager.processKey(text[0].code)
+                        if (result.processed) {
+                            applyResult(result)
+                            return@launch
+                        }
+                    }
+                    currentInputConnection?.commitText(text, 1)
+                    pushUndo(text)
                     uiState.update { it.copy(shiftOn = false) }
                     refreshState()
                 }
@@ -262,6 +295,10 @@ class AZimeService : InputMethodService() {
                     } else {
                         uiState.update { it.copy(statusMessage = "引擎部署中，请稍后重试") }
                     }
+                }
+                is KeyAction.ToggleSwitch -> {
+                    RimeManager.setOption(action.name, !RimeManager.getOption(action.name))
+                    refreshState()
                 }
                 KeyAction.PageDown -> {
                     RimeManager.processKey(0xFF55) // Prior/PageDown keysym
@@ -570,6 +607,9 @@ class AZimeService : InputMethodService() {
         refreshState()
     }
 
+    /** 当前输入框的 EditorInfo（回车键行为判断用）。 */
+    private var currentEditorInfo: EditorInfo? = null
+
     private suspend fun handleEnter() {
         val result = RimeManager.processKey(KEY_RETURN)
         if (result.processed && result.committedText.isNotEmpty()) {
@@ -577,9 +617,33 @@ class AZimeService : InputMethodService() {
             applyResult(result)
             return
         }
-        // 无编码时回车 = 换行
-        currentInputConnection?.commitText("\n", 1)
-        pushUndo("\n")
+        if (result.processed) {
+            // 引擎消化了回车（如清空编码），只同步状态
+            applyResult(result)
+            return
+        }
+        // 无编码时回车：输入框声明了编辑动作（发送/搜索/完成/前往）则触发动作（对齐 xime.az，
+        // 微信等聊天应用可用回车直接发送）；多行文本框（NO_ENTER_ACTION）或未声明动作时
+        // 发系统回车键（与 xime.az 一致，由应用自行处理换行）。
+        val ic = currentInputConnection
+        val info = currentEditorInfo
+        if (ic != null && info != null) {
+            val action = info.imeOptions and EditorInfo.IME_MASK_ACTION
+            val noEnterAction = (info.imeOptions and EditorInfo.IME_FLAG_NO_ENTER_ACTION) != 0
+            if (action == EditorInfo.IME_ACTION_GO ||
+                action == EditorInfo.IME_ACTION_SEARCH ||
+                action == EditorInfo.IME_ACTION_SEND ||
+                action == EditorInfo.IME_ACTION_NEXT ||
+                action == EditorInfo.IME_ACTION_DONE
+            ) {
+                if (!noEnterAction) {
+                    ic.performEditorAction(action)
+                    refreshState()
+                    return
+                }
+            }
+        }
+        sendDownUpKeyEvents(android.view.KeyEvent.KEYCODE_ENTER)
         refreshState()
     }
 

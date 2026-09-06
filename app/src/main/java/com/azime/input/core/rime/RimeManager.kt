@@ -10,6 +10,9 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.TreeMap
 
+/** 方案 schema.yaml 的 switches 开关项（name + states 两态文案）。 */
+data class SchemaSwitch(val name: String, val states: List<String>)
+
 /**
  * RIME 引擎封装：负责资产部署（assets/rime -> sharedDataDir）与面向键盘的简化 API。
  *
@@ -117,6 +120,74 @@ object RimeManager {
     fun switchSchema(schemaId: String): Boolean = RimeEngine.getInstance().switchSchema(schemaId)
 
     fun isMaintaining(): Boolean = RimeEngine.getInstance().isMaintaining()
+
+    // ── 方案 switches 开关（○ 菜单「方案开关」） ──────────────
+
+    fun getOption(name: String): Boolean = RimeEngine.getInstance().getOption(name)
+
+    fun setOption(name: String, value: Boolean) = RimeEngine.getInstance().setOption(name, value)
+
+    /** 解析方案 .schema.yaml 的 switches 段（name + states，跳过 options 型无名条目）。 */
+    fun schemaSwitches(schemaId: String): List<SchemaSwitch> {
+        if (schemaId.isBlank()) return emptyList()
+        val f = File(
+            com.azime.input.AZimeApplication.instance.filesDir,
+            "rime/shared/$schemaId.schema.yaml",
+        )
+        if (!f.exists()) return emptyList()
+        val result = mutableListOf<SchemaSwitch>()
+        var curName: String? = null
+        var curStates = mutableListOf<String>()
+        var inStatesBlock = false
+        var inSwitches = false
+        fun flush() {
+            val n = curName
+            if (n != null) result.add(SchemaSwitch(n, curStates.toList()))
+            curName = null
+            curStates = mutableListOf()
+            inStatesBlock = false
+        }
+        runCatching {
+            f.useLines { raw ->
+                for (rawLine in raw) {
+                    val line = rawLine.trimEnd()
+                    val t = line.trim()
+                    if (t.isEmpty() || t.startsWith("#")) continue
+                    if (!inSwitches) {
+                        if (t == "switches:") inSwitches = true
+                        continue
+                    }
+                    // switches 段结束：遇到顶格非注释键
+                    if (!line.startsWith(" ") && !t.startsWith("-")) { flush(); inSwitches = false; continue }
+                    val entry = t.removePrefix("- ")
+                    when {
+                        entry.startsWith("name:") -> {
+                            flush()
+                            curName = entry.removePrefix("name:").trim().trim('\'', '"')
+                        }
+                        entry.startsWith("states:") -> {
+                            val inline = entry.removePrefix("states:").trim()
+                            if (inline.startsWith("[")) {
+                                curStates = inline.trim('[', ']')
+                                    .split(',')
+                                    .map { it.trim().trim('\'', '"') }
+                                    .filter { it.isNotEmpty() }
+                                    .toMutableList()
+                            } else {
+                                inStatesBlock = true
+                            }
+                        }
+                        // options 型（无 name，不可切换）：丢弃
+                        entry.startsWith("options:") || entry.startsWith("abort:") -> flush()
+                        inStatesBlock && t.startsWith("- ") && curName != null ->
+                            curStates.add(entry.trim().trim('\'', '"'))
+                    }
+                }
+            }
+        }
+        flush()
+        return result
+    }
 
     /** 方案显示名：优先读 shared 目录下 schema.yaml 的 name 字段，退回 id。 */
     fun schemaDisplayName(schemaId: String): String {

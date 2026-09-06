@@ -295,3 +295,23 @@ vendored RimeEngine 中 `getAvailableSchemas / getSchemaString / getSchemaList`
 ### 真机发现的新 bug（本轮修复）
 - **编辑器可把 symbols/numpad 激活为主键盘**：内置列表行点击即 setActiveMain(name)，误点 numpad 行（或保存同名副本后激活）会把主键盘指针劫持到专用页布局——主键盘页走通用分支渲染出无滑键的 4 列数字网格，qwerty 被顶掉。修复：①KeyboardManager.ReservedPageNames（symbols/numpad/emoji），setActiveMainLocked 拒绝 + initialize 读回防御；②编辑器内置/自定义列表对保留名禁用激活、副标题标注「专用页布局/不参与主键盘」。
 - 版本 0.8.2-oime（versionCode 8）。
+
+
+## 反馈轮 8（0.8.3-oime vc9）
+
+| # | 反馈 | 处理 |
+|---|------|------|
+| 1 | 键盘背景色与系统底部增高（导航条）没有沉浸 | IME 窗口 navigationBarColor 涂键盘背景色（深浅色感知 0xFFE9EBEE / 0xFF1B1D1F），关闭系统对比度压暗 isNavigationBarContrastEnforced=false；onStartInputView 每次弹键刷新（主题切换生效） |
+| 2 | 工具栏输入时两行增高突兀 | 组合行改单行内联：输入码在前 + 候选横滚同排 + 翻页/更多候选箭头，高度不变（参考 xime CandidateBar） |
+| 3 | 前三候选映射键背景变色 | 映射键保持原键背景/字色，仅键面文本换成候选词 |
+| 4 | switches 开关进○菜单 + 移除页面项 + 子面板同风格 | ①新大项「方案开关」：子级面板内切换方案 + 当前方案 schema.yaml switches 段开关（RimeManager.schemaSwitches 解析 name/states，跳过 options 型；引擎 getOption/setOption 实时切换）②○菜单移除 26键/数字/符号/表情 ③「输入方案」「定制工具栏」改为面板内子级页（MenuSubPanel：← 返回 + 标题 + ↑ 关闭，与一级菜单同区域同风格），不再跳独立界面 |
+| 5 | 九宫格「符」改「符号」 | NumpadPane 右列键标签改为「符号」 |
+| 6 | popup 每行 5 个 + 翻页 + 字号调小 | 长按气泡改纵向 5 个/页网格（16sp），滑动跨页自动翻页，底部 ‹ x/y › 指示器可点击翻页 |
+| 7 | 剪贴板条点任意键消亡 | onKeyAction 入口统一处理：剪贴板条显示时任一按键动作先清 clipText（点条本身上屏除外） |
+| 8 | 长按太容易触发；回车键微信无法发送 | ①对齐 xime.az KeyButton：长按触发前移动超 5dp 取消定时器（longCancelled），180ms 阈值不变 ②handleEnter 重写（对齐 xime.az ImeKeyRouter）：composing 交给 RIME；无编码时 imeOptions 声明 GO/SEARCH/SEND/NEXT/DONE 则 performEditorAction（微信可回车发送），否则 sendDownUpKeyEvents(KEYCODE_ENTER) 换行 |
+| 9 | Z键符号 ` 无法触发反查 | 对齐 xime.az：中文模式单字符（ASCII）DirectCommit 先 RimeManager.processKey(charCode)（recognizer 反查引导符可识别），引擎未消费再直出上屏 |
+
+技术记录：
+- RimeManager 新增 getOption/setOption/schemaSwitches(schemaId)（解析 shared/<id>.schema.yaml switches 段）+ SchemaSwitch data class
+- KeyAction 新增 ToggleSwitch(name)；AZimeService currentEditorInfo 字段
+- 参考源码：xime.az（github AZNixl/Xime.az）KeyButton.kt 长按 5dp 取消 / ImeKeyRouter.kt 回车与反查
