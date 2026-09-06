@@ -22,6 +22,7 @@ object FontManager {
     private const val PREFS_NAME = "font_prefs"
     private const val KEY_KEY_FONT = "key_font"
     private const val KEY_CAND_FONT = "candidate_font"
+    private const val KEY_PANEL_FONT = "panel_font"
 
     private val prefs
         get() = AZimeApplication.instance.getSharedPreferences(PREFS_NAME, android.content.Context.MODE_PRIVATE)
@@ -96,6 +97,7 @@ object FontManager {
         typefaceCache.remove(name)
         if (keyFontName() == name) setKeyFont("")
         if (candidateFontName() == name) setCandidateFont("")
+        if (panelFontName() == name) setPanelFont("")
     }
 
     // ── 角色一：键帽字体 ──
@@ -103,10 +105,15 @@ object FontManager {
     fun setKeyFont(name: String) = prefs.edit().putString(KEY_KEY_FONT, name).apply()
     fun keyTypeface(): Typeface? = typefaceFor(keyFontName())
 
-    // ── 角色二：候选字体 ──
+    // ── 角色二：候选栏字体 ──
     fun candidateFontName(): String = prefs.getString(KEY_CAND_FONT, "") ?: ""
     fun setCandidateFont(name: String) = prefs.edit().putString(KEY_CAND_FONT, name).apply()
     fun candidateTypeface(): Typeface? = typefaceFor(candidateFontName())
+
+    // ── 角色三：候选面板字体（更多候选 / emoji / 符号网格） ──
+    fun panelFontName(): String = prefs.getString(KEY_PANEL_FONT, "") ?: ""
+    fun setPanelFont(name: String) = prefs.edit().putString(KEY_PANEL_FONT, name).apply()
+    fun panelTypeface(): Typeface? = typefaceFor(panelFontName())
 
     private fun typefaceFor(name: String): Typeface? {
         if (name.isBlank()) return null

@@ -51,6 +51,7 @@ fun FontManagerScreen(onBack: () -> Unit) {
     var fonts by remember(version) { mutableStateOf(FontManager.fontFiles()) }
     var keyFont by remember(version) { mutableStateOf(FontManager.keyFontName()) }
     var candFont by remember(version) { mutableStateOf(FontManager.candidateFontName()) }
+    var panelFont by remember(version) { mutableStateOf(FontManager.panelFontName()) }
     var pendingDelete by remember { mutableStateOf<File?>(null) }
 
     fun refresh() { version++ }
@@ -121,8 +122,10 @@ fun FontManagerScreen(onBack: () -> Unit) {
                             file = font,
                             isKey = keyFont == font.name,
                             isCand = candFont == font.name,
+                            isPanel = panelFont == font.name,
                             onSetKey = { FontManager.setKeyFont(font.name); refresh() },
                             onSetCand = { FontManager.setCandidateFont(font.name); refresh() },
+                            onSetPanel = { FontManager.setPanelFont(font.name); refresh() },
                             onDelete = { pendingDelete = font },
                         )
                     }
@@ -155,8 +158,10 @@ private fun FontCard(
     file: File,
     isKey: Boolean,
     isCand: Boolean,
+    isPanel: Boolean,
     onSetKey: () -> Unit,
     onSetCand: () -> Unit,
+    onSetPanel: () -> Unit,
     onDelete: () -> Unit,
 ) {
     // 预览字体（文件损坏时静默回退默认字体，避免崩溃）
@@ -188,9 +193,9 @@ private fun FontCard(
                         contentColor = if (isKey) MaterialTheme.colorScheme.onPrimary
                         else MaterialTheme.colorScheme.onSurface,
                     ),
-                    contentPadding = PaddingValues(horizontal = 12.dp),
-                ) { Text(if (isKey) "键帽 ✓" else "用作键帽") }
-                Spacer(Modifier.width(8.dp))
+                    contentPadding = PaddingValues(horizontal = 10.dp),
+                ) { Text(if (isKey) "键帽 ✓" else "键帽", fontSize = 12.sp) }
+                Spacer(Modifier.width(6.dp))
                 FilledTonalButton(
                     onClick = onSetCand,
                     colors = ButtonDefaults.filledTonalButtonColors(
@@ -199,8 +204,19 @@ private fun FontCard(
                         contentColor = if (isCand) MaterialTheme.colorScheme.onPrimary
                         else MaterialTheme.colorScheme.onSurface,
                     ),
-                    contentPadding = PaddingValues(horizontal = 12.dp),
-                ) { Text(if (isCand) "候选 ✓" else "用作候选") }
+                    contentPadding = PaddingValues(horizontal = 10.dp),
+                ) { Text(if (isCand) "候选 ✓" else "候选", fontSize = 12.sp) }
+                Spacer(Modifier.width(6.dp))
+                FilledTonalButton(
+                    onClick = onSetPanel,
+                    colors = ButtonDefaults.filledTonalButtonColors(
+                        containerColor = if (isPanel) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = if (isPanel) MaterialTheme.colorScheme.onPrimary
+                        else MaterialTheme.colorScheme.onSurface,
+                    ),
+                    contentPadding = PaddingValues(horizontal = 10.dp),
+                ) { Text(if (isPanel) "面板 ✓" else "面板", fontSize = 12.sp) }
                 Spacer(Modifier.weight(1f))
                 IconButton(onClick = onDelete) {
                     Icon(

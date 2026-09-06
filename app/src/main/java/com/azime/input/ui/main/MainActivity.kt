@@ -48,6 +48,21 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 向导完成（跳过/完成/三步全部达成）后不再显示：直接进设置
+        val wizardPrefs = getSharedPreferences("wizard_prefs", MODE_PRIVATE)
+        val alreadyDone = runCatching {
+            val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
+            wizardPrefs.getBoolean("wizard_done", false) ||
+                (Environment.isExternalStorageManager() &&
+                    imm.enabledInputMethodList.any { it.packageName == packageName } &&
+                    Settings.Secure.getString(contentResolver, Settings.Secure.DEFAULT_INPUT_METHOD)
+                        .orEmpty().startsWith("$packageName/"))
+        }.getOrDefault(false)
+        if (alreadyDone) {
+            startActivity(Intent(this, SettingsActivity::class.java))
+            finish()
+            return
+        }
         setContentView(
             ComposeView(this).apply {
                 setContent {
@@ -81,6 +96,12 @@ class MainActivity : AppCompatActivity() {
                             requestStoragePermission = { launcher ->
                                 launcher.launch(Manifest.permission.READ_EXTERNAL_STORAGE)
                             },
+                            // 跳过向导 / 完成：记录标志 + 进设置 + 关闭向导
+                            finishWizard = {
+                                wizardPrefs.edit().putBoolean("wizard_done", true).apply()
+                                startActivity(Intent(this@MainActivity, SettingsActivity::class.java))
+                                finish()
+                            },
                             openSettings = {
                                 startActivity(Intent(this@MainActivity, SettingsActivity::class.java))
                             },
@@ -110,6 +131,7 @@ fun OnboardingScreen(
     pickIme: () -> Unit,
     openAppSettings: () -> Unit,
     requestStoragePermission: (androidx.activity.result.ActivityResultLauncher<String>) -> Unit,
+    finishWizard: () -> Unit,
     openSettings: () -> Unit,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -269,7 +291,7 @@ fun OnboardingScreen(
                                 }
                                 1 -> openImeSettings()
                                 2 -> pickIme()
-                                else -> { settingsVisited = true; openSettings() }
+                                else -> { settingsVisited = true; finishWizard() }
                             }
                         },
                         modifier = Modifier.fillMaxWidth().height(52.dp),
@@ -314,9 +336,12 @@ fun OnboardingScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 TextButton(onClick = {
-                    scope.launch {
-                        if (pagerState.currentPage > 0)
+                    if (pagerState.currentPage == 0) {
+                        finishWizard()
+                    } else {
+                        scope.launch {
                             pagerState.animateScrollToPage(pagerState.currentPage - 1)
+                        }
                     }
                 }) { Text(if (pagerState.currentPage == 0) "跳过向导" else "上一步") }
                 Spacer(Modifier.weight(1f))
@@ -326,7 +351,7 @@ fun OnboardingScreen(
                             if (pagerState.currentPage < 3) {
                                 pagerState.animateScrollToPage(pagerState.currentPage + 1)
                             } else {
-                                openSettings()
+                                finishWizard()
                             }
                         }
                     },

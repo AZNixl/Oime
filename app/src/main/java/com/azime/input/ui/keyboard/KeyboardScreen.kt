@@ -21,6 +21,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
@@ -31,7 +33,9 @@ import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.Dialpad
 import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.Keyboard
+import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -48,6 +52,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
@@ -71,9 +77,12 @@ import com.azime.input.core.keyboard.KeyboardManager
 import com.azime.input.core.lua.LuaScriptManager
 import com.azime.input.core.rime.Candidate
 import com.azime.input.data.keyboard.EmojiData
+import com.azime.input.data.keyboard.BracketPairs
 import com.azime.input.data.keyboard.KeyActions
 import com.azime.input.data.keyboard.LongPressSymbols
+import com.azime.input.data.keyboard.NumpadSliderSymbols
 import com.azime.input.data.keyboard.SymbolData
+import com.azime.input.data.keyboard.longPressHint
 import com.azime.input.data.model.Key
 import com.azime.input.data.model.KeyType
 
@@ -112,6 +121,8 @@ sealed interface KeyAction {
     data class Joystick(val dx: Int) : KeyAction
     data class SetJoystickMode(val mode: String) : KeyAction
     data object OpenSettings : KeyAction
+    /** 重新部署方案（方案设置页 / ○ 菜单）。 */
+    data object Deploy : KeyAction
     data object ToggleClipboardPanel : KeyAction
     data object ToggleMenuPanel : KeyAction
     /** 从剪贴板面板/条上屏：提交后清除条目并收起面板。 */
@@ -169,7 +180,8 @@ data class KeyboardUiState(
     val toolbarRev: Int = 0,
 )
 
-// ── 配色：浅色/深色双主题（跟随系统），参考小企鹅 fcitx5-android ──
+// ── 配色：浅色/深色双主题（跟随系统或强制，参考小企鹅 fcitx5-android） ──
+// 强调色由 KeyboardTheme 提供（设置 → 主题与配色 可调）。
 data class KeyboardColors(
     val bg: Color,
     val barBg: Color,
@@ -184,34 +196,48 @@ data class KeyboardColors(
     val joystick: Color,
 )
 
-private val LightColors = KeyboardColors(
-    bg = Color(0xFFE9EBEE), barBg = Color.White,
-    keyBg = Color.White, funcKeyBg = Color(0xFFD3D7DC),
-    accentKeyBg = Color(0xFFC7DDF6), accentKeyText = Color(0xFF202124),
-    accentActive = Color(0xFF1A73E8), accentActiveText = Color.White,
-    text = Color(0xFF202124), subText = Color(0xFF80868B),
-    joystick = Color(0xFFD32F2F),
-)
-
-private val DarkColors = KeyboardColors(
-    bg = Color(0xFF1B1D1F), barBg = Color(0xFF26282A),
-    keyBg = Color(0xFF2A2D2F), funcKeyBg = Color(0xFF3C4043),
-    accentKeyBg = Color(0xFF3B5C8A), accentKeyText = Color(0xFFD7E3F4),
-    accentActive = Color(0xFF8AB4F8), accentActiveText = Color(0xFF202124),
-    text = Color(0xFFE8EAED), subText = Color(0xFF9AA0A6),
-    joystick = Color(0xFFE57373),
-)
+/** 按深浅色 + 当前主题强调色构建配色。 */
+fun buildKeyboardColors(dark: Boolean): KeyboardColors {
+    val accent = Color(
+        if (dark) com.azime.input.core.theme.KeyboardTheme.accentDark()
+        else com.azime.input.core.theme.KeyboardTheme.accentLight()
+    )
+    val onAccent = if (accent.luminance() > 0.5f) Color(0xFF202124) else Color.White
+    return if (dark) {
+        KeyboardColors(
+            bg = Color(0xFF1B1D1F), barBg = Color(0xFF26282A),
+            keyBg = Color(0xFF2A2D2F), funcKeyBg = Color(0xFF3C4043),
+            accentKeyBg = accent.copy(alpha = 0.35f).compositeOver(Color(0xFF2A2D2F)),
+            accentKeyText = onAccent,
+            accentActive = accent, accentActiveText = onAccent,
+            text = Color(0xFFE8EAED), subText = Color(0xFF9AA0A6),
+            joystick = Color(0xFFE57373),
+        )
+    } else {
+        KeyboardColors(
+            bg = Color(0xFFE9EBEE), barBg = Color.White,
+            keyBg = Color.White, funcKeyBg = Color(0xFFD3D7DC),
+            accentKeyBg = accent.copy(alpha = 0.28f).compositeOver(Color.White),
+            accentKeyText = Color(0xFF202124),
+            accentActive = accent, accentActiveText = onAccent,
+            text = Color(0xFF202124), subText = Color(0xFF80868B),
+            joystick = Color(0xFFD32F2F),
+        )
+    }
+}
 
 @Composable
 private fun keyboardColors(): KeyboardColors =
-    if (isSystemInDarkTheme()) DarkColors else LightColors
+    buildKeyboardColors(
+        com.azime.input.core.theme.KeyboardTheme.isDark(isSystemInDarkTheme()),
+    )
 
 /** 键盘主题色（供设置页跟随）：回车键背景 accentKeyBg 与高亮 accentActive。 */
 fun keyboardAccentKeyColor(dark: Boolean): Color =
-    if (dark) DarkColors.accentKeyBg else LightColors.accentKeyBg
+    buildKeyboardColors(dark).accentKeyBg
 
 fun keyboardAccentActiveColor(dark: Boolean): Color =
-    if (dark) DarkColors.accentActive else LightColors.accentActive
+    buildKeyboardColors(dark).accentActive
 
 private val KeySpacing = 4.dp
 
@@ -225,9 +251,10 @@ fun AzimeKeyboardScreen(
     modifier: Modifier = Modifier,
 ) {
     val c = keyboardColors()
-    // 多字体：键帽用 keyFont，候选栏用 candidateFont
+    // 多字体：键帽用 keyFont，候选栏用 candidateFont，候选/符号面板用 panelFont
     val keyFontFamily = remember { FontManager.keyTypeface()?.let { FontFamily(it) } }
     val candFontFamily = remember { FontManager.candidateTypeface()?.let { FontFamily(it) } }
+    val panelFontFamily = remember { FontManager.panelTypeface()?.let { FontFamily(it) } }
 
     // 尺寸可调（设置页滑杆）；工具栏固定紧凑高度，「增高行」= 键盘底部额外空行
     val keyH = KeyboardManager.keyHeightDp().dp
@@ -262,7 +289,9 @@ fun AzimeKeyboardScreen(
                 )
             }
             CompositionLocalProvider(
-                LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = candFontFamily ?: keyFontFamily ?: FontFamily.Default),
+                LocalTextStyle provides LocalTextStyle.current.copy(
+                    fontFamily = panelFontFamily ?: candFontFamily ?: keyFontFamily ?: FontFamily.Default,
+                ),
             ) {
                 // 面板优先：更多候选 / ○ 菜单 / 剪贴板 覆盖主键盘区（等高），否则显示键盘
                 if (state.showCandidatePanel) {
@@ -284,6 +313,9 @@ fun AzimeKeyboardScreen(
                         keyHeight = keyH,
                         totalHeight = areaH,
                     )
+                } else if (state.page == "numpad") {
+                    // 九宫格：5 列专用布局（左列滑动选符号 + 返回，中间三列数字，右列功能键）
+                    NumpadPane(state = state, onAction = onAction, keyHeight = keyH)
                 } else {
                     val layout = KeyboardManager.layoutFor(state.page) ?: KeyboardManager.mainLayout()
                     Column(
@@ -398,15 +430,17 @@ private fun ClipTabLabel(text: String, selected: Boolean, c: KeyboardColors, onC
     )
 }
 
-/** 条目卡片：序号 + 文本（可展开分词 chips）+ ︙ 菜单（收藏/置顶/分词/删除）。 */
+/** 条目卡片：序号 + 文本（最多 3 行）+ 标签行（英文/电话/网址等，横向滑动点选）+ ︙ 菜单。 */
 @Composable
 private fun ClipCard(index: Int, text: String, tab: String, onAction: (KeyAction) -> Unit) {
     val c = keyboardColors()
     var menuOpen by remember { mutableStateOf(false) }
-    var splitOpen by remember { mutableStateOf(false) }
-    val tokens = remember(text) {
-        // 分词：按空白与中英边界切（与 jqb 分词交互对齐，不保存）
-        Regex("""[A-Za-z]+|[0-9]+|[\u4e00-\u9fa5]""").findAll(text).map { it.value }.toList()
+    // 标签（jqb.lua 风格）：英文单词 / 电话号码 / 网址，常驻词条下方，左右滑动快速点选
+    val tags = remember(text) {
+        val urls = Regex("""(https?://\S+|www\.\S+)""").findAll(text).map { it.value }
+        val phones = Regex("""\+?\d[\d-]{6,}\d""").findAll(text).map { it.value }
+        val words = Regex("""[A-Za-z]{2,}""").findAll(text).map { it.value }
+        (urls + phones + words).distinct().take(12).toList()
     }
 
     Row(
@@ -421,20 +455,21 @@ private fun ClipCard(index: Int, text: String, tab: String, onAction: (KeyAction
         Spacer(Modifier.width(6.dp))
         Column(Modifier.weight(1f)) {
             Text(text, fontSize = 14.sp, color = c.text, maxLines = 3, overflow = TextOverflow.Ellipsis)
-            if (splitOpen && tokens.size > 1) {
+            if (tags.isNotEmpty()) {
                 Spacer(Modifier.height(4.dp))
                 Row(
                     modifier = Modifier.horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    tokens.take(24).forEach { token ->
+                    tags.forEach { tag ->
                         Text(
-                            text = token,
-                            fontSize = 13.sp,
+                            text = tag,
+                            fontSize = 12.sp,
                             color = c.text,
+                            maxLines = 1,
                             modifier = Modifier
                                 .background(c.funcKeyBg, RoundedCornerShape(6.dp))
-                                .clickable { onAction(KeyAction.CommitClipText(token)) }
+                                .clickable { onAction(KeyAction.CommitClipText(tag)) }
                                 .padding(horizontal = 8.dp, vertical = 3.dp),
                         )
                     }
@@ -462,10 +497,6 @@ private fun ClipCard(index: Int, text: String, tab: String, onAction: (KeyAction
                     onClick = { menuOpen = false; onAction(KeyAction.ClipTop(tab, index)) },
                 )
                 DropdownMenuItem(
-                    text = { Text(if (splitOpen) "收起分词" else "分词") },
-                    onClick = { menuOpen = false; splitOpen = !splitOpen },
-                )
-                DropdownMenuItem(
                     text = { Text("删除") },
                     onClick = { menuOpen = false; onAction(KeyAction.ClipDelete(tab, index)) },
                 )
@@ -489,16 +520,11 @@ private fun ToolbarRow(
     val haptics = LocalHapticFeedback.current
     val stepPx = with(density) { 18.dp.toPx() }
 
-    // 剪贴板条仅在新复制后 10 秒内显示，避免常驻干扰
-    var nowMs by remember { mutableStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(state.clipAtMs) {
-        nowMs = System.currentTimeMillis()
-        if (state.clipText.isNotBlank()) {
-            kotlinx.coroutines.delay(10_000)
-            nowMs = System.currentTimeMillis()
-        }
-    }
-    val clipFresh = state.clipText.isNotBlank() && (nowMs - state.clipAtMs) < 10_000
+    // 剪贴板条：复制后常驻显示，点击直接上屏；打字/新复制时消亡（参考 复制自动添加到候选.lua）
+    val clipFresh = state.clipText.isNotBlank()
+
+    // 打字中（有输入码或候选）：输入码 + 候选覆盖整个工具栏（参考 xime / trime / 小企鹅）
+    val composing = state.preedit.isNotEmpty() || state.candidates.isNotEmpty()
 
     Row(
         modifier = Modifier
@@ -508,7 +534,75 @@ private fun ToolbarRow(
             .padding(horizontal = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // ○ 菜单键（最左第一位；点击开面板，长按自定义工具栏）
+        if (composing) {
+            // ── 组合行：输入码 + 候选横滚 + 翻页 + 更多候选入口 ──
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .horizontalScroll(rememberScrollState()),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (state.preedit.isNotEmpty()) {
+                    Text(
+                        text = state.preedit,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = c.accentActive,
+                        maxLines = 1,
+                        modifier = Modifier.padding(end = 8.dp),
+                    )
+                }
+                state.candidates.forEachIndexed { index, candidate ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .clickable { onAction(KeyAction.Candidate(index)) }
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                    ) {
+                        if (index < 9) {
+                            Text("${index + 1} ", fontSize = 12.sp, color = c.subText)
+                        }
+                        Text(candidate.text, fontSize = 17.sp, maxLines = 1, color = c.text)
+                        if (candidate.comment.isNotBlank()) {
+                            Spacer(Modifier.width(3.dp))
+                            Text(candidate.comment, fontSize = 11.sp, maxLines = 1, color = c.subText)
+                        }
+                    }
+                }
+            }
+            if (state.hasPrevPage) {
+                Text(
+                    "◀",
+                    fontSize = 13.sp,
+                    color = c.subText,
+                    modifier = Modifier
+                        .clickable { onAction(KeyAction.PageUp) }
+                        .padding(horizontal = 6.dp, vertical = 6.dp),
+                )
+            }
+            if (state.hasNextPage) {
+                Text(
+                    "▶",
+                    fontSize = 13.sp,
+                    color = c.subText,
+                    modifier = Modifier
+                        .clickable { onAction(KeyAction.PageDown) }
+                        .padding(horizontal = 6.dp, vertical = 6.dp),
+                )
+            }
+            if (state.candidates.isNotEmpty()) {
+                // 更多候选面板入口（打字时打开大面板选字）
+                Text(
+                    "▾",
+                    fontSize = 16.sp,
+                    color = c.subText,
+                    modifier = Modifier
+                        .clickable { onAction(KeyAction.ToggleCandidatePanel) }
+                        .padding(horizontal = 6.dp, vertical = 6.dp),
+                )
+            }
+        } else {
+        // ── ○ 菜单键（最左第一位；点击开面板，长按自定义工具栏） ──
         var oPressing by remember { mutableStateOf(false) }
         var oLongFired by remember { mutableStateOf(false) }
         LaunchedEffect(oPressing) {
@@ -544,56 +638,8 @@ private fun ToolbarRow(
             Text("○", fontSize = 20.sp, color = c.text, fontWeight = FontWeight.Bold)
         }
 
-        Spacer(Modifier.width(6.dp))
-
-        if (state.candidates.isNotEmpty()) {
-            // 候选词：打字时占工具栏中部（点选上屏，横向滚动，▶ 翻页）
-            Row(
-                modifier = Modifier
-                    .weight(1f)
-                    .horizontalScroll(rememberScrollState()),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                state.candidates.forEachIndexed { index, candidate ->
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .clickable { onAction(KeyAction.Candidate(index)) }
-                            .padding(horizontal = 8.dp, vertical = 6.dp),
-                    ) {
-                        if (index < 9) {
-                            Text("${index + 1} ", fontSize = 12.sp, color = c.subText)
-                        }
-                        Text(candidate.text, fontSize = 17.sp, maxLines = 1, color = c.text)
-                        if (candidate.comment.isNotBlank()) {
-                            Spacer(Modifier.width(3.dp))
-                            Text(candidate.comment, fontSize = 11.sp, maxLines = 1, color = c.subText)
-                        }
-                    }
-                }
-                if (state.hasNextPage) {
-                    Text(
-                        "▶",
-                        fontSize = 13.sp,
-                        color = c.subText,
-                        modifier = Modifier
-                            .clickable { onAction(KeyAction.PageDown) }
-                            .padding(horizontal = 10.dp, vertical = 6.dp),
-                    )
-                }
-            }
-            // 更多候选面板入口（打字时打开大面板选字）
-            Text(
-                "▾",
-                fontSize = 16.sp,
-                color = c.subText,
-                modifier = Modifier
-                    .clickable { onAction(KeyAction.ToggleCandidatePanel) }
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
-            )
-        } else {
-            // 自定义工具区（长按 ○ 勾选）
-            KeyboardManager.toolbarItems().forEach { id ->
+        // ── 自定义工具区（长按 ○ 勾选） ──
+        KeyboardManager.toolbarItems().forEach { id ->
                 when (id) {
                     "clipboard" -> Box(
                         modifier = Modifier
@@ -633,14 +679,16 @@ private fun ToolbarRow(
             if (clipFresh) {
                 Spacer(Modifier.width(4.dp))
                 Text(
-                    text = "clipboard: " + state.clipText.replace("\n", " "),
+                    text = state.clipText.replace("\n", " "),
                     fontSize = 13.sp,
-                    color = c.subText,
+                    color = c.text,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier
                         .weight(1f)
-                        .clickable { onAction(KeyAction.ToggleClipboardPanel) },
+                        .background(c.bg, RoundedCornerShape(6.dp))
+                        .clickable { onAction(KeyAction.CommitClipboard(state.clipText)) }
+                        .padding(horizontal = 8.dp, vertical = 5.dp),
                 )
             } else {
                 Spacer(Modifier.weight(1f))
@@ -767,6 +815,7 @@ private fun MenuPanel(
 ) {
     val c = keyboardColors()
     val density = LocalDensity.current
+    var showSchemaPopup by remember { mutableStateOf(false) }
     fun close() = onAction(KeyAction.ToggleMenuPanel)
 
     Column(
@@ -815,6 +864,8 @@ private fun MenuPanel(
             Triple(Icons.Default.Dialpad, "数字", { close(); onAction(KeyAction.SwitchPage("numpad")) }),
             Triple(Icons.Default.EmojiEmotions, "表情", { close(); onAction(KeyAction.SwitchPage("emoji")) }),
             Triple(Icons.Default.Category, "符号", { close(); onAction(KeyAction.SwitchPage("symgrid")) }),
+            Triple(Icons.Default.List, "输入方案", { showSchemaPopup = true }),
+            Triple(Icons.Default.Sync, "部署", { close(); onAction(KeyAction.Deploy) }),
             Triple(Icons.Default.Tune, "定制工具栏", { close(); onOpenCustomize() }),
         )
         menuItems.chunked(4).forEach { rowItems ->
@@ -842,27 +893,49 @@ private fun MenuPanel(
             Spacer(Modifier.height(10.dp))
         }
 
-        // 方案切换 chips
-        if (state.schemas.isNotEmpty()) {
-            Text("切换方案", fontSize = 12.sp, color = c.subText, modifier = Modifier.fillMaxWidth())
-            Spacer(Modifier.height(4.dp))
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+        // 输入方案浮窗（「输入方案」磁贴呼出）
+        if (showSchemaPopup) {
+            Popup(
+                alignment = Alignment.Center,
+                onDismissRequest = { showSchemaPopup = false },
             ) {
-                state.schemas.forEach { schemaId ->
+                Column(
+                    modifier = Modifier
+                        .widthIn(min = 220.dp, max = 300.dp)
+                        .heightIn(max = 280.dp)
+                        .verticalScroll(rememberScrollState())
+                        .background(c.barBg, RoundedCornerShape(12.dp))
+                        .padding(vertical = 6.dp),
+                ) {
                     Text(
-                        text = schemaDisplay(schemaId).removePrefix("○输入法 · "),
-                        fontSize = 13.sp,
-                        color = if (schemaId == state.schemaName) c.accentActive else c.text,
-                        fontWeight = if (schemaId == state.schemaName) FontWeight.Bold else FontWeight.Normal,
-                        modifier = Modifier
-                            .background(c.funcKeyBg, RoundedCornerShape(8.dp))
-                            .clickable { close(); onAction(KeyAction.SelectSchema(schemaId)) }
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        "选择输入方案",
+                        fontSize = 12.sp,
+                        color = c.subText,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
                     )
+                    if (state.schemas.isEmpty()) {
+                        Text(
+                            "引擎部署中…",
+                            fontSize = 14.sp,
+                            color = c.subText,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp),
+                        )
+                    }
+                    state.schemas.forEach { schemaId ->
+                        Text(
+                            text = schemaDisplay(schemaId).removePrefix("○输入法 · "),
+                            fontSize = 15.sp,
+                            color = if (schemaId == state.schemaName) c.accentActive else c.text,
+                            fontWeight = if (schemaId == state.schemaName) FontWeight.Bold else FontWeight.Normal,
+                            modifier = Modifier
+                                .clickable {
+                                    showSchemaPopup = false
+                                    close()
+                                    if (schemaId != state.schemaName) onAction(KeyAction.SelectSchema(schemaId))
+                                }
+                                .padding(horizontal = 16.dp, vertical = 9.dp),
+                        )
+                    }
                 }
             }
         }
@@ -1063,34 +1136,44 @@ private fun CategoryGridPane(
             .padding(KeySpacing),
         verticalArrangement = Arrangement.spacedBy(KeySpacing),
     ) {
-        // 分类标签行（点标签翻页；右侧 ABC 返回）
+        // 顶行：返回键固定左上角 + 分类标签（点标签翻页）
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(30.dp)
-                .horizontalScroll(rememberScrollState()),
+                .height(34.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            data.categories.forEachIndexed { i, (label, _) ->
-                Text(
-                    text = label,
-                    fontSize = 15.sp,
-                    color = if (i == pagerState.currentPage) c.accentActive else c.subText,
-                    modifier = Modifier
-                        .clickable { scope.launch { pagerState.animateScrollToPage(i) } }
-                        .padding(horizontal = 9.dp, vertical = 3.dp),
-                )
-            }
-            Spacer(Modifier.weight(1f))
+            // 返回键（固定左上角）
             Text(
-                text = "ABC",
-                fontSize = 13.sp,
+                text = "←",
+                fontSize = 17.sp,
                 color = c.text,
                 modifier = Modifier
+                    .background(c.funcKeyBg, RoundedCornerShape(8.dp))
                     .clickable { onAction(KeyAction.SwitchPage("main")) }
-                    .padding(horizontal = 10.dp),
+                    .padding(horizontal = 13.dp, vertical = 5.dp),
             )
+            Spacer(Modifier.width(4.dp))
+            // 分类标签（横向滑动）
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .horizontalScroll(rememberScrollState()),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                data.categories.forEachIndexed { i, (label, _) ->
+                    Text(
+                        text = label,
+                        fontSize = 15.sp,
+                        color = if (i == pagerState.currentPage) c.accentActive else c.subText,
+                        modifier = Modifier
+                            .clickable { scope.launch { pagerState.animateScrollToPage(i) } }
+                            .padding(horizontal = 9.dp, vertical = 3.dp),
+                    )
+                }
+            }
         }
         // 网格内容：左右滑动切分类（占满剩余高度，单页可竖向滚动）
         HorizontalPager(
@@ -1132,7 +1215,60 @@ private fun CategoryGridPane(
                 }
             }
         }
-        // 底行：ABC + 空格 + ⌫
+    }
+}
+
+
+// ── 九宫格：5 列专用布局 ─────────────────────────────────────
+// 左列 = 3 行高「滑动选符号」键（上下滑动在符号带上选择，松手上屏）+ 返回键
+// 中间三列 = 1-0 十个数字 + "." "," 两个符号；右列 = ⌫ / 中英 / 空格 / ⏎
+
+@Composable
+private fun NumpadPane(state: KeyboardUiState, onAction: (KeyAction) -> Unit, keyHeight: androidx.compose.ui.unit.Dp) {
+    val topRows = listOf(listOf("1", "2", "3"), listOf("4", "5", "6"), listOf("7", "8", "9"))
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(KeySpacing),
+        verticalArrangement = Arrangement.spacedBy(KeySpacing),
+    ) {
+        // 前 3 行：符号滑键（跨 3 行）+ 数字三列 + 功能三键
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(keyHeight * 3 + KeySpacing * 2),
+            horizontalArrangement = Arrangement.spacedBy(KeySpacing),
+        ) {
+            NumpadSliderKey(onAction = onAction, modifier = Modifier.weight(1f).fillMaxSize())
+            topRows.forEach { col ->
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(KeySpacing),
+                ) {
+                    col.forEach { digit ->
+                        Row(Modifier.weight(1f)) {
+                            KeyboardKey(
+                                key = Key(digit, code = digit, width = 1f, type = KeyType.CHARACTER),
+                                state = state, onAction = onAction,
+                            )
+                        }
+                    }
+                }
+            }
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(KeySpacing),
+            ) {
+                listOf(
+                    Key("⌫", code = "backspace", width = 1f, type = KeyType.DELETE),
+                    Key("中/EN", code = "toggle_ascii", width = 1f, type = KeyType.FUNCTION),
+                    Key("空格", code = "space", width = 1f, type = KeyType.SPACE),
+                ).forEach { k ->
+                    Row(Modifier.weight(1f)) { KeyboardKey(key = k, state = state, onAction = onAction) }
+                }
+            }
+        }
+        // 第 4 行：返回 + 0 . , + ⏎
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1140,23 +1276,87 @@ private fun CategoryGridPane(
             horizontalArrangement = Arrangement.spacedBy(KeySpacing),
         ) {
             KeyboardKey(
-                key = Key("ABC", code = "emoji_back", width = 1.5f, type = KeyType.FUNCTION),
+                key = Key("26", code = "main", width = 1f, type = KeyType.FUNCTION),
                 state = state, onAction = onAction,
             )
+            listOf("0", ".", ",").forEach { ch ->
+                KeyboardKey(
+                    key = Key(ch, code = ch, width = 1f, type = KeyType.CHARACTER),
+                    state = state, onAction = onAction,
+                )
+            }
             KeyboardKey(
-                key = Key("空格", code = "space", width = 7f, type = KeyType.SPACE),
-                state = state, onAction = onAction,
-            )
-            KeyboardKey(
-                key = Key("⌫", code = "backspace", width = 1.5f, type = KeyType.DELETE),
+                key = Key("⏎", code = "enter", width = 1f, type = KeyType.ENTER),
                 state = state, onAction = onAction,
             )
         }
     }
 }
 
+/** 九宫格左列滑动选符号键：上下滑动在符号带上移动，松手提交当前符号。 */
+@Composable
+private fun NumpadSliderKey(onAction: (KeyAction) -> Unit, modifier: Modifier) {
+    val c = keyboardColors()
+    val symbols = NumpadSliderSymbols
+    var selIdx by remember { mutableStateOf(symbols.size / 2) }
+    var selecting by remember { mutableStateOf(false) }
+    val density = LocalDensity.current
+    val haptics = LocalHapticFeedback.current
 
-// ── 增高行：候选栏 ───────────────────────────────────────────
+    Box(
+        modifier = modifier
+            .background(c.funcKeyBg, RoundedCornerShape(8.dp))
+            .pointerInput(Unit) {
+                val stepPx = with(density) { 34.dp.toPx() }
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    selecting = true
+                    var anchorY: Float? = null
+                    var startIdx = selIdx
+                    while (true) {
+                        val ev = awaitPointerEvent()
+                        val ch = ev.changes.firstOrNull() ?: break
+                        if (!ch.pressed) break
+                        if (anchorY == null) anchorY = ch.position.y
+                        val moved = ((anchorY - ch.position.y) / stepPx).toInt()
+                        val target = (startIdx + moved).coerceIn(0, symbols.size - 1)
+                        if (target != selIdx) {
+                            selIdx = target
+                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        }
+                    }
+                    // 松手：上屏当前符号并回到中间
+                    onAction(KeyAction.DirectCommit(symbols[selIdx]))
+                    selIdx = symbols.size / 2
+                    selecting = false
+                }
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                text = symbols.getOrNull(selIdx - 1) ?: "",
+                fontSize = 13.sp,
+                color = c.subText,
+                maxLines = 1,
+            )
+            Text(
+                text = symbols.getOrNull(selIdx) ?: "",
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Bold,
+                color = if (selecting) c.accentActive else c.text,
+                maxLines = 1,
+            )
+            Text(
+                text = symbols.getOrNull(selIdx + 1) ?: "",
+                fontSize = 13.sp,
+                color = c.subText,
+                maxLines = 1,
+            )
+        }
+    }
+}
+
 
 
 private fun schemaDisplay(schemaId: String): String = when {
@@ -1192,11 +1392,27 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
         else -> key.label
     }
 
-    // 长按符号：内置映射（fcitx5 风格）或 preset_keys 条目
+    // 占位空键：不渲染背景、不响应手势（用于行内对齐偏移）
+    if (key.code == "spacer") {
+        Box(Modifier.weight(key.width))
+        return
+    }
+
+    // 长按符号：内置映射（用户规范）或 preset_keys 条目；K 键 = 常用括号气泡（26键.lua）
     val longPressSymbols = remember(key.code, state.page) {
         if (state.page != "symbols" && key.type == KeyType.CHARACTER) {
-            LongPressSymbols[key.code.firstOrNull()] ?: emptyList()
+            if (key.code == "k") BracketPairs
+            else LongPressSymbols[key.code.firstOrNull()] ?: emptyList()
         } else emptyList()
+    }
+    /** 气泡/松手提交：内置命令走命令分发，{Left} 后缀走文本+光标移动，其他字面上屏。 */
+    fun commitLongSymbol(s: String) {
+        when {
+            s == "select_all" || s == "cut" || s == "copy" || s == "paste" ->
+                onAction(KeyAction.Resolved(s))
+            s.endsWith("{Left}") -> onAction(KeyAction.Resolved(s))
+            else -> onAction(KeyAction.DirectCommit(s))
+        }
     }
     val hasCustomLong = !key.longClick.isNullOrBlank()
     val isPageKey = key.type == KeyType.FUNCTION && key.code == "symbols"
@@ -1305,7 +1521,14 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
                                 if (action != null) {
                                     activeDir = dir
                                     longFired = true
-                                    swipePreview = actionPreview(action)
+                                    // 滑动预览受设置内四向开关控制（动作照常执行）
+                                    val hintOn = when (dir) {
+                                        Dir.UP -> KeyboardManager.hintUp()
+                                        Dir.DOWN -> KeyboardManager.hintDown()
+                                        Dir.LEFT -> KeyboardManager.hintLeft()
+                                        Dir.RIGHT -> KeyboardManager.hintRight()
+                                    }
+                                    if (hintOn) swipePreview = actionPreview(action)
                                     haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                                 }
                             }
@@ -1338,6 +1561,11 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
                         }
                         if (action != null) onAction(KeyAction.Resolved(action))
                     }
+                    // 单符号长按：松手直接上屏（无需再点气泡）
+                    longFired && showBubble && longPressSymbols.size == 1 -> {
+                        commitLongSymbol(longPressSymbols.first())
+                        showBubble = false
+                    }
                     !longFired -> onKeyAction(key, onAction)
                 }
             }
@@ -1361,10 +1589,11 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
             color = fg,
             maxLines = 1,
         )
-        // 键面右上角长按符号提示
-        if (swipePreview == null && key.hint != null && key.type == KeyType.CHARACTER) {
+        // 键面右上角长按符号提示（受设置「长按符号提示」开关控制）
+        val hintText = key.hint ?: longPressHint(key.code)
+        if (swipePreview == null && KeyboardManager.hintLong() && hintText != null && key.type == KeyType.CHARACTER) {
             Text(
-                text = key.hint,
+                text = hintText,
                 fontSize = 9.sp,
                 color = c.subText,
                 modifier = Modifier
@@ -1387,12 +1616,12 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
                 ) {
                     longPressSymbols.forEach { symbol ->
                         Text(
-                            text = symbol,
+                            text = symbol.removeSuffix("{Left}"),
                             fontSize = 22.sp,
                             color = c.text,
                             modifier = Modifier
                                 .clickable {
-                                    onAction(KeyAction.DirectCommit(symbol))
+                                    commitLongSymbol(symbol)
                                     showBubble = false
                                 }
                                 .padding(horizontal = 12.dp, vertical = 8.dp),

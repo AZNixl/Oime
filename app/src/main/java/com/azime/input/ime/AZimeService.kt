@@ -288,6 +288,13 @@ class AZimeService : InputMethodService() {
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     startActivity(intent)
                 }
+                KeyAction.Deploy -> {
+                    // 重新部署方案（○ 菜单 / 方案设置页）
+                    uiState.update { it.copy(statusMessage = "正在重新部署方案…") }
+                    runCatching { RimeManager.deployImportedSchemas(applicationContext) }
+                    uiState.update { it.copy(statusMessage = "") }
+                    refreshState()
+                }
                 KeyAction.ToggleClipboardPanel ->
                     uiState.update { it.copy(showClipboardPanel = !it.showClipboardPanel) }
                 KeyAction.ToggleMenuPanel ->
@@ -580,6 +587,9 @@ class AZimeService : InputMethodService() {
                 hasPrevPage = result.hasPrevPage,
                 // 编码清空（候选消失）时自动收起更多候选面板
                 showCandidatePanel = it.showCandidatePanel && result.candidates.isNotEmpty(),
+                // 打字即消亡：开始组合后工具栏剪贴板条消失（参考 复制自动添加到候选.lua）
+                clipText = if (result.preeditText.isNotEmpty()) "" else it.clipText,
+                clipAtMs = if (result.preeditText.isNotEmpty()) 0L else it.clipAtMs,
             )
         }
     }

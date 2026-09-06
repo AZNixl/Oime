@@ -194,3 +194,25 @@ vendored RimeEngine 中 `getAvailableSchemas / getSchemaString / getSchemaList`
   SecurityException，Android 14 限制该 key 仅 targetSdk ≤ 33 可读；读取又在 ON_RESUME 观察器中，启动即崩）。
 - 修复：启用检测改走 InputMethodManager.enabledInputMethodList（公开 API 无权限）；
   DEFAULT_INPUT_METHOD 读取包 runCatching，受限时视为未完成而非崩溃。
+
+## 反馈轮 5：14 条（部署键 / 向导持久化 / 主题配色 / 九宫格五列 / 长按规范 / 备份）
+
+| # | 反馈 | 实现 |
+|---|---|---|
+| 1 | 方案设置和 ○ 菜单添加部署键 | 方案页新增「重新部署」卡（调 deployImportedSchemas）；○ 菜单新增「部署」磁贴 → KeyAction.Deploy 由 Service 执行 |
+| 2 | 跳过向导无效，每次都开向导 | wizard_prefs.wizard_done 标志：跳过/完成时写入；onCreate 检测标志或「三步全部达成」直接进设置；关于页加「重新运行向导」入口（清标志） |
+| 3 | 字体设置支持多个候选字体 | FontManager 新增第三个角色「面板字体」（更多候选/emoji/符号网格用），与键帽/候选栏互相独立；字体卡三按钮：键帽/候选/面板 |
+| 4 | 增高行 1-72dp | setBarHeightDp coerceIn(1,72)，滑杆 valueRange 1..72 |
+| 5 | 设置增加主题和配色（参考小企鹅.fx） | 新建 KeyboardTheme（theme_prefs：mode system/light/dark + 亮/暗强调色）；二级页「主题与配色」：色彩模式三 chip + 7 个预设色板（默认蓝/中国红/森绿/暗紫/橙光/青碧/樱粉）+ 自定义 RGB 滑杆；KeyboardColors 全部由主题动态构建（accent 派生 accentActive/accentKeyBg/compositeOver 对比文字色），设置页主色同步跟随 |
+| 6 | 剪贴板限高 + 标签（jqb） | 卡片文本 maxLines=3；词条下方常驻标签行：网址/电话号码/英文单词正则提取，横向滑动点选上屏；删除原「分词」开关菜单项 |
+| 7 | emoji/符号面板去底行 + 左上返回 | CategoryGridPane 删除底行 ABC/空格/⌫；返回键「←」固定在顶行左上角，分类标签其右横向滑动 |
+| 8 | 打字时输入码+候选覆盖工具栏；剪贴板条参考复制自动添加到候选.lua | 组合中（preedit 或候选非空）整个工具栏替换为「输入码（强调色）+ 候选横滚 + ◀▶ 翻页 + ▾」组合行；剪贴板条常驻（不再 10s 过期）、点击直接上屏（lua 同款点选上屏），打字（进入组合）或新复制时消亡（Service 在 preedit 非空时清 clipText） |
+| 9 | ○菜单输入方案做成按键 | 「输入方案」磁贴 → 居中浮窗列表选择方案（选中高亮，空态「引擎部署中…」）；删除原底部方案 chips |
+| 10 | 九宫格五列 + 26键对齐 | NumpadPane 专用布局：左列 = 3 行高滑动选符号键（上下滑动在 15 符号带上移动、松手上屏）+ 返回键；中间三列 = 1-0 + "." ","；右列 = ⌫/中英/空格/⏎。26 键第二行左右各加 0.5 键宽 spacer（G 对齐 V），行4 本就 10 份对齐；新增 code="spacer" 占位键（不渲染不响应） |
+| 11 | 长按符号按规范重配 | Q-P→1-0；A-L→全选/-/@/#//——/+/括号气泡/=；K 长按 = 常用括号气泡（{}〈〉()《》[]【】，{Left} 光标入括号，参考 26键.lua）；Z-M→`/剪切/复制/粘贴/"/'/：；逗号→！句号→？。单符号长按松手直接上屏（不必再点气泡）；select_all/cut/copy/paste 走命令分发 |
+| 12 | 备份设置到 Download | 「备份设置」：keyboard/font/haptic/theme/wizard 五组 prefs 打包 JSON，MediaStore 写入 Download/Oime_backup_时间戳.json（API<29 走公共目录） |
+| 13 | 符号显示开关 | 设置→键盘→「符号显示」卡：长按提示/上滑/下滑/左滑/右滑 五个独立开关；关闭时键面角标（longPressHint）与滑动预览不显示，动作照常执行；hint 开关纳入 sizeSignature 热重建 |
+| 14 | 记录/上传/暂停 | 本文；推送 CI 后暂停，等用户手机连接指令 |
+
+- versionCode 5 / versionName 0.7.0-oime。
+- 注意：九宫格页由 NumpadPane 专用渲染，键盘编辑器里对 numpad 的自定义修改不影响实际九宫格页（内置布局为数据基准）。

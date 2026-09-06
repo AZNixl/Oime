@@ -123,11 +123,11 @@ object KeyboardManager {
         synchronized(lock) { prefs.edit().putInt(PREF_KEY_HEIGHT_DP, dp.coerceIn(36, 64)).apply() }
     }
 
-    /** 增高行（工具栏+候选栏）高度。 */
+    /** 增高行（键盘底部空行）高度，范围 1-72dp。 */
     fun barHeightDp(): Int = prefs.getInt(PREF_BAR_HEIGHT_DP, DEFAULT_BAR_HEIGHT_DP)
 
     fun setBarHeightDp(dp: Int) {
-        synchronized(lock) { prefs.edit().putInt(PREF_BAR_HEIGHT_DP, dp.coerceIn(38, 72)).apply() }
+        synchronized(lock) { prefs.edit().putInt(PREF_BAR_HEIGHT_DP, dp.coerceIn(1, 72)).apply() }
     }
 
     /** 增高行开关：关闭时工具栏/候选栏回落为紧凑高度（38dp）。 */
@@ -137,8 +137,39 @@ object KeyboardManager {
         synchronized(lock) { prefs.edit().putBoolean(PREF_BAR_ENABLED, v).apply() }
     }
 
+    /**
+     * 符号提示显示开关：长按符号角标 + 四向滑动预览，各自独立。
+     * 关闭时动作仍执行，只是不在键面上显示提示文字。
+     */
+    private const val PREF_HINT_LONG = "hint_long"
+    private const val PREF_HINT_UP = "hint_up"
+    private const val PREF_HINT_DOWN = "hint_down"
+    private const val PREF_HINT_LEFT = "hint_left"
+    private const val PREF_HINT_RIGHT = "hint_right"
+
+    private fun hintPref(key: String, default: Boolean = true): Boolean =
+        prefs.getBoolean(key, default)
+
+    private fun setHintPref(key: String, v: Boolean) {
+        synchronized(lock) { prefs.edit().putBoolean(key, v).apply() }
+    }
+
+    fun hintLong(): Boolean = hintPref(PREF_HINT_LONG)
+    fun hintUp(): Boolean = hintPref(PREF_HINT_UP)
+    fun hintDown(): Boolean = hintPref(PREF_HINT_DOWN)
+    fun hintLeft(): Boolean = hintPref(PREF_HINT_LEFT)
+    fun hintRight(): Boolean = hintPref(PREF_HINT_RIGHT)
+
+    fun setHintLong(v: Boolean) = setHintPref(PREF_HINT_LONG, v)
+    fun setHintUp(v: Boolean) = setHintPref(PREF_HINT_UP, v)
+    fun setHintDown(v: Boolean) = setHintPref(PREF_HINT_DOWN, v)
+    fun setHintLeft(v: Boolean) = setHintPref(PREF_HINT_LEFT, v)
+    fun setHintRight(v: Boolean) = setHintPref(PREF_HINT_RIGHT, v)
+
     /** 尺寸指纹：变化时 Service 重建键盘视图（onStartInputView 检查）。 */
-    fun sizeSignature(): String = "${keyHeightDp()}x${barHeightDp()}x${barEnabled()}"
+    fun sizeSignature(): String =
+        "${keyHeightDp()}x${barHeightDp()}x${barEnabled()}x${hintLong()}" +
+            "x${hintUp()}x${hintDown()}x${hintLeft()}x${hintRight()}"
 
     // ── 工具栏自定义（○ 菜单键之外的可显示工具） ────────────
 

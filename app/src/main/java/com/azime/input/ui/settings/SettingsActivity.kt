@@ -169,11 +169,13 @@ fun SettingsScreen(
 ) {
     val cs = MaterialTheme.colorScheme
     val context = LocalContext.current
-    // 一级菜单（main）+ 二级页：schemas | keyboard | appearance | about
+    val scope = rememberCoroutineScope()
+    // 一级菜单（main）+ 二级页：schemas | keyboard | theme | appearance | about
     var subPage by remember { mutableStateOf("main") }
     val subTitles = mapOf(
         "schemas" to "输入方案",
         "keyboard" to "键盘",
+        "theme" to "主题与配色",
         "appearance" to "外观",
         "about" to "关于",
     )
@@ -223,6 +225,29 @@ fun SettingsScreen(
                         )
                     } }
                 }
+                item {
+                    // 重新部署：方案 config 改动后手动触发
+                    var deploying by remember { mutableStateOf(false) }
+                    Card { Column(Modifier.padding(vertical = 4.dp)) {
+                        KsuItem(
+                            icon = Icons.Default.Build,
+                            title = "重新部署",
+                            subtitle = if (deploying) "部署中，请稍候…" else "方案 config 改动后重新部署全部方案",
+                            onClick = {
+                                if (!deploying) {
+                                    deploying = true
+                                    scope.launch {
+                                        runCatching {
+                                            com.azime.input.core.rime.RimeManager.deployImportedSchemas(context.applicationContext)
+                                        }
+                                        deploying = false
+                                        Toast.makeText(context, "部署完成", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            },
+                        )
+                    } }
+                }
             }
             return@Scaffold
         }
@@ -254,6 +279,23 @@ fun SettingsScreen(
                 item {
                     Card { Column { VibrationSettings() } }
                 }
+                item {
+                    Card { Column { SymbolHintSettings() } }
+                }
+            }
+            return@Scaffold
+        }
+        // ── 二级页：主题与配色（参考小企鹅输入法.fx） ──
+        if (subPage == "theme") {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(vertical = 8.dp),
+            ) {
+                item { Card { Column { ThemeColorSettings() } } }
             }
             return@Scaffold
         }
@@ -298,7 +340,7 @@ fun SettingsScreen(
                             KsuItem(
                                 icon = Icons.Default.Info,
                                 title = "版本",
-                                subtitle = "0.6.0-oime · 包名 com.oime.input · 平台 RIME",
+                                subtitle = "0.7.0-oime · 包名 com.oime.input · 平台 RIME",
                                 onClick = {},
                                 showChevron = false,
                             )
@@ -315,6 +357,19 @@ fun SettingsScreen(
                                     }
                                 },
                                 showChevron = false,
+                            )
+                            KsuItem(
+                                icon = Icons.Default.WavingHand,
+                                title = "重新运行首次启动向导",
+                                subtitle = "权限 / 启用 / 选择输入法引导",
+                                onClick = {
+                                    context.getSharedPreferences("wizard_prefs", android.content.Context.MODE_PRIVATE)
+                                        .edit().putBoolean("wizard_done", false).apply()
+                                    context.startActivity(
+                                        android.content.Intent(context, com.azime.input.ui.main.MainActivity::class.java)
+                                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    )
+                                },
                             )
                         }
                     }
@@ -350,7 +405,7 @@ fun SettingsScreen(
                             )
                             Spacer(Modifier.height(8.dp))
                             Text("版本", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
-                            Text("0.6.0-oime", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Text("0.7.0-oime", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         }
                     }
                     Card(
@@ -396,10 +451,31 @@ fun SettingsScreen(
                             onClick = { subPage = "keyboard" },
                         )
                         KsuItem(
+                            icon = Icons.Default.Palette,
+                            title = "主题与配色",
+                            subtitle = "深浅色模式 · 强调色预设 / 自定义",
+                            onClick = { subPage = "theme" },
+                        )
+                        KsuItem(
                             icon = Icons.Default.FontDownload,
                             title = "外观",
                             subtitle = "字体管理",
                             onClick = { subPage = "appearance" },
+                        )
+                        KsuItem(
+                            icon = Icons.Default.Backup,
+                            title = "备份设置",
+                            subtitle = "导出全部偏好到 Download 目录",
+                            onClick = {
+                                scope.launch {
+                                    val name = backupSettings(context)
+                                    Toast.makeText(
+                                        context,
+                                        if (name != null) "已备份：Download/$name" else "备份失败",
+                                        Toast.LENGTH_LONG,
+                                    ).show()
+                                }
+                            },
                         )
                         KsuItem(
                             icon = Icons.Default.Code,
@@ -567,11 +643,11 @@ private fun KeyHeightSliders() {
                     barH = it
                     com.azime.input.core.keyboard.KeyboardManager.setBarHeightDp(it.toInt())
                 },
-                valueRange = 38f..72f,
+                valueRange = 1f..72f,
             )
         }
         Text(
-            "增高行 = 键盘最后一行下方多一个无按键的空行；工具栏自定义：长按 ○ 菜单键勾选",
+            "增高行 = 键盘最后一行下方多一个无按键的空行（1-72dp）；工具栏自定义：长按 ○ 菜单键勾选",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -645,6 +721,148 @@ private fun SettingSwitchRow(title: String, checked: Boolean, onChange: (Boolean
         Switch(checked = checked, onCheckedChange = onChange)
     }
 }
+
+/** 符号显示开关：长按符号提示 + 四向滑动提示，各自独立（关闭时动作照常执行）。 */
+@Composable
+private fun SymbolHintSettings() {
+    var hintLong by remember { mutableStateOf(com.azime.input.core.keyboard.KeyboardManager.hintLong()) }
+    var hintUp by remember { mutableStateOf(com.azime.input.core.keyboard.KeyboardManager.hintUp()) }
+    var hintDown by remember { mutableStateOf(com.azime.input.core.keyboard.KeyboardManager.hintDown()) }
+    var hintLeft by remember { mutableStateOf(com.azime.input.core.keyboard.KeyboardManager.hintLeft()) }
+    var hintRight by remember { mutableStateOf(com.azime.input.core.keyboard.KeyboardManager.hintRight()) }
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
+        Text("符号显示", style = MaterialTheme.typography.titleSmall)
+        Spacer(Modifier.height(6.dp))
+        SettingSwitchRow("长按符号提示", hintLong) {
+            hintLong = it; com.azime.input.core.keyboard.KeyboardManager.setHintLong(it)
+        }
+        SettingSwitchRow("上滑提示", hintUp) {
+            hintUp = it; com.azime.input.core.keyboard.KeyboardManager.setHintUp(it)
+        }
+        SettingSwitchRow("下滑提示", hintDown) {
+            hintDown = it; com.azime.input.core.keyboard.KeyboardManager.setHintDown(it)
+        }
+        SettingSwitchRow("左滑提示", hintLeft) {
+            hintLeft = it; com.azime.input.core.keyboard.KeyboardManager.setHintLeft(it)
+        }
+        SettingSwitchRow("右滑提示", hintRight) {
+            hintRight = it; com.azime.input.core.keyboard.KeyboardManager.setHintRight(it)
+        }
+        Text(
+            "关闭后不在键面上显示提示文字，滑动 / 长按动作照常执行；下次键盘弹出生效。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/** 主题与配色（参考小企鹅输入法.fx）：深浅色模式 + 强调色预设 / 自定义 RGB。 */
+@Composable
+private fun ThemeColorSettings() {
+    val km = com.azime.input.core.theme.KeyboardTheme
+    var mode by remember { mutableStateOf(km.mode()) }
+    var accentRev by remember { mutableStateOf(0) }
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
+        Text("色彩模式", style = MaterialTheme.typography.titleSmall)
+        Spacer(Modifier.height(6.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(
+                selected = mode == km.MODE_SYSTEM,
+                onClick = { mode = km.MODE_SYSTEM; km.setMode(km.MODE_SYSTEM) },
+                label = { Text("跟随系统") },
+            )
+            FilterChip(
+                selected = mode == km.MODE_LIGHT,
+                onClick = { mode = km.MODE_LIGHT; km.setMode(km.MODE_LIGHT) },
+                label = { Text("亮色") },
+            )
+            FilterChip(
+                selected = mode == km.MODE_DARK,
+                onClick = { mode = km.MODE_DARK; km.setMode(km.MODE_DARK) },
+                label = { Text("暗色") },
+            )
+        }
+        Spacer(Modifier.height(12.dp))
+
+        Text("强调色（回车键 / 高亮）", style = MaterialTheme.typography.titleSmall)
+        Spacer(Modifier.height(8.dp))
+        // 预设色板
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            km.accentPresets.forEach { (name, light, dark) ->
+                val selected = km.accentLight() == light && km.accentDark() == dark
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Box(
+                        modifier = Modifier
+                            .size(34.dp)
+                            .background(Color(light), CircleShape)
+                            .clickable { km.setAccents(light, dark); accentRev++ },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        if (selected) Text("✓", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(Modifier.height(2.dp))
+                    Text(name, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+
+        // 自定义 RGB（亮 / 暗共用一个自定义色）
+        key(accentRev) {
+            var r by remember { mutableStateOf(((km.accentLight() shr 16) and 0xFF) / 255f) }
+            var g by remember { mutableStateOf(((km.accentLight() shr 8) and 0xFF) / 255f) }
+            var b by remember { mutableStateOf((km.accentLight() and 0xFF) / 255f) }
+            fun apply() {
+                val argb = (0xFF shl 24) or ((r * 255).toInt() shl 16) or ((g * 255).toInt() shl 8) or (b * 255).toInt()
+                km.setAccents(argb, argb)
+            }
+            Text("自定义颜色", style = MaterialTheme.typography.bodyMedium)
+            Text("红", style = MaterialTheme.typography.bodySmall)
+            Slider(value = r, onValueChange = { r = it; apply() }, valueRange = 0f..1f)
+            Text("绿", style = MaterialTheme.typography.bodySmall)
+            Slider(value = g, onValueChange = { g = it; apply() }, valueRange = 0f..1f)
+            Text("蓝", style = MaterialTheme.typography.bodySmall)
+            Slider(value = b, onValueChange = { b = it; apply() }, valueRange = 0f..1f)
+        }
+        Text(
+            "配色应用于键盘强调色（回车键、候选高亮等）与设置页主色；下次键盘弹出生效。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/** 备份全部偏好为 JSON，写入系统 Download 目录（MediaStore）。返回文件名，失败返回 null。 */
+private fun backupSettings(context: android.content.Context): String? = runCatching {
+    val prefNames = listOf("keyboard_prefs", "font_prefs", "haptic_prefs", "theme_prefs", "wizard_prefs")
+    val root = org.json.JSONObject()
+    for (name in prefNames) {
+        val p = context.getSharedPreferences(name, android.content.Context.MODE_PRIVATE)
+        root.put(name, org.json.JSONObject(p.all))
+    }
+    val fileName = "Oime_backup_" +
+        java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US)
+            .format(java.util.Date()) + ".json"
+    if (android.os.Build.VERSION.SDK_INT >= 29) {
+        val values = android.content.ContentValues().apply {
+            put(android.provider.MediaStore.Downloads.DISPLAY_NAME, fileName)
+            put(android.provider.MediaStore.Downloads.MIME_TYPE, "application/json")
+        }
+        val uri = context.contentResolver.insert(
+            android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values
+        ) ?: return null
+        context.contentResolver.openOutputStream(uri)?.use { out ->
+            out.write(root.toString().toByteArray(Charsets.UTF_8))
+        } ?: return null
+    } else {
+        @Suppress("DEPRECATION")
+        val dir = android.os.Environment
+            .getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
+        dir.mkdirs()
+        java.io.File(dir, fileName).writeText(root.toString())
+    }
+    fileName
+}.getOrNull()
 
 @Composable
 private fun SectionLabel(text: String) {    Text(
