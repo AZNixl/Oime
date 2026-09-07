@@ -1945,7 +1945,7 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
         targetValue = if (pressing || clickPressed) 1f else 0f,
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioNoBouncy,
-            stiffness = Spring.StiffnessMediumHigh,
+            stiffness = Spring.StiffnessHigh,
         ),
         label = "keyPress",
     )
