@@ -153,8 +153,103 @@ object KeyboardManager {
 
     fun spaceLabel(): String = prefs.getString(PREF_SPACE_LABEL, "") ?: ""
 
+    /** 保留用户输入的空格（自定义文本可含空格），仅去首尾。 */
     fun setSpaceLabel(v: String) {
         synchronized(lock) { prefs.edit().putString(PREF_SPACE_LABEL, v.trim()).apply() }
+    }
+
+    // ── 字号 / 外观（反馈轮9：键盘与工具栏字号分开；圆角/行距/列距可调） ──
+
+    private const val PREF_FONT_SIZE_KEY = "font_size_key"
+    private const val PREF_FONT_SIZE_BAR = "font_size_bar"
+    private const val PREF_KEY_CORNER = "key_corner_dp"
+    private const val PREF_ROW_GAP = "row_gap_dp"
+    private const val PREF_COL_GAP = "col_gap_dp"
+
+    /** 键盘键面字号（sp），默认 20。 */
+    fun fontSizeKey(): Int = prefs.getInt(PREF_FONT_SIZE_KEY, 20)
+
+    fun setFontSizeKey(v: Int) {
+        synchronized(lock) { prefs.edit().putInt(PREF_FONT_SIZE_KEY, v.coerceIn(12, 30)).apply() }
+    }
+
+    /** 工具栏/候选字号（sp），默认 18。 */
+    fun fontSizeBar(): Int = prefs.getInt(PREF_FONT_SIZE_BAR, 18)
+
+    fun setFontSizeBar(v: Int) {
+        synchronized(lock) { prefs.edit().putInt(PREF_FONT_SIZE_BAR, v.coerceIn(12, 28)).apply() }
+    }
+
+    /** 按键圆角（dp），默认 8。 */
+    fun keyCornerDp(): Int = prefs.getInt(PREF_KEY_CORNER, 8)
+
+    fun setKeyCornerDp(v: Int) {
+        synchronized(lock) { prefs.edit().putInt(PREF_KEY_CORNER, v.coerceIn(0, 20)).apply() }
+    }
+
+    /** 键盘行距（dp），默认 4。 */
+    fun rowGapDp(): Int = prefs.getInt(PREF_ROW_GAP, 4)
+
+    fun setRowGapDp(v: Int) {
+        synchronized(lock) { prefs.edit().putInt(PREF_ROW_GAP, v.coerceIn(1, 10)).apply() }
+    }
+
+    /** 键盘列距（dp），默认 4。 */
+    fun colGapDp(): Int = prefs.getInt(PREF_COL_GAP, 4)
+
+    fun setColGapDp(v: Int) {
+        synchronized(lock) { prefs.edit().putInt(PREF_COL_GAP, v.coerceIn(1, 10)).apply() }
+    }
+
+    // ── 悬浮窗（编码预览悬浮窗，参考 trime CompositionView） ──
+
+    private const val PREF_FLOAT_ENABLE = "float_enable"
+    private const val PREF_FLOAT_MODE = "float_mode" // default | custom
+    private const val PREF_FLOAT_X = "float_x_dp"
+    private const val PREF_FLOAT_Y = "float_y_dp"
+    private const val PREF_FLOAT_TEXT = "float_text_sp"
+    private const val PREF_FLOAT_ALPHA = "float_bg_alpha"
+
+    /** 悬浮窗开关：输入时在键盘上方悬浮显示输入码（默认关）。 */
+    fun floatEnabled(): Boolean = prefs.getBoolean(PREF_FLOAT_ENABLE, false)
+
+    fun setFloatEnabled(v: Boolean) {
+        synchronized(lock) { prefs.edit().putBoolean(PREF_FLOAT_ENABLE, v).apply() }
+    }
+
+    /** 悬浮窗模式：default=内置样式（固定位置/字号）；custom=用户自定义位置字号透明度。 */
+    fun floatMode(): String = prefs.getString(PREF_FLOAT_MODE, "default") ?: "default"
+
+    fun setFloatMode(v: String) {
+        synchronized(lock) { prefs.edit().putString(PREF_FLOAT_MODE, v).apply() }
+    }
+
+    /** 悬浮窗水平位置（dp，距键盘左缘），默认 16。 */
+    fun floatXDp(): Int = prefs.getInt(PREF_FLOAT_X, 16)
+
+    fun setFloatXDp(v: Int) {
+        synchronized(lock) { prefs.edit().putInt(PREF_FLOAT_X, v.coerceIn(0, 400)).apply() }
+    }
+
+    /** 悬浮窗垂直位置（dp，距键盘顶部向上），默认 100。 */
+    fun floatYDp(): Int = prefs.getInt(PREF_FLOAT_Y, 100)
+
+    fun setFloatYDp(v: Int) {
+        synchronized(lock) { prefs.edit().putInt(PREF_FLOAT_Y, v.coerceIn(20, 400)).apply() }
+    }
+
+    /** 悬浮窗字号（sp），默认 22。 */
+    fun floatTextSp(): Int = prefs.getInt(PREF_FLOAT_TEXT, 22)
+
+    fun setFloatTextSp(v: Int) {
+        synchronized(lock) { prefs.edit().putInt(PREF_FLOAT_TEXT, v.coerceIn(14, 40)).apply() }
+    }
+
+    /** 悬浮窗背景不透明度（0-100），默认 92。 */
+    fun floatBgAlpha(): Int = prefs.getInt(PREF_FLOAT_ALPHA, 92)
+
+    fun setFloatBgAlpha(v: Int) {
+        synchronized(lock) { prefs.edit().putInt(PREF_FLOAT_ALPHA, v.coerceIn(20, 100)).apply() }
     }
 
     /**
@@ -208,7 +303,10 @@ object KeyboardManager {
     /** 尺寸指纹：变化时 Service 重建键盘视图（onStartInputView 检查）。 */
     fun sizeSignature(): String =
         "${keyHeightDp()}x${barHeightDp()}x${barEnabled()}x${hintLong()}" +
-            "x${hintUp()}x${hintDown()}x${hintLeft()}x${hintRight()}x${spaceLabel()}x${sliderSymbolsRaw()}"
+            "x${hintUp()}x${hintDown()}x${hintLeft()}x${hintRight()}x${spaceLabel()}x${sliderSymbolsRaw()}" +
+            "x${fontSizeKey()}x${fontSizeBar()}x${keyCornerDp()}x${rowGapDp()}x${colGapDp()}" +
+            "x${floatEnabled()}x${floatMode()}x${floatXDp()}x${floatYDp()}x${floatTextSp()}x${floatBgAlpha()}" +
+            "x${com.azime.input.core.font.FontManager.rev()}"
 
     // ── 工具栏自定义（○ 菜单键之外的可显示工具） ────────────
 

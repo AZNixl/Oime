@@ -269,7 +269,18 @@ class AZimeService : InputMethodService() {
                 }
                 KeyAction.Shift -> uiState.update { it.copy(shiftOn = !it.shiftOn, capsOn = false) }
                 KeyAction.Backspace -> handleBackspace()
-                KeyAction.Space -> applyResult(RimeManager.processKey(KEY_SPACE))
+                KeyAction.Space -> {
+                    // 对齐 xime.az：无编码无候选时空格直出（否则 librime 吞掉空格，
+                    // 设置页文本框等场景打不出空格）；有编码时 = 选首选/顶屏
+                    val st = uiState.value
+                    if (st.preedit.isEmpty() && st.candidates.isEmpty()) {
+                        currentInputConnection?.commitText(" ", 1)
+                        pushUndo(" ")
+                        refreshState()
+                    } else {
+                        applyResult(RimeManager.processKey(KEY_SPACE))
+                    }
+                }
                 KeyAction.Enter -> handleEnter()
                 KeyAction.ToggleSymbols -> {
                     val target = if (uiState.value.page == "main") KeyboardManager.preferredPage() else "main"

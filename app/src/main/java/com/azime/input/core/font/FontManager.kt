@@ -34,6 +34,12 @@ object FontManager {
     @Volatile
     private var familyCache: Pair<String, FontFamily>? = null
 
+    /** 字体设置版本号：每次选择变化自增，供键盘视图检测热加载（反馈轮9）。 */
+    @Volatile
+    private var revCounter: Int = 0
+
+    fun rev(): Int = revCounter
+
     val supportedExtensions = setOf("ttf", "otf", "ttc")
 
     /** 外置字体目录（Documents/Oime/fonts）。 */
@@ -78,6 +84,7 @@ object FontManager {
     fun setSelectedFonts(names: List<String>) {
         prefs.edit().putString(KEY_SELECTED_FONTS, names.joinToString("\n")).apply()
         familyCache = null
+        revCounter++
     }
 
     fun isFontSelected(name: String): Boolean = selectedFonts().contains(name)
@@ -111,6 +118,7 @@ object FontManager {
     /** 字体设置变更后调用（setSelectedFonts 已自动失效，保留给外部强制刷新用）。 */
     fun invalidateCustomFont() {
         familyCache = null
+        revCounter++
     }
 
     /**

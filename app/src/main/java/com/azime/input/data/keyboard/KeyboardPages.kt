@@ -169,33 +169,39 @@ object KeyboardPages {
     )
 
     /**
-     * 九宫格数字键盘——5 列布局数据（编辑器用简化表达）。
-     * 实际渲染由 KeyboardScreen 的 NumpadPane 专门处理：
-     * 左列 = 3 行高滑动选符号键（滑动选择-松手上屏）+ 返回键；中间三列 = 1-0 + 两个符号；
-     * 右列 = 功能键（⌫ / 符号面板 / 空格 / ⏎）。
+     * 九宫格数字键盘（编辑器用表达，rev=3 对齐实际 NumpadPane 渲染）：
+     * 行1: 滑键  1  2  3  ⌫
+     * 行2: 滑键  4  5  6  符号
+     * 行3: 滑键  7  8  9  空格
+     * 行4: 返回  =  0  .  ⏎
+     * （实际渲染中左列滑键为跨 3 行的单键，此处以「滑键」占位对齐编辑器预览；
+     *   数字横向 123/456/789 排布，0 左 = 号、右 . 号 —— 反馈轮9。）
      */
     val numpad: KeyboardLayout = KeyboardLayout(
         name = "numpad",
         rows = listOf(
             row(
-                charKey("1", width = 2f), charKey("2", width = 2f), charKey("3", width = 2f),
-                backspace(width = 2f),
+                Key("滑键", code = "slider", width = 1f, type = KeyType.FUNCTION),
+                charKey("1"), charKey("2"), charKey("3"),
+                backspace(width = 1f),
             ),
             row(
-                charKey("4", width = 2f), charKey("5", width = 2f), charKey("6", width = 2f),
-                Key("符", code = "symgrid", width = 2f, type = KeyType.FUNCTION),
+                Key("滑键", code = "slider", width = 1f, type = KeyType.FUNCTION),
+                charKey("4"), charKey("5"), charKey("6"),
+                Key("符号", code = "symgrid", width = 1f, type = KeyType.FUNCTION),
             ),
             row(
-                charKey("7", width = 2f), charKey("8", width = 2f), charKey("9", width = 2f),
-                space(width = 2f),
+                Key("滑键", code = "slider", width = 1f, type = KeyType.FUNCTION),
+                charKey("7"), charKey("8"), charKey("9"),
+                space(width = 1f),
             ),
             row(
-                pageKey("返回", target = "main", width = 2f),
-                charKey("0", width = 2f), charKey(".", width = 2f), charKey(",", width = 2f),
-                enter(width = 2f),
+                pageKey("返回", target = "main", width = 1f),
+                charKey("="), charKey("0"), charKey("."),
+                enter(width = 1f),
             ),
         ),
-        rev = 2,
+        rev = 3,
     )
 
     /** 九宫格左列滑动选符号键的符号带（上下滑动选择，松手上屏）。 */

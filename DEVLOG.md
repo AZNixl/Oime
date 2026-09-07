@@ -315,3 +315,36 @@ vendored RimeEngine 中 `getAvailableSchemas / getSchemaString / getSchemaList`
 - RimeManager 新增 getOption/setOption/schemaSwitches(schemaId)（解析 shared/<id>.schema.yaml switches 段）+ SchemaSwitch data class
 - KeyAction 新增 ToggleSwitch(name)；AZimeService currentEditorInfo 字段
 - 参考源码：xime.az（github AZNixl/Xime.az）KeyButton.kt 长按 5dp 取消 / ImeKeyRouter.kt 回车与反查
+
+
+## 反馈轮 9（0.9.0-oime vc10）
+
+| # | 反馈 | 处理 |
+|---|------|------|
+| 1 | popup 改横向 | 长按气泡改横向网格：一行 5 个，多出的排第二行（去除纵向分页指示器） |
+| 2 | ○菜单子级界面排布 | 方案开关子级（切方案 + schema.yaml switches 开关）、输入方案、定制工具栏全部改为一级菜单同 chrome（← 标题 ↑）+ 同款卡片排布（keyBg 圆角卡） |
+| 3 | 工具栏样式 | 背景色跟随主键盘背景（c.bg）；去除圆角（键盘整体平直，不再顶部 18dp 圆角裁剪）；高度 38→46dp（+1/5）；组合行恢复上下排布（上=输入码小字 12sp，下=候选横滚 + 翻页/更多） |
+| 4 | 九宫格数字排布 | 数字列存改为 1,4,7 / 2,5,8 / 3,6,9（视觉上横向 123/456/789）；第 4 行改 返回/= 0 ./⏎（0 左 = 号、右英文句号，去掉逗号键） |
+| 5 | 长按符号位置 | 气泡向右、向上各移 3dp（offset 0,-58 → 3,-61） |
+| 6 | 空格文本框不能输空格 | 根因：Space 无条件走 RimeManager.processKey(KEY_SPACE)，中文模式无编码时 librime 吞掉空格。修复（对齐 xime.az）：preedit 与候选均空时直接 commitText(" ")；有编码时仍走引擎顶屏 |
+| 7 | 编辑器 numpad 对齐 | KeyboardPages.numpad 数据改为 5 列×4 行（滑键占位列 + 数字 + 功能列，第 4 行含 = 0 .），rev=2→3（旧自定义副本自动清理），编辑器预览与实际 NumpadPane 渲染一致 |
+| 8 | 字号设置 | 键盘键面字号（12-30sp，默认 20）与工具栏/候选字号（12-28sp，默认 18）分开滑杆；键面字号按比例缩放功能键（0.7x） |
+| 9 | 按键外观设置 | 按键圆角（0-20dp，默认 8）/ 行距（1-10dp）/ 列距（1-10dp）三条滑杆；NumpadPane 与滑键同步 |
+| 10 | 悬浮窗 | 新增「悬浮窗」设置大项（默认关）：输入时在键盘上方 Popup 悬浮显示输入码（参考 trime 悬浮窗/悬浮窗显示优化.lua）；默认模式固定样式（16dp,100dp,22sp,92% 透明度），自定义模式 X/Y 位置、字号、背景不透明度四条滑杆 |
+| 11 | 面板底部悬浮栏 | 剪贴板面板与 emoji/符号网格的返回键+选项卡/分类标签移到底部悬浮胶囊栏（参考 PiliPlus）；内容区底部留白 56dp；emoji 分类多时底栏横向滑动 |
+| 12 | 设置界面 | KSU 布局：左侧大状态方块 + 右侧两个小方块（版本/项目）上下排；滑条改 xime 风格 XimeSlider（标题左+值右+滑杆）；enableEdgeToEdge() 状态栏沉浸 |
+| 13 | 主题自定义卡片 | 樱粉后加「自定义」卡片（当前为非预设色时自动选中态），点击才展开 RGB 调整区 |
+| 14 | 字体热加载 | FontManager 增加版本号 rev()（setSelectedFonts/invalidate 自增），纳入 KeyboardManager.sizeSignature()——字体选择变化后回键盘即重建视图加载新字体 |
+| 15 | ○指针灵敏度 | 指针模式拖动步长 18dp→30dp（灵敏度降低约 40%）；光标模式不变 |
+| 16 | 退格滑动删除降敏 | 选择步长 24px→30px（每字需滑更远，降敏 1/5）；进入阈值 10→12px |
+| 17 | 语音输入调研 | 仅报告（见下） |
+
+### 第 17 条调研结论：小企鹅（fcitx5-android）语音输入
+- **原版不内置语音模型**：语音按钮只是「切到系统语音输入法」的快捷键（PR #251，imm.setInputMethod 切 Google 语音输入或 Sayboard 等第三方，输入完切回）。
+- 作者的 SpeechRecognizer 直连方案（PR #899，调系统 android.speech.SpeechRecognizer）至今仍是 WIP 未合并。
+- 三条可选路线：A 切换 IME（~1 天，零权限零模型，体验割裂）；B 系统 SpeechRecognizer（~3-5 天，需 RECORD_AUDIO，依赖设备语音引擎）；C 内置离线模型 sherpa-onnx/Vosk（1-2 周，40-80MB 中文流式模型）。待用户决策。
+
+技术记录：
+- KeyboardManager 新增 fontSizeKey/fontSizeBar/keyCornerDp/rowGapDp/colGapDp/float* 系列 prefs，全部纳入 sizeSignature
+- AZimeService handleSpace 分流逻辑；AZimeService currentEditorInfo 沿用轮 8
+- 版本 0.9.0-oime（versionCode 10）

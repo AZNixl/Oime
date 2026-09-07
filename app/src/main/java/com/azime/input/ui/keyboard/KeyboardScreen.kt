@@ -262,13 +262,17 @@ fun AzimeKeyboardScreen(
     // 多字体（xime 方式）：多选字体构建回退链，键帽/候选/面板统一使用
     val kbFontFamily = remember { FontManager.keyboardFontFamily() }
 
-    // 尺寸可调（设置页滑杆）；工具栏固定紧凑高度，「增高行」= 键盘底部额外空行
+    // 尺寸可调（设置页滑杆）；工具栏高度（增高 1/5=46dp），「增高行」= 键盘底部额外空行
     val keyH = KeyboardManager.keyHeightDp().dp
     val barH = KeyboardManager.barHeightDp().dp
+    // 反馈轮9：按键圆角/行距/列距可调（默认 8dp / 4dp / 4dp）
+    val keyCorner = KeyboardManager.keyCornerDp().dp
+    val rowGap = KeyboardManager.rowGapDp().dp
+    val colGap = KeyboardManager.colGapDp().dp
     var showToolbarCustomize by remember { mutableStateOf(false) }
     // 主键盘区标准总高（4 行 + 间距）；emoji/候选/菜单面板统一与此等高
-    val stdH = keyH * 4 + KeySpacing * 5
-    val areaH = if (KeyboardManager.barEnabled()) stdH + KeySpacing + barH else stdH
+    val stdH = keyH * 4 + rowGap * 5
+    val areaH = if (KeyboardManager.barEnabled()) stdH + rowGap + barH else stdH
 
     CompositionLocalProvider(
         LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = kbFontFamily ?: FontFamily.Default),
@@ -276,14 +280,13 @@ fun AzimeKeyboardScreen(
         Column(
             modifier = modifier
                 .fillMaxWidth()
-                // 沉浸式圆角：顶部两角圆角化，配合透明 IME 窗口贴合系统底部弹层样式
-                .clip(RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp))
+                // 反馈轮9：工具栏与键盘同色且不再做顶部圆角（整体平直，贴系统底栏）
                 .background(c.bg),
         ) {
             ToolbarRow(
                 state = state,
                 onAction = onAction,
-                barHeight = 38.dp,
+                barHeight = 46.dp,
                 onOpenCustomize = { showToolbarCustomize = true },
             )
             // 面板优先：定制工具栏 / 更多候选 / ○ 菜单 / 剪贴板 覆盖主键盘区（等高），否则显示键盘
@@ -323,8 +326,8 @@ fun AzimeKeyboardScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = KeySpacing, vertical = KeySpacing),
-                    verticalArrangement = Arrangement.spacedBy(KeySpacing),
+                        .padding(horizontal = colGap, vertical = rowGap),
+                    verticalArrangement = Arrangement.spacedBy(rowGap),
                 ) {
                     for (row in layout.rows) {
                         // 行高 = 标准键高 × 行内最大 height 系数（编辑器可调）
@@ -333,7 +336,7 @@ fun AzimeKeyboardScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(rowH),
-                            horizontalArrangement = Arrangement.spacedBy(KeySpacing),
+                            horizontalArrangement = Arrangement.spacedBy(colGap),
                         ) {
                             for (key in row.keys) {
                                 KeyboardKey(key = key, state = state, onAction = onAction)
@@ -351,6 +354,33 @@ fun AzimeKeyboardScreen(
                     }
                 }
             }
+
+            // ── 悬浮窗（编码预览，参考 trime 悬浮窗 / 悬浮窗显示优化.lua）──
+            // 输入时在键盘上方悬浮显示输入码；默认模式固定样式，自定义模式位置/字号/透明度可调
+            if (KeyboardManager.floatEnabled() && state.preedit.isNotEmpty()) {
+                val density = LocalDensity.current
+                val custom = KeyboardManager.floatMode() == "custom"
+                val fx = KeyboardManager.floatXDp().dp
+                val fy = KeyboardManager.floatYDp().dp
+                val bgAlpha = if (custom) KeyboardManager.floatBgAlpha() / 100f else 0.92f
+                Popup(
+                    alignment = Alignment.TopStart,
+                    offset = IntOffset(
+                        with(density) { fx.roundToPx() },
+                        with(density) { -fy.roundToPx() },
+                    ),
+                ) {
+                    Text(
+                        text = state.preedit,
+                        fontSize = KeyboardManager.floatTextSp().sp,
+                        color = c.text,
+                        maxLines = 1,
+                        modifier = Modifier
+                            .background(c.barBg.copy(alpha = bgAlpha), RoundedCornerShape(10.dp))
+                            .padding(horizontal = 14.dp, vertical = 8.dp),
+                    )
+                }
+            }
         }
     }
 }
@@ -363,56 +393,65 @@ private fun ClipboardPanel(state: KeyboardUiState, onAction: (KeyAction) -> Unit
     val isPhrase = state.clipTab == "phrase"
     val items = if (isPhrase) state.phraseItems else state.clipHistory
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(totalHeight)
-            .background(c.barBg)
-            .padding(horizontal = 8.dp, vertical = 6.dp),
+            .background(c.barBg),
     ) {
-        // 顶行：返回键固定左上角 + 双选项卡
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            // 返回键（固定左上角）
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 8.dp, vertical = 8.dp),
+        ) {
+            if (items.isEmpty()) {
+                Text(
+                    text = if (isPhrase) "收藏为空：在剪贴板条目的 ︙ 菜单里点「收藏」"
+                    else "剪贴板为空：复制文字后会自动记录在这里",
+                    fontSize = 13.sp,
+                    color = c.subText,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 14.dp),
+                )
+            } else {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    items.forEachIndexed { index, text ->
+                        ClipCard(index = index, text = text, tab = state.clipTab, onAction = onAction)
+                    }
+                    // 底部留白避开悬浮栏
+                    Spacer(Modifier.height(56.dp))
+                }
+            }
+        }
+        // 底部悬浮栏（反馈轮9，参考 PiliPlus）：返回键 + 选项卡
+        Row(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 8.dp)
+                .background(c.funcKeyBg, RoundedCornerShape(22.dp))
+                .padding(horizontal = 6.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
             Text(
                 text = "←",
                 fontSize = 17.sp,
                 color = c.text,
                 modifier = Modifier
-                    .background(c.funcKeyBg, RoundedCornerShape(8.dp))
                     .clickable { onAction(KeyAction.ToggleClipboardPanel) }
-                    .padding(horizontal = 13.dp, vertical = 5.dp),
+                    .padding(horizontal = 10.dp, vertical = 3.dp),
             )
-            Spacer(Modifier.width(8.dp))
             ClipTabLabel("剪贴板", selected = !isPhrase, c = c) {
                 onAction(KeyAction.SetClipTab("clipboard"))
             }
-            Spacer(Modifier.width(6.dp))
             ClipTabLabel("收藏", selected = isPhrase, c = c) {
                 onAction(KeyAction.SetClipTab("phrase"))
-            }
-        }
-        Spacer(Modifier.height(4.dp))
-        if (items.isEmpty()) {
-            Text(
-                text = if (isPhrase) "收藏为空：在剪贴板条目的 ︙ 菜单里点「收藏」"
-                else "剪贴板为空：复制文字后会自动记录在这里",
-                fontSize = 13.sp,
-                color = c.subText,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 14.dp),
-            )
-        } else {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                items.forEachIndexed { index, text ->
-                    ClipCard(index = index, text = text, tab = state.clipTab, onAction = onAction)
-                }
             }
         }
     }
@@ -521,36 +560,36 @@ private fun ToolbarRow(
     var showSchemaMenu by remember { mutableStateOf(false) }
     val density = LocalDensity.current
     val haptics = LocalHapticFeedback.current
-    val stepPx = with(density) { 18.dp.toPx() }
+    // ○ 拖动步长：光标模式 18dp/步；指针模式降敏（30dp/步，反馈轮9）
+    val stepPx = with(density) { (if (state.joystickMode == "pointer") 30.dp else 18.dp).toPx() }
 
     // 剪贴板条：复制后常驻，点击直接上屏；打字/新复制时消亡（参考 复制自动添加到候选.lua）
     val clipFresh = state.clipText.isNotBlank()
 
-    // 打字中（有输入码或候选）：输入码 + 候选上下排布覆盖整个工具栏（参考 xime）
+    // 打字中（有输入码或候选）：输入码 + 候选上下排布覆盖整个工具栏（反馈轮9）
     val composing = state.preedit.isNotEmpty() || state.candidates.isNotEmpty()
 
     when {
-        // ── 组合行：单行内联（输入码在前 + 候选横滚），不加高（反馈轮8） ──
-        composing -> Row(
+        // ── 组合行：上下排布（上=输入码小字，下=候选横滚），背景随键盘 ──
+        composing -> Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = barHeight)
-                .background(c.barBg)
+                .heightIn(min = barHeight + 10.dp)
+                .background(c.bg)
                 .padding(horizontal = 6.dp, vertical = 2.dp),
-            verticalAlignment = Alignment.CenterVertically,
         ) {
             if (state.preedit.isNotEmpty()) {
                 Text(
                     text = state.preedit,
-                    fontSize = 13.sp,
+                    fontSize = 12.sp,
                     color = c.subText,
                     maxLines = 1,
-                    modifier = Modifier.padding(start = 2.dp, end = 4.dp),
+                    modifier = Modifier.padding(start = 2.dp, top = 1.dp),
                 )
             }
             Row(
                 modifier = Modifier
-                    .weight(1f)
+                    .fillMaxWidth()
                     .horizontalScroll(rememberScrollState()),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -559,7 +598,7 @@ private fun ToolbarRow(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .clickable { onAction(KeyAction.Candidate(index)) }
-                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                            .padding(horizontal = 8.dp, vertical = 5.dp),
                     ) {
                         if (index < 9) {
                             Text("${index + 1} ", fontSize = 11.sp, color = c.subText)
@@ -571,37 +610,37 @@ private fun ToolbarRow(
                         }
                     }
                 }
-            }
-            if (state.hasPrevPage) {
-                Text(
-                    "◀",
-                    fontSize = 13.sp,
-                    color = c.subText,
-                    modifier = Modifier
-                        .clickable { onAction(KeyAction.PageUp) }
-                        .padding(horizontal = 6.dp, vertical = 6.dp),
-                )
-            }
-            if (state.hasNextPage) {
-                Text(
-                    "▶",
-                    fontSize = 13.sp,
-                    color = c.subText,
-                    modifier = Modifier
-                        .clickable { onAction(KeyAction.PageDown) }
-                        .padding(horizontal = 6.dp, vertical = 6.dp),
-                )
-            }
-            if (state.candidates.isNotEmpty()) {
-                // 更多候选面板入口（打字时打开大面板选字）
-                Text(
-                    "▾",
-                    fontSize = 16.sp,
-                    color = c.subText,
-                    modifier = Modifier
-                        .clickable { onAction(KeyAction.ToggleCandidatePanel) }
-                        .padding(horizontal = 6.dp, vertical = 6.dp),
-                )
+                if (state.hasPrevPage) {
+                    Text(
+                        "◀",
+                        fontSize = 13.sp,
+                        color = c.subText,
+                        modifier = Modifier
+                            .clickable { onAction(KeyAction.PageUp) }
+                            .padding(horizontal = 6.dp, vertical = 5.dp),
+                    )
+                }
+                if (state.hasNextPage) {
+                    Text(
+                        "▶",
+                        fontSize = 13.sp,
+                        color = c.subText,
+                        modifier = Modifier
+                            .clickable { onAction(KeyAction.PageDown) }
+                            .padding(horizontal = 6.dp, vertical = 5.dp),
+                    )
+                }
+                if (state.candidates.isNotEmpty()) {
+                    // 更多候选面板入口（打字时打开大面板选字）
+                    Text(
+                        "▾",
+                        fontSize = 16.sp,
+                        color = c.subText,
+                        modifier = Modifier
+                            .clickable { onAction(KeyAction.ToggleCandidatePanel) }
+                            .padding(horizontal = 6.dp, vertical = 5.dp),
+                    )
+                }
             }
         }
         // ── 剪贴板条：复制内容覆盖整条工具栏，点击直接上屏 ──
@@ -614,8 +653,7 @@ private fun ToolbarRow(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(barHeight)
-                .background(c.barBg)
-                .background(c.bg, RoundedCornerShape(6.dp))
+                .background(c.bg)
                 .clickable { onAction(KeyAction.CommitClipboard(state.clipText)) }
                 .padding(horizontal = 10.dp, vertical = 8.dp),
         )
@@ -629,7 +667,7 @@ private fun ToolbarRow(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(barHeight)
-                    .background(c.barBg)
+                    .background(c.bg)
                     .padding(horizontal = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -818,26 +856,39 @@ private fun MenuPanel(
                         "引擎部署中…",
                         fontSize = 14.sp,
                         color = c.subText,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp),
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 9.dp),
                     )
                 }
+                // 反馈轮9：与一级菜单同款卡片排布
                 state.schemas.forEach { schemaId ->
-                    Text(
-                        text = schemaDisplay(schemaId).removePrefix("○输入法 · "),
-                        fontSize = 15.sp,
-                        color = if (schemaId == state.schemaName) c.accentActive else c.text,
-                        fontWeight = if (schemaId == state.schemaName) FontWeight.Bold else FontWeight.Normal,
+                    val selected = schemaId == state.schemaName
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .fillMaxWidth()
+                            .background(c.keyBg, RoundedCornerShape(12.dp))
                             .clickable {
                                 if (schemaId != state.schemaName) onAction(KeyAction.SelectSchema(schemaId))
                             }
-                            .padding(horizontal = 16.dp, vertical = 9.dp),
-                    )
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                    ) {
+                        Text(
+                            text = schemaDisplay(schemaId).removePrefix("○输入法 · "),
+                            fontSize = 15.sp,
+                            color = if (selected) c.accentActive else c.text,
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (selected) {
+                            Text("✓", fontSize = 15.sp, color = c.accentActive, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
                 }
             }
             "switches" -> {
                 // 大项「方案开关」：切换方案 + 当前方案 schema.yaml 的 switches 开关
+                // （反馈轮9：卡片排布对齐一级菜单）
                 val switches = remember(state.schemaName) { RimeManager.schemaSwitches(state.schemaName) }
                 MenuSubPanel(
                     c = c, title = "方案开关", totalHeight = totalHeight,
@@ -846,38 +897,44 @@ private fun MenuPanel(
                     Text(
                         text = "当前方案：${RimeManager.schemaDisplayName(state.schemaName)}",
                         fontSize = 12.sp, color = c.subText,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                    )
-                    Text(
-                        "切换方案",
-                        fontSize = 12.sp, color = c.subText,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
                     )
                     state.schemas.forEach { schemaId ->
-                        Text(
-                            text = schemaDisplay(schemaId).removePrefix("○输入法 · "),
-                            fontSize = 14.sp,
-                            color = if (schemaId == state.schemaName) c.accentActive else c.text,
-                            fontWeight = if (schemaId == state.schemaName) FontWeight.Bold else FontWeight.Normal,
+                        val selected = schemaId == state.schemaName
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .background(c.keyBg, RoundedCornerShape(12.dp))
                                 .clickable {
                                     if (schemaId != state.schemaName) onAction(KeyAction.SelectSchema(schemaId))
                                 }
-                                .padding(horizontal = 16.dp, vertical = 7.dp),
-                        )
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                        ) {
+                            Text(
+                                text = schemaDisplay(schemaId).removePrefix("○输入法 · "),
+                                fontSize = 14.sp,
+                                color = if (selected) c.accentActive else c.text,
+                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                                modifier = Modifier.weight(1f),
+                            )
+                            if (selected) {
+                                Text("✓", fontSize = 14.sp, color = c.accentActive, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        Spacer(Modifier.height(6.dp))
                     }
                     Spacer(Modifier.height(6.dp))
                     Text(
                         "功能开关（schema switches）",
                         fontSize = 12.sp, color = c.subText,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
                     )
                     if (switches.isEmpty()) {
                         Text(
                             "当前方案没有可切换的开关",
                             fontSize = 13.sp, color = c.subText,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp),
                         )
                     }
                     switches.forEach { sw ->
@@ -889,15 +946,17 @@ private fun MenuPanel(
                             sw.states.size == 1 -> if (checked) sw.states[0] else "关"
                             else -> if (checked) "开" else "关"
                         }
+                        // 开关卡片：状态名 + 开关名 + Switch（一级菜单同款卡片）
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .background(c.keyBg, RoundedCornerShape(12.dp))
                                 .clickable {
                                     checked = !checked
                                     onAction(KeyAction.ToggleSwitch(sw.name))
                                 }
-                                .padding(horizontal = 16.dp, vertical = 2.dp),
+                                .padding(horizontal = 14.dp, vertical = 6.dp),
                         ) {
                             Column(Modifier.weight(1f)) {
                                 Text(stateText, fontSize = 15.sp, color = c.text)
@@ -911,6 +970,7 @@ private fun MenuPanel(
                                 },
                             )
                         }
+                        Spacer(Modifier.height(6.dp))
                     }
                 }
             }
@@ -1061,36 +1121,34 @@ private fun ToolbarCustomizePanel(
 ) {
     val c = keyboardColors()
     val selected = remember { mutableStateListOf<String>().apply { addAll(current) } }
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(totalHeight)
-            .background(c.barBg)
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+    // 反馈轮9：与一级菜单同 chrome（← 返回 + 标题 + ↑ 关闭）+ 卡片排布
+    MenuSubPanel(
+        c = c, title = "定制工具栏", totalHeight = totalHeight,
+        onBack = onDismiss, onClose = onDismiss,
     ) {
-        Text("定制工具栏", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = c.text)
-        Spacer(Modifier.height(2.dp))
         Text(
             "○ 菜单键固定居中（拖动移光标）；勾选的工具先左后右排列在 ○ 两侧。",
             fontSize = 12.sp,
             color = c.subText,
+            modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
         )
-        Spacer(Modifier.height(6.dp))
         KeyboardManager.availableToolbarTools.forEach { (id, name) ->
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .fillMaxWidth()
+                    .background(c.keyBg, RoundedCornerShape(12.dp))
                     .clickable {
                         if (id in selected) selected.remove(id) else selected.add(id)
-                    },
+                    }
+                    .padding(horizontal = 8.dp, vertical = 2.dp),
             ) {
                 Checkbox(checked = id in selected, onCheckedChange = { on ->
                     if (on) selected.add(id) else selected.remove(id)
                 })
                 Text(name, fontSize = 14.sp, color = c.text)
             }
+            Spacer(Modifier.height(6.dp))
         }
         Spacer(Modifier.height(6.dp))
         Row(
@@ -1237,64 +1295,23 @@ private fun CategoryGridPane(
     val scope = rememberCoroutineScope()
     val pagerState = rememberPagerState(pageCount = { data.categories.size })
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(totalHeight)
-            .padding(KeySpacing),
-        verticalArrangement = Arrangement.spacedBy(KeySpacing),
+            .height(totalHeight),
     ) {
-        // 顶行：返回键固定左上角 + 分类标签（点标签翻页）
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(34.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            // 返回键（固定左上角）
-            Text(
-                text = "←",
-                fontSize = 17.sp,
-                color = c.text,
-                modifier = Modifier
-                    .background(c.funcKeyBg, RoundedCornerShape(8.dp))
-                    .clickable { onAction(KeyAction.SwitchPage("main")) }
-                    .padding(horizontal = 13.dp, vertical = 5.dp),
-            )
-            Spacer(Modifier.width(4.dp))
-            // 分类标签（横向滑动）
-            Row(
-                modifier = Modifier
-                    .weight(1f)
-                    .horizontalScroll(rememberScrollState()),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                data.categories.forEachIndexed { i, (label, _) ->
-                    Text(
-                        text = label,
-                        fontSize = 15.sp,
-                        color = if (i == pagerState.currentPage) c.accentActive else c.subText,
-                        modifier = Modifier
-                            .clickable { scope.launch { pagerState.animateScrollToPage(i) } }
-                            .padding(horizontal = 9.dp, vertical = 3.dp),
-                    )
-                }
-            }
-        }
-        // 网格内容：左右滑动切分类（占满剩余高度，单页可竖向滚动）
+        // 网格内容：左右滑动切分类（占满全高，单页可竖向滚动）
         HorizontalPager(
             state = pagerState,
             modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f),
+                .fillMaxSize(),
         ) { page ->
             val items = data.categories.getOrNull(page)?.second ?: emptyList()
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .verticalScroll(rememberScrollState()),
+                    .verticalScroll(rememberScrollState())
+                    .padding(top = KeySpacing, horizontal = KeySpacing),
                 verticalArrangement = Arrangement.spacedBy(KeySpacing),
             ) {
                 items.chunked(8).forEach { chunk ->
@@ -1321,6 +1338,43 @@ private fun CategoryGridPane(
                         }
                     }
                 }
+                // 底部留白避开悬浮栏
+                Spacer(Modifier.height(56.dp))
+            }
+        }
+        // 底部悬浮栏（反馈轮9，参考 PiliPlus）：返回键 + 分类标签（分类多时横向滑动）
+        Row(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 8.dp)
+                .background(c.funcKeyBg, RoundedCornerShape(22.dp))
+                .padding(horizontal = 4.dp, vertical = 3.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "←",
+                fontSize = 17.sp,
+                color = c.text,
+                modifier = Modifier
+                    .clickable { onAction(KeyAction.SwitchPage("main")) }
+                    .padding(horizontal = 10.dp, vertical = 3.dp),
+            )
+            // 分类标签（横向滑动）
+            Row(
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                data.categories.forEachIndexed { i, (label, _) ->
+                    Text(
+                        text = label,
+                        fontSize = 15.sp,
+                        color = if (i == pagerState.currentPage) c.accentActive else c.subText,
+                        modifier = Modifier
+                            .clickable { scope.launch { pagerState.animateScrollToPage(i) } }
+                            .padding(horizontal = 9.dp, vertical = 3.dp),
+                    )
+                }
             }
         }
     }
@@ -1333,25 +1387,29 @@ private fun CategoryGridPane(
 
 @Composable
 private fun NumpadPane(state: KeyboardUiState, onAction: (KeyAction) -> Unit, keyHeight: androidx.compose.ui.unit.Dp) {
-    val topRows = listOf(listOf("1", "2", "3"), listOf("4", "5", "6"), listOf("7", "8", "9"))
+    // 反馈轮9：数字横向 123/456/789 排布（列存 = 1,4,7 / 2,5,8 / 3,6,9）
+    val topRows = listOf(listOf("1", "4", "7"), listOf("2", "5", "8"), listOf("3", "6", "9"))
+    val keyCornerDp = KeyboardManager.keyCornerDp().dp
+    val rowGap = KeyboardManager.rowGapDp().dp
+    val colGap = KeyboardManager.colGapDp().dp
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(KeySpacing),
-        verticalArrangement = Arrangement.spacedBy(KeySpacing),
+            .padding(colGap),
+        verticalArrangement = Arrangement.spacedBy(rowGap),
     ) {
         // 前 3 行：符号滑键（跨 3 行）+ 数字三列 + 功能三键
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(keyHeight * 3 + KeySpacing * 2),
-            horizontalArrangement = Arrangement.spacedBy(KeySpacing),
+                .height(keyHeight * 3 + rowGap * 2),
+            horizontalArrangement = Arrangement.spacedBy(colGap),
         ) {
             NumpadSliderKey(onAction = onAction, modifier = Modifier.weight(1f).fillMaxSize())
             topRows.forEach { col ->
                 Column(
                     modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(KeySpacing),
+                    verticalArrangement = Arrangement.spacedBy(rowGap),
                 ) {
                     col.forEach { digit ->
                         Row(Modifier.weight(1f)) {
@@ -1365,7 +1423,7 @@ private fun NumpadPane(state: KeyboardUiState, onAction: (KeyAction) -> Unit, ke
             }
             Column(
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(KeySpacing),
+                verticalArrangement = Arrangement.spacedBy(rowGap),
             ) {
                 listOf(
                     Key("⌫", code = "backspace", width = 1f, type = KeyType.DELETE),
@@ -1376,18 +1434,18 @@ private fun NumpadPane(state: KeyboardUiState, onAction: (KeyAction) -> Unit, ke
                 }
             }
         }
-        // 第 4 行：返回 + 0 . , + ⏎
+        // 第 4 行：返回 + = 0 . + ⏎（反馈轮9：0 左 = 号、右 . 号）
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(keyHeight),
-            horizontalArrangement = Arrangement.spacedBy(KeySpacing),
+            horizontalArrangement = Arrangement.spacedBy(colGap),
         ) {
             KeyboardKey(
                 key = Key("返回", code = "main", width = 1f, type = KeyType.FUNCTION),
                 state = state, onAction = onAction,
             )
-            listOf("0", ".", ",").forEach { ch ->
+            listOf("=", "0", ".").forEach { ch ->
                 KeyboardKey(
                     key = Key(ch, code = ch, width = 1f, type = KeyType.CHARACTER),
                     state = state, onAction = onAction,
@@ -1416,7 +1474,7 @@ private fun NumpadSliderKey(onAction: (KeyAction) -> Unit, modifier: Modifier) {
 
     Box(
         modifier = modifier
-            .background(c.funcKeyBg, RoundedCornerShape(8.dp))
+            .background(c.funcKeyBg, RoundedCornerShape(KeyboardManager.keyCornerDp().dp))
             .pointerInput(symbols) {
                 val stepPx = with(density) { 34.dp.toPx() }
                 awaitEachGesture {
@@ -1521,6 +1579,7 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
     // 打字时：123 键 = 第三候选、句号键 = 第二候选、空格键 = 第一候选，
     // 键面直接显示对应候选文本，点击即上屏该候选（无对应候选时退回原动作）。
     val composingNow = state.preedit.isNotEmpty() || state.candidates.isNotEmpty()
+    val keyCornerDp = KeyboardManager.keyCornerDp().dp
     if (composingNow && state.page == "main") {
         val selectIndex = when {
             key.type == KeyType.FUNCTION && key.code == "symbols" -> 2
@@ -1538,7 +1597,7 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
                     modifier = Modifier
                         .weight(key.width)
                         .fillMaxSize()
-                        .background(mapBg, RoundedCornerShape(8.dp))
+                        .background(mapBg, RoundedCornerShape(keyCornerDp))
                         .clickable {
                             HapticsManager.press()
                             onAction(KeyAction.Candidate(selectIndex))
@@ -1591,7 +1650,7 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
 
     val density = LocalDensity.current
     val haptics = LocalHapticFeedback.current
-    val bubbleOffset = with(density) { IntOffset(0, -58.dp.roundToPx()) }
+    val bubbleOffset = with(density) { IntOffset(3.dp.roundToPx(), -61.dp.roundToPx()) }
     val swipeThreshold = with(density) { 30.dp.toPx() }
     // 长按气泡滑动选择步长（每个符号占 40dp）
     val longStepPx = with(density) { 40.dp.toPx() }
@@ -1634,7 +1693,7 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
     var baseModifier = Modifier
         .weight(key.width)
         .fillMaxSize()
-        .background(bg, RoundedCornerShape(8.dp))
+        .background(bg, RoundedCornerShape(keyCornerDp))
     if (hasGestures) {
         // 手势闭包内读取最新 state（preedit 等会随打字频繁变化）
         val currentState by rememberUpdatedState(state)
@@ -1654,8 +1713,9 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
                 // engaged 后 target = floor(dx / SWIPE_STEP)，右滑回退可缩到锚点
                 var selectEngaged = false
                 var lastSelectStep = 0
-                val swipeStepPx = 24f // 与 trime2 脚本 SWIPE_STEP=24 一致（原始像素）
-                val engageThresholdPx = 10f
+                // 反馈轮9：滑动删除降敏 1/5（30px/字，原 24px）
+                val swipeStepPx = 30f
+                val engageThresholdPx = 12f
 
                 while (true) {
                     val event = awaitPointerEvent()
@@ -1776,7 +1836,9 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
     ) {
         Text(
             text = swipePreview ?: label,
-            fontSize = if (key.type == KeyType.CHARACTER) 20.sp else 14.sp,
+            // 反馈轮9：键面字号可调（键盘/工具栏分开设置）
+            fontSize = if (key.type == KeyType.CHARACTER) KeyboardManager.fontSizeKey().sp
+            else (KeyboardManager.fontSizeKey() * 0.7f).sp,
             fontWeight = FontWeight.Medium,
             color = fg,
             maxLines = 1,
@@ -1799,10 +1861,7 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
                 offset = bubbleOffset,
                 onDismissRequest = { showBubble = false },
             ) {
-                // 每行 5 个网格分页；滑动选择跨页时自动翻页，指示器可手动翻页
-                val pageSize = 5
-                val pageCount = (longPressSymbols.size + pageSize - 1) / pageSize
-                val page = if (pageCount <= 1) 0 else (longSelIdx / pageSize).coerceIn(0, pageCount - 1)
+                // 反馈轮9：横向放置——一行 5 个，多出的排第二行（不再纵向分页）
                 Column(
                     modifier = Modifier
                         .background(c.barBg, RoundedCornerShape(10.dp))
@@ -1810,54 +1869,29 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
                     verticalArrangement = Arrangement.spacedBy(1.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    longPressSymbols.drop(page * pageSize).take(pageSize).forEach { symbol ->
-                        val si = longPressSymbols.indexOf(symbol)
-                        val isSel = longPressSymbols.size > 1 && si == longSelIdx
-                        Text(
-                            text = symbol.removeSuffix("{Left}"),
-                            fontSize = 16.sp,
-                            fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
-                            color = if (isSel) c.accentActive else c.text,
-                            modifier = Modifier
-                                .background(
-                                    if (isSel) c.accentKeyBg else Color.Transparent,
-                                    RoundedCornerShape(8.dp),
+                    longPressSymbols.chunked(5).forEach { rowSymbols ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(1.dp)) {
+                            rowSymbols.forEach { symbol ->
+                                val si = longPressSymbols.indexOf(symbol)
+                                val isSel = longPressSymbols.size > 1 && si == longSelIdx
+                                Text(
+                                    text = symbol.removeSuffix("{Left}"),
+                                    fontSize = 16.sp,
+                                    fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isSel) c.accentActive else c.text,
+                                    modifier = Modifier
+                                        .background(
+                                            if (isSel) c.accentKeyBg else Color.Transparent,
+                                            RoundedCornerShape(8.dp),
+                                        )
+                                        .clickable {
+                                            commitLongSymbol(symbol)
+                                            longSelIdx = 0
+                                            showBubble = false
+                                        }
+                                        .padding(horizontal = 10.dp, vertical = 6.dp),
                                 )
-                                .clickable {
-                                    commitLongSymbol(symbol)
-                                    longSelIdx = 0
-                                    showBubble = false
-                                }
-                                .padding(horizontal = 10.dp, vertical = 6.dp),
-                        )
-                    }
-                    if (pageCount > 1) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = "‹",
-                                fontSize = 13.sp,
-                                color = if (page > 0) c.text else c.subText,
-                                modifier = Modifier
-                                    .clickable(enabled = page > 0) {
-                                        longSelIdx = ((page - 1) * pageSize).coerceAtLeast(0)
-                                    }
-                                    .padding(horizontal = 10.dp, vertical = 2.dp),
-                            )
-                            Text(
-                                text = "${page + 1}/$pageCount",
-                                fontSize = 11.sp,
-                                color = c.subText,
-                            )
-                            Text(
-                                text = "›",
-                                fontSize = 13.sp,
-                                color = if (page < pageCount - 1) c.text else c.subText,
-                                modifier = Modifier
-                                    .clickable(enabled = page < pageCount - 1) {
-                                        longSelIdx = ((page + 1) * pageSize).coerceAtMost(longPressSymbols.size - 1)
-                                    }
-                                    .padding(horizontal = 10.dp, vertical = 2.dp),
-                            )
+                            }
                         }
                     }
                 }

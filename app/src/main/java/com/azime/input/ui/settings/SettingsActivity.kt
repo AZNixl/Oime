@@ -114,6 +114,8 @@ class SettingsActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 反馈轮9：设置界面状态栏沉浸（edge-to-edge，状态栏随主题深浅色）
+        androidx.activity.enableEdgeToEdge()
         setContent {
             // 主题色跟随键盘回车键颜色，并跟随系统深浅色
             val dark = androidx.compose.foundation.isSystemInDarkTheme()
@@ -177,6 +179,7 @@ fun SettingsScreen(
         "schemas" to "输入方案",
         "keyboard" to "键盘",
         "theme" to "主题与配色",
+        "float" to "悬浮窗",
         "about" to "关于",
     )
 
@@ -277,11 +280,31 @@ fun SettingsScreen(
                     Card { Column { KeyHeightSliders() } }
                 }
                 item {
+                    Card { Column { FontSizeSettings() } }
+                }
+                item {
+                    Card { Column { KeyAppearanceSettings() } }
+                }
+                item {
                     Card { Column { VibrationSettings() } }
                 }
                 item {
                     Card { Column { SymbolHintSettings() } }
                 }
+            }
+            return@Scaffold
+        }
+        // ── 二级页：悬浮窗（反馈轮9，参考 trime 悬浮窗） ──
+        if (subPage == "float") {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(vertical = 8.dp),
+            ) {
+                item { Card { Column { FloatingWindowSettings() } } }
             }
             return@Scaffold
         }
@@ -328,7 +351,7 @@ fun SettingsScreen(
                             KsuItem(
                                 icon = Icons.Default.Info,
                                 title = "版本",
-                                subtitle = "0.8.1-oime · 包名 com.oime.input · 平台 RIME",
+                                subtitle = "0.9.0-oime · 包名 com.oime.input · 平台 RIME",
                                 onClick = {},
                                 showChevron = false,
                             )
@@ -374,49 +397,54 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
             contentPadding = PaddingValues(vertical = 8.dp),
         ) {
-            // 大方块：引擎状态卡
-            item { StatusCard() }
-
-            // 两个小方块：版本 / 项目
+            // 反馈轮9：KSU 布局——左侧一个大状态方块 + 右侧两个小方块（版本/项目）
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = cs.surfaceVariant),
+                    Box(Modifier.weight(1.2f)) { StatusCard(fillWidth = true) }
+                    Column(
                         modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        Column(Modifier.padding(14.dp)) {
-                            Icon(
-                                Icons.Default.Info,
-                                contentDescription = null,
-                                tint = cs.primary,
-                                modifier = Modifier.size(20.dp),
-                            )
-                            Spacer(Modifier.height(8.dp))
-                            Text("版本", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
-                            Text("0.8.1-oime", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = cs.surfaceVariant),
-                        modifier = Modifier.weight(1f).clickable {
-                            runCatching {
-                                context.startActivity(android.content.Intent(
-                                    android.content.Intent.ACTION_VIEW,
-                                    android.net.Uri.parse("https://github.com/AZNixl/Oime"),
-                                ))
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = cs.surfaceVariant),
+                            shape = RoundedCornerShape(16.dp),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Column(Modifier.padding(14.dp)) {
+                                Icon(
+                                    Icons.Default.Info,
+                                    contentDescription = null,
+                                    tint = cs.primary,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                Text("版本", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+                                Text("0.9.0-oime", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                             }
-                        },
-                    ) {
-                        Column(Modifier.padding(14.dp)) {
-                            Icon(
-                                Icons.Default.Link,
-                                contentDescription = null,
-                                tint = cs.primary,
-                                modifier = Modifier.size(20.dp),
-                            )
-                            Spacer(Modifier.height(8.dp))
-                            Text("项目", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
-                            Text("AZNixl/Oime", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        }
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = cs.surfaceVariant),
+                            shape = RoundedCornerShape(16.dp),
+                            modifier = Modifier.fillMaxWidth().clickable {
+                                runCatching {
+                                    context.startActivity(android.content.Intent(
+                                        android.content.Intent.ACTION_VIEW,
+                                        android.net.Uri.parse("https://github.com/AZNixl/Oime"),
+                                    ))
+                                }
+                            },
+                        ) {
+                            Column(Modifier.padding(14.dp)) {
+                                Icon(
+                                    Icons.Default.Link,
+                                    contentDescription = null,
+                                    tint = cs.primary,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                Text("项目", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+                                Text("AZNixl/Oime", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
                 }
@@ -435,8 +463,14 @@ fun SettingsScreen(
                         KsuItem(
                             icon = Icons.Default.Keyboard,
                             title = "键盘",
-                            subtitle = "布局编辑 · 键高 · 增高行 · 打字振动",
+                            subtitle = "布局编辑 · 键高 · 字号 · 按键外观",
                             onClick = { subPage = "keyboard" },
+                        )
+                        KsuItem(
+                            icon = Icons.Default.PictureInPictureAlt,
+                            title = "悬浮窗",
+                            subtitle = "编码预览悬浮窗 · 默认 / 自定义样式",
+                            onClick = { subPage = "float" },
                         )
                         KsuItem(
                             icon = Icons.Default.Palette,
@@ -479,7 +513,7 @@ fun SettingsScreen(
 }
 
 @Composable
-private fun StatusCard() {
+private fun StatusCard(fillWidth: Boolean = false) {
     val cs = MaterialTheme.colorScheme
     val context = LocalContext.current
     var ready by remember { mutableStateOf(false) }
@@ -496,6 +530,7 @@ private fun StatusCard() {
     Card(
         colors = CardDefaults.cardColors(containerColor = cs.primaryContainer),
         shape = RoundedCornerShape(16.dp),
+        modifier = if (fillWidth) Modifier.fillMaxHeight() else Modifier,
     ) {
         Row(
             modifier = Modifier
@@ -595,15 +630,10 @@ private fun KeyHeightSliders() {
     var barH by remember { mutableStateOf(com.azime.input.core.keyboard.KeyboardManager.barHeightDp().toFloat()) }
     var barOn by remember { mutableStateOf(com.azime.input.core.keyboard.KeyboardManager.barEnabled()) }
     Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
-        Text("键高：${keyH.toInt()}dp", style = MaterialTheme.typography.bodyMedium)
-        Slider(
-            value = keyH,
-            onValueChange = {
-                keyH = it
-                com.azime.input.core.keyboard.KeyboardManager.setKeyHeightDp(it.toInt())
-            },
-            valueRange = 36f..64f,
-        )
+        XimeSlider("键高", "${keyH.toInt()}dp", keyH, 36f..64f) {
+            keyH = it
+            com.azime.input.core.keyboard.KeyboardManager.setKeyHeightDp(it.toInt())
+        }
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -618,15 +648,10 @@ private fun KeyHeightSliders() {
             )
         }
         if (barOn) {
-            Text("增高行高度：${barH.toInt()}dp", style = MaterialTheme.typography.bodyMedium)
-            Slider(
-                value = barH,
-                onValueChange = {
-                    barH = it
-                    com.azime.input.core.keyboard.KeyboardManager.setBarHeightDp(it.toInt())
-                },
-                valueRange = 1f..72f,
-            )
+            XimeSlider("增高行高度", "${barH.toInt()}dp", barH, 1f..72f) {
+                barH = it
+                com.azime.input.core.keyboard.KeyboardManager.setBarHeightDp(it.toInt())
+            }
         }
         Text(
             "增高行 = 键盘最后一行下方多一个无按键的空行（1-72dp）；工具栏自定义：长按 ○ 菜单键勾选",
@@ -648,6 +673,155 @@ private fun KeyHeightSliders() {
             placeholder = { Text("留空显示当前方案名") },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
+        )
+        Text(
+            "提示：中文模式下按 ⇧ 切英文后，空格键可输入空格（反馈轮9已修复无编码时空格被引擎吞掉的问题）",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/**
+ * xime.az 风格滑条：标题左 + 当前值右 + 细轨道滑杆。
+ */
+@Composable
+private fun XimeSlider(
+    title: String,
+    valueText: String,
+    value: Float,
+    range: ClosedFloatingPointRange<Float>,
+    onChange: (Float) -> Unit,
+) {
+    Column(Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(title, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            Text(
+                valueText,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Bold,
+            )
+        }
+        Slider(
+            value = value,
+            onValueChange = onChange,
+            valueRange = range,
+        )
+    }
+}
+
+/** 字号设置（反馈轮9）：键盘键面与工具栏/候选字号分开调整。 */
+@Composable
+private fun FontSizeSettings() {
+    var keySize by remember { mutableStateOf(com.azime.input.core.keyboard.KeyboardManager.fontSizeKey().toFloat()) }
+    var barSize by remember { mutableStateOf(com.azime.input.core.keyboard.KeyboardManager.fontSizeBar().toFloat()) }
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
+        Text("字号", style = MaterialTheme.typography.titleSmall)
+        Spacer(Modifier.height(6.dp))
+        XimeSlider("键盘键面字号", "${keySize.toInt()}sp", keySize, 12f..30f) {
+            keySize = it
+            com.azime.input.core.keyboard.KeyboardManager.setFontSizeKey(it.toInt())
+        }
+        XimeSlider("工具栏/候选字号", "${barSize.toInt()}sp", barSize, 12f..28f) {
+            barSize = it
+            com.azime.input.core.keyboard.KeyboardManager.setFontSizeBar(it.toInt())
+        }
+        Text(
+            "下次键盘弹出即生效；候选映射键、气泡符号等随相应字号缩放。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/** 按键外观设置（反馈轮9）：按键圆角 / 行距 / 列距。 */
+@Composable
+private fun KeyAppearanceSettings() {
+    var corner by remember { mutableStateOf(com.azime.input.core.keyboard.KeyboardManager.keyCornerDp().toFloat()) }
+    var rowGap by remember { mutableStateOf(com.azime.input.core.keyboard.KeyboardManager.rowGapDp().toFloat()) }
+    var colGap by remember { mutableStateOf(com.azime.input.core.keyboard.KeyboardManager.colGapDp().toFloat()) }
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
+        Text("按键外观", style = MaterialTheme.typography.titleSmall)
+        Spacer(Modifier.height(6.dp))
+        XimeSlider("按键圆角", "${corner.toInt()}dp", corner, 0f..20f) {
+            corner = it
+            com.azime.input.core.keyboard.KeyboardManager.setKeyCornerDp(it.toInt())
+        }
+        XimeSlider("行距", "${rowGap.toInt()}dp", rowGap, 1f..10f) {
+            rowGap = it
+            com.azime.input.core.keyboard.KeyboardManager.setRowGapDp(it.toInt())
+        }
+        XimeSlider("列距", "${colGap.toInt()}dp", colGap, 1f..10f) {
+            colGap = it
+            com.azime.input.core.keyboard.KeyboardManager.setColGapDp(it.toInt())
+        }
+        Text(
+            "下次键盘弹出即生效。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/**
+ * 悬浮窗设置（反馈轮9，参考 trime 悬浮窗 / 悬浮窗显示优化.lua）：
+ * 开关 + 默认/自定义模式；自定义模式可调水平/垂直位置、字号、背景不透明度。
+ */
+@Composable
+private fun FloatingWindowSettings() {
+    val km = com.azime.input.core.keyboard.KeyboardManager
+    var enabled by remember { mutableStateOf(km.floatEnabled()) }
+    var mode by remember { mutableStateOf(km.floatMode()) }
+    var x by remember { mutableStateOf(km.floatXDp().toFloat()) }
+    var y by remember { mutableStateOf(km.floatYDp().toFloat()) }
+    var textSp by remember { mutableStateOf(km.floatTextSp().toFloat()) }
+    var alpha by remember { mutableStateOf(km.floatBgAlpha().toFloat()) }
+    val custom = mode == "custom"
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
+        Text("悬浮窗", style = MaterialTheme.typography.titleSmall)
+        Spacer(Modifier.height(6.dp))
+        SettingSwitchRow("启用悬浮窗（输入时显示编码）", enabled) {
+            enabled = it
+            km.setFloatEnabled(it)
+        }
+        Spacer(Modifier.height(6.dp))
+        Text("样式", style = MaterialTheme.typography.bodyMedium)
+        Spacer(Modifier.height(6.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(
+                selected = !custom,
+                onClick = { mode = "default"; km.setFloatMode("default") },
+                label = { Text("默认悬浮窗") },
+            )
+            FilterChip(
+                selected = custom,
+                onClick = { mode = "custom"; km.setFloatMode("custom") },
+                label = { Text("自定义悬浮窗") },
+            )
+        }
+        if (custom) {
+            Spacer(Modifier.height(8.dp))
+            XimeSlider("水平位置", "${x.toInt()}dp", x, 0f..400f) {
+                x = it; km.setFloatXDp(it.toInt())
+            }
+            XimeSlider("垂直位置（键盘顶向上）", "${y.toInt()}dp", y, 20f..400f) {
+                y = it; km.setFloatYDp(it.toInt())
+            }
+            XimeSlider("字号", "${textSp.toInt()}sp", textSp, 14f..40f) {
+                textSp = it; km.setFloatTextSp(it.toInt())
+            }
+            XimeSlider("背景不透明度", "${alpha.toInt()}%", alpha, 20f..100f) {
+                alpha = it; km.setFloatBgAlpha(it.toInt())
+            }
+        }
+        Text(
+            "参考 trime 悬浮窗：输入时在键盘上方悬浮显示当前输入码；默认样式固定位置与字号，自定义样式按上面参数渲染。下次键盘弹出即生效。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
@@ -808,8 +982,30 @@ private fun ThemeColorSettings() {
             Spacer(Modifier.height(10.dp))
         }
 
-        // 自定义 RGB（亮 / 暗共用一个自定义色）
-        key(accentRev) {
+        // 反馈轮9：樱粉右侧加「自定义」卡片，点击才展开下方自定义颜色调整
+        val presets = km.accentPresets
+        val isCustomSelected = presets.none { (_, l, d) -> km.accentLight() == l && km.accentDark() == d }
+        var showCustom by remember { mutableStateOf(false) }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            ThemeCard(
+                name = "自定义",
+                accentLight = if (isCustomSelected) km.accentLight() else 0xFF6750A4.toInt(),
+                accentDark = if (isCustomSelected) km.accentDark() else 0xFF6750A4.toInt(),
+                darkMode = mode == km.MODE_DARK,
+                selected = isCustomSelected || showCustom,
+                onClick = { showCustom = !showCustom },
+                modifier = Modifier.weight(1f),
+            )
+            Spacer(Modifier.weight(1f))
+        }
+        Spacer(Modifier.height(10.dp))
+
+        // 自定义 RGB（亮 / 暗共用一个自定义色）——点击自定义卡片后展开
+        if (showCustom) {
+            key(accentRev) {
             var r by remember { mutableStateOf(((km.accentLight() shr 16) and 0xFF) / 255f) }
             var g by remember { mutableStateOf(((km.accentLight() shr 8) and 0xFF) / 255f) }
             var b by remember { mutableStateOf((km.accentLight() and 0xFF) / 255f) }
@@ -824,6 +1020,7 @@ private fun ThemeColorSettings() {
             Slider(value = g, onValueChange = { g = it; apply() }, valueRange = 0f..1f)
             Text("蓝", style = MaterialTheme.typography.bodySmall)
             Slider(value = b, onValueChange = { b = it; apply() }, valueRange = 0f..1f)
+            }
         }
         Text(
             "主题卡片即时预览，点击应用；配色应用于键盘强调色（回车键、候选高亮等）与设置页主色，下次键盘弹出生效。",
