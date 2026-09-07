@@ -467,3 +467,16 @@ vendored RimeEngine 中 `getAvailableSchemas / getSchemaString / getSchemaList`
 - 手机 b72e0041 装机 Success，dumpsys 确认 0.9.5-oime。
 - **修复实机验证通过**：切回 AZ 组重新部署后，default.custom.yaml 22 个唯一 id 无重复；shared 根 23 个 .schema.yaml（22 组内 + pinyin_simp 内置）全部拍平到位；build/ 编译产物 41 个（core2022/double_pinyin 全家/easy_english/japanese/rime_frost/tiger 等 prism+table+reverse）——librime 已完整部署组内全部方案。
 - 按工作流：记录上传后停止工作，等待下一步指令。
+
+## 反馈轮 15（0.9.6-oime vc16）：2 条
+
+| # | 需求 | 实现 |
+|---|------|------|
+| 1 | 方案不能正确启用 + 参考同文/trime2 在方案组-方案之间插「方案选择」层；O 菜单加方案管理大项；设置同步 | 现场排查（run-as）：部署产物正常（41 编译产物全），判定痛点=组内 22 个方案全量自动启用（列表混乱+全量部署慢+选中方案被淹没）。**三层架构**：方案组 → 启用集（新增）→ 输入方案切换。RimeManager：group_enabled_&lt;gid&gt; prefs（未设置=全部启用，兼容迁移）、setGroupEnabled（空=恢复全部）、syncGroup schema_list 只写启用集。UI：O 菜单第 4 项「方案管理」（PlaylistAddCheck）+ manage 子级（2 列勾选卡片 + 底部「应用」按钮 → ApplySchemaEnable → setGroupEnabled+重入当前组重部署）；「输入方案」列表（availableSchemas）自动变为启用集；设置页 SchemaList 新增「方案管理（启用集）」区（Checkbox + 应用按钮，同套协程刷新） |
+| 2 | O 圆环缩小 1/5、加粗 1/4、呼吸动画（不刺眼）；O 长按改语音输入（声纹动画覆盖工具栏，点击结束）；系统接口 + 设置大项（本地模型/联网 API 占位） | ①圆环 36→29dp、2.5→3.1dp、InfiniteTransition alpha 0.55↔1.0（1600ms Reverse + FastOutSlowIn）白色呼吸；按下 accentActive、拖动内点保留。②长按 ○ 400ms → ToggleVoiceInput（原定制工具栏入口保留在 ○ 菜单，AzimeKeyboardScreen 死分支清理）；SpeechInputManager（新文件 core/speech）封装 SpeechRecognizer：zh-CN、MAX_RESULTS=1、onRmsChanged 直通回调、onResults 首选上屏、错误映射中文提示、isAvailable 检测（国产 ROM 缺服务时提示）；声纹 VoiceWavePanel 覆盖整条工具栏（28 根圆头条形，钟形包络×相位正弦×RMS 振幅，底部「正在听写…点击结束」，点击 stopListening）；RMS 走独立 mutableStateOf（Service voiceRmsState）不经 uiState 重组链；RECORD_AUDIO 权限：Manifest 声明 + IME 无法弹窗 → 无权限时提示并跳设置页授权；收起键盘/销毁服务时 cancel。③设置新增「语音输入」卡：麦克风权限行（rememberLauncherForActivityResult 申请）+ 识别方式 RadioButton（系统可用 / 本地模型占位 / 联网 API 占位，voice_prefs.mode） |
+
+技术记录：
+- 本轮起 AzimeKeyboardScreen 签名带 voiceRms: State&lt;Float&gt;（Service 传 voiceRmsState）；KeyboardUiState 新增 voiceState（idle|listening）
+- ToolbarRow 签名：onOpenCustomize 参数移除（长按改语音），定制工具栏入口仅存 O 菜单
+- 语音扩展位：SpeechInputManager 单实现，后续本地模型/API 替换 start() 内部即可
+- 版本 0.9.6-oime（versionCode 16）

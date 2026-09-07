@@ -222,6 +222,7 @@ object RimeManager {
     private const val GROUP_PREFS = "schema_group_prefs"
     private const val KEY_CURRENT_GROUP = "current_group"
     private const val KEY_GROUP_SCHEMA = "group_schema_"
+    private const val KEY_GROUP_ENABLED = "group_enabled_"
 
     /** 方案组：一次只能加载一个组；组内可包含多个方案。 */
     data class SchemaGroup(
@@ -250,6 +251,24 @@ object RimeManager {
 
     private fun groupPreferredSchema(context: Context, groupId: String): String? =
         groupPrefs(context).getString(KEY_GROUP_SCHEMA + groupId, null)
+
+    // ── 方案选择层（轮15，参考 trime2/同文：组 → 启用集 → 运行时切换） ──
+    // 组内可能含几十个 schema（聚合包全量识别），用户实际只用其中几个；
+    // 启用集决定 schema_list（部署范围）与「输入方案」列表。未设置 = 全部启用（兼容迁移）。
+
+    /** 当前组启用的方案 id 集合；null = 从未选择过（视为全部启用）。 */
+    fun groupEnabledIds(context: Context, groupId: String): Set<String>? {
+        val raw = groupPrefs(context).getString(KEY_GROUP_ENABLED + groupId, null) ?: return null
+        return raw.split(',').map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+    }
+
+    /** 保存启用集（空列表 = 清除选择，恢复全部启用）。调用方负责重新部署。 */
+    fun setGroupEnabled(context: Context, groupId: String, ids: List<String>) {
+        val key = KEY_GROUP_ENABLED + groupId
+        val editor = groupPrefs(context).edit()
+        if (ids.isEmpty()) editor.remove(key) else editor.putString(key, ids.joinToString(","))
+        editor.apply()
+    }
 
     /** 从 *.schema.yaml 逐行解析 schema_id（读到即返回，避免整读大词典文件）。 */
     private fun schemaIdOf(f: File): String? {
@@ -329,9 +348,13 @@ object RimeManager {
         val ids = newFiles.mapNotNull { (target, f) ->
             if (target.endsWith(".schema.yaml")) schemaIdOf(f) else null
         }.filter { it.isNotBlank() }.distinct()
-        val preferred = groupPreferredSchema(context, groupId)?.takeIf { it in ids }
-            ?: ids.firstOrNull() ?: BUILTIN_SCHEMA_ID
-        val ordered = (listOf(preferred) + ids.filter { it != preferred })
+        // 轮15：只部署「启用集」内的方案（未选择过 = 全部启用）；schema_list 同源，
+        // O 菜单「输入方案」列表（availableSchemas）即启用集。
+        val enabledSet = groupEnabledIds(context, groupId)
+        val enabledIds = if (enabledSet != null) ids.filter { it in enabledSet } else ids
+        val preferred = groupPreferredSchema(context, groupId)?.takeIf { it in enabledIds }
+            ?: enabledIds.firstOrNull() ?: BUILTIN_SCHEMA_ID
+        val ordered = (listOf(preferred) + enabledIds.filter { it != preferred })
 
         val groupName = if (groupId == BUILTIN_GROUP_ID) "内置" else groupId
         val defaultText = buildString {

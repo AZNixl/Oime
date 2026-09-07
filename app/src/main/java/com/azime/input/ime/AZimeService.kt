@@ -22,6 +22,7 @@ import com.azime.input.core.rime.RimeManager.KEY_BACKSPACE
 import com.azime.input.core.rime.RimeManager.KEY_RETURN
 import com.azime.input.core.rime.RimeManager.KEY_SPACE
 import com.azime.input.core.rime.toCandidate
+import com.azime.input.core.speech.SpeechInputManager
 import com.azime.input.ui.keyboard.AzimeKeyboardScreen
 import com.azime.input.ui.keyboard.KeyAction
 import com.azime.input.ui.keyboard.KeyboardUiState
@@ -40,6 +41,9 @@ class AZimeService : InputMethodService() {
     private val lifecycleOwner = ImeLifecycleOwner()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val uiState = MutableStateFlow(KeyboardUiState())
+
+    /** 语音输入 RMS（dB）：高频回调独立 State，只供声纹 Canvas 读取，不走 uiState 重组链。 */
+    private val voiceRmsState = androidx.compose.runtime.mutableStateOf(0f)
 
     /** 撤回栈：记录最近上屏的文本（DirectCommit / 候选上屏 / 字母直出）。 */
     private val undoStack = ArrayDeque<String>()
@@ -131,7 +135,7 @@ class AZimeService : InputMethodService() {
                     composeView.setContent {
                         MaterialTheme(colorScheme = lightColorScheme()) {
                             val state by uiState.collectAsState()
-                            AzimeKeyboardScreen(state = state, onAction = ::onKeyAction)
+                            AzimeKeyboardScreen(state = state, onAction = ::onKeyAction, voiceRms = voiceRmsState)
                         }
                     }
                 }
@@ -163,6 +167,12 @@ class AZimeService : InputMethodService() {
 
     override fun onFinishInputView(finishingInput: Boolean) {
         lifecycleOwner.pause()
+        // 键盘收起时若在听写中，取消识别
+        if (uiState.value.voiceState == "listening") {
+            SpeechInputManager.cancel()
+            voiceRmsState.value = 0f
+            uiState.update { it.copy(voiceState = "idle") }
+        }
         super.onFinishInputView(finishingInput)
     }
 
@@ -174,9 +184,50 @@ class AZimeService : InputMethodService() {
 
     override fun onDestroy() {
         runCatching { clipboardManager.removePrimaryClipChangedListener(clipboardListener) }
+        SpeechInputManager.cancel()
         scope.cancel()
         lifecycleOwner.destroy()
         super.onDestroy()
+    }
+
+    // ── 语音输入（轮15：O 键长按触发，系统 SpeechRecognizer 接口） ──
+
+    private fun handleVoiceToggle() {
+        if (uiState.value.voiceState == "listening") {
+            // 点击结束：停止录音，结果在 onResults 回调里上屏
+            SpeechInputManager.stop()
+            return
+        }
+        if (androidx.core.content.ContextCompat.checkSelfPermission(
+                this, android.Manifest.permission.RECORD_AUDIO,
+            ) != android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            // IME 无法弹权限对话框：跳设置页授权（语音输入大项里有申请按钮）
+            uiState.update { it.copy(statusMessage = "语音输入需要麦克风权限，请在设置中开启") }
+            onKeyAction(KeyAction.OpenSettings)
+            return
+        }
+        if (!SpeechInputManager.isAvailable(this)) {
+            uiState.update { it.copy(statusMessage = "此设备缺少系统语音识别服务") }
+            return
+        }
+        uiState.update { it.copy(voiceState = "listening", statusMessage = "") }
+        SpeechInputManager.start(
+            context = this,
+            onRms = { db -> voiceRmsState.value = db },
+            onResult = { text ->
+                voiceRmsState.value = 0f
+                uiState.update { it.copy(voiceState = "idle") }
+                if (text.isNotBlank()) {
+                    currentInputConnection?.commitText(text, 1)
+                    pushUndo(text)
+                }
+            },
+            onError = { msg ->
+                voiceRmsState.value = 0f
+                uiState.update { it.copy(voiceState = "idle", statusMessage = msg) }
+            },
+        )
     }
 
     // ── 剪贴板 ───────────────────────────────────────────────
@@ -315,6 +366,19 @@ class AZimeService : InputMethodService() {
                     uiState.update { it.copy(statusMessage = "") }
                     refreshState()
                 }
+                is KeyAction.ApplySchemaEnable -> {
+                    // 轮15：应用方案启用集（方案管理）——保存后重入当前组重新部署，
+                    // schema_list 与「输入方案」列表都只含启用的方案
+                    uiState.update { it.copy(statusMessage = "正在应用方案选择…") }
+                    runCatching {
+                        val gid = RimeManager.currentGroupId(applicationContext)
+                        RimeManager.setGroupEnabled(applicationContext, gid, action.schemaIds)
+                        RimeManager.switchSchemaGroup(applicationContext, gid)
+                    }
+                    uiState.update { it.copy(statusMessage = "") }
+                    refreshState()
+                }
+                KeyAction.ToggleVoiceInput -> handleVoiceToggle()
                 is KeyAction.ToggleSwitch -> {
                     RimeManager.setOption(action.name, !RimeManager.getOption(action.name))
                     refreshState()

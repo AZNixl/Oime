@@ -4,9 +4,14 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -44,6 +49,7 @@ import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.PlaylistAddCheck
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Tune
@@ -125,6 +131,10 @@ sealed interface KeyAction {
     data class SelectSchema(val schemaId: String) : KeyAction
     /** ○ 菜单「方案组」（轮13）：切换方案组（一次只加载一个组，切换=重装组文件+全量部署）。 */
     data class SelectSchemaGroup(val groupId: String) : KeyAction
+    /** ○ 菜单「方案管理」（轮15）：应用当前组的启用方案集（重部署，schema_list=启用集）。 */
+    data class ApplySchemaEnable(val schemaIds: List<String>) : KeyAction
+    /** ○ 键长按语音输入（轮15）：空闲→开始识别；识别中→停止并上屏结果。 */
+    data object ToggleVoiceInput : KeyAction
     /** ○ 菜单「方案开关」：切换当前方案 schema.yaml 的 switches 开关。 */
     data class ToggleSwitch(val name: String) : KeyAction
 
@@ -190,6 +200,8 @@ data class KeyboardUiState(
     val schemas: List<String> = emptyList(),
     val ready: Boolean = false,
     val statusMessage: String = "",
+    /** 语音输入状态（轮15）：idle | listening（listening 时声纹动画覆盖工具栏，点击结束）。 */
+    val voiceState: String = "idle",
     // 工具栏
     val clipText: String = "",
     val clipAtMs: Long = 0L,
@@ -277,6 +289,7 @@ private val KeySpacing = 4.dp
 fun AzimeKeyboardScreen(
     state: KeyboardUiState,
     onAction: (KeyAction) -> Unit,
+    voiceRms: androidx.compose.runtime.State<Float>,
     modifier: Modifier = Modifier,
 ) {
     val c = keyboardColors()
@@ -290,7 +303,6 @@ fun AzimeKeyboardScreen(
     val keyCorner = KeyboardManager.keyCornerDp().dp
     val rowGap = KeyboardManager.rowGapDp().dp
     val colGap = KeyboardManager.colGapDp().dp
-    var showToolbarCustomize by remember { mutableStateOf(false) }
     // 主键盘区标准总高（4 行 + 间距）；emoji/候选/菜单面板统一与此等高
     val stdH = keyH * 4 + rowGap * 5
     val areaH = if (KeyboardManager.barEnabled()) stdH + rowGap + barH else stdH
@@ -309,20 +321,10 @@ fun AzimeKeyboardScreen(
                 onAction = onAction,
                 // 反馈轮11：工具栏高度按 ○ 菜单键（36dp）+ 上下 4dp 留白 = 44dp，整体居中
                 barHeight = 44.dp,
-                onOpenCustomize = { showToolbarCustomize = true },
+                voiceRms = voiceRms,
             )
-            // 面板优先：定制工具栏 / 更多候选 / ○ 菜单 / 剪贴板 覆盖主键盘区（等高），否则显示键盘
-            if (showToolbarCustomize) {
-                ToolbarCustomizePanel(
-                    current = KeyboardManager.toolbarItems(),
-                    onSave = {
-                        showToolbarCustomize = false
-                        onAction(KeyAction.SetToolbarItems(it))
-                    },
-                    onDismiss = { showToolbarCustomize = false },
-                    totalHeight = areaH,
-                )
-            } else if (state.showCandidatePanel) {
+            // 面板优先：更多候选 / ○ 菜单 / 剪贴板 覆盖主键盘区（等高），否则显示键盘
+            if (state.showCandidatePanel) {
                 CandidatePanel(state = state, onAction = onAction, totalHeight = areaH)
             } else if (state.showMenuPanel) {
                 MenuPanel(
@@ -576,7 +578,7 @@ private fun ToolbarRow(
     state: KeyboardUiState,
     onAction: (KeyAction) -> Unit,
     barHeight: androidx.compose.ui.unit.Dp,
-    onOpenCustomize: () -> Unit,
+    voiceRms: androidx.compose.runtime.State<Float>,
 ) {
     val c = keyboardColors()
     var showSchemaMenu by remember { mutableStateOf(false) }
@@ -584,6 +586,16 @@ private fun ToolbarRow(
     val haptics = LocalHapticFeedback.current
     // ○ 拖动步长：18dp/步（反馈轮10：指针模式已去除）
     val stepPx = with(density) { 18.dp.toPx() }
+
+    // ── 语音输入（轮15）：识别中整条工具栏替换为声纹动画，点击结束 ──
+    if (state.voiceState == "listening") {
+        VoiceWavePanel(
+            rms = voiceRms,
+            onStop = { onAction(KeyAction.ToggleVoiceInput) },
+            barHeight = barHeight,
+        )
+        return
+    }
 
     // 剪贴板条：复制后常驻，点击直接上屏；打字/新复制时消亡（参考 复制自动添加到候选.lua）
     val clipFresh = state.clipText.isNotBlank()
@@ -715,14 +727,15 @@ private fun ToolbarRow(
                         kotlinx.coroutines.delay(400)
                         if (oPressing && !oLongFired) {
                             oLongFired = true
-                            onOpenCustomize()
+                            // 轮15：长按 ○ = 语音输入（定制工具栏入口保留在 ○ 菜单）
+                            onAction(KeyAction.ToggleVoiceInput)
                             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                         }
                     }
                 }
                 Box(
                     modifier = Modifier
-                        .size(36.dp)
+                        .size(29.dp)
                         .pointerInput(Unit) {
                             awaitEachGesture {
                                 awaitFirstDown(requireUnconsumed = false)
@@ -770,13 +783,20 @@ private fun ToolbarRow(
                         .clickable { onAction(KeyAction.ToggleMenuPanel) },
                     contentAlignment = Alignment.Center,
                 ) {
-                    // 圆环（反馈轮14 重构）：静态白色实线圆环，去掉持续旋转动画；
+                    // 圆环（轮15 重构）：静态白色实线圆环 + 呼吸动画（alpha 0.55~1.0 缓变，不刺眼）；
+                    // 尺寸缩小 1/5（36→29dp）、描边加粗 1/4（2.5→3.1dp）；
                     // 按下变强调色、拖动内点跟随手指（行为保留）
-                    Canvas(Modifier.size(36.dp)) {
-                        val strokeW = 2.5.dp.toPx()
+                    val breath = rememberInfiniteTransition(label = "oBreath").animateFloat(
+                        0.55f, 1f,
+                        infiniteRepeatable(tween(1600, easing = androidx.compose.animation.core.FastOutSlowInEasing), RepeatMode.Reverse),
+                        label = "oBreathAlpha",
+                    )
+                    Canvas(Modifier.size(29.dp)) {
+                        val strokeW = 3.1.dp.toPx()
                         val ringR = size.minDimension / 2f - strokeW - 1f
                         drawCircle(
-                            color = if (oPressing) c.accentActive else Color.White,
+                            color = if (oPressing) c.accentActive
+                            else Color.White.copy(alpha = breath.value),
                             radius = ringR,
                             style = Stroke(strokeW),
                         )
@@ -836,6 +856,65 @@ private fun ToolbarRow(
 
 /** 工具栏单个工具项（剪贴板/方案/数字/emoji/符号/设置；反馈轮12：细线自绘图标）。 */
 @Composable
+/**
+ * 语音输入声纹面板（轮15）：覆盖工具栏区域。
+ * RMS 驱动波形振幅（SpeechRecognizer onRmsChanged），叠加时间相位正弦波让波形自然流动；
+ * 点击结束（ToggleVoiceInput 由 Service 停止识别并上屏结果）。
+ */
+@Composable
+private fun VoiceWavePanel(
+    rms: androidx.compose.runtime.State<Float>,
+    onStop: () -> Unit,
+    barHeight: androidx.compose.ui.unit.Dp,
+) {
+    val c = keyboardColors()
+    // 时间相位：让波形在 RMS 平稳时也有自然起伏
+    val phase = rememberInfiniteTransition(label = "wave").animateFloat(
+        0f, (2f * Math.PI).toFloat(),
+        infiniteRepeatable(tween(1200, easing = androidx.compose.animation.core.LinearEasing)),
+        label = "wavePhase",
+    )
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(barHeight + 4.dp)
+            .background(c.bg)
+            .clickable { onStop() },
+    ) {
+        Canvas(Modifier.fillMaxSize()) {
+            val level = (rms.value / 10f).coerceIn(0f, 1f) // RMS dB（-2~10 常见）归一化
+            val bars = 28
+            val gap = 3.dp.toPx()
+            val barW = (size.width - gap * (bars + 1)) / bars
+            val midY = size.height * 0.55f
+            val maxAmp = size.height * 0.32f
+            val accent = keyboardAccentActiveColor(c.barBg.luminance() < 0.5f)
+            for (i in 0 until bars) {
+                // 中间高、两端低的钟形包络 + 相位波 + RMS 驱动
+                val t = i / (bars - 1f)
+                val env = kotlin.math.sin(t * Math.PI).toFloat()
+                val w = kotlin.math.sin(phase.value + i * 0.6f)
+                val amp = maxAmp * env * (0.18f + 0.22f * (w + 1f) / 2f + 0.6f * level * env)
+                val h = (2.dp.toPx() + amp).coerceAtMost(size.height * 0.9f)
+                drawRoundRect(
+                    color = accent.copy(alpha = 0.55f + 0.45f * env * (0.4f + 0.6f * level)),
+                    topLeft = Offset(gap + i * (barW + gap), midY - h / 2f),
+                    size = androidx.compose.ui.geometry.Size(barW, h),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(barW / 2f),
+                )
+            }
+        }
+        Text(
+            "正在听写…点击结束",
+            fontSize = 11.sp,
+            color = c.subText,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 2.dp),
+        )
+    }
+}
+
 private fun RowScope.toolbarToolItem(id: String, state: KeyboardUiState, onAction: (KeyAction) -> Unit, c: KeyboardColors, onSchema: () -> Unit) {
     // 工具 id 来自 availableToolbarTools 白名单，直接取图标
     val icon = toolbarToolIcon(id)
@@ -1054,6 +1133,86 @@ private fun MenuPanel(
                     }
                 }
             }
+            "manage" -> {
+                // 反馈轮15：方案管理 —— 组 → 启用集 → 切换 三层（参考 trime2/同文）。
+                // 组内 N 个 schema 全量识别，用户实际只用其中几个：勾选启用集，
+                // 应用后 schema_list（部署范围）与「输入方案」列表都只含启用方案。
+                val app = com.azime.input.AZimeApplication.instance
+                val gid = remember(state.schemas) { RimeManager.currentGroupId(app) }
+                val allSchemas = remember(state.schemas) {
+                    RimeManager.schemaGroups(app).firstOrNull { it.id == gid }?.schemaIds ?: emptyList()
+                }
+                val savedSet = remember(state.schemas) { RimeManager.groupEnabledIds(app, gid) }
+                val selected = remember(state.schemas) {
+                    mutableStateListOf<String>().apply { addAll(savedSet ?: allSchemas) }
+                }
+                MenuSubPanel(
+                    c = c, title = "方案管理", totalHeight = totalHeight,
+                    onBack = { subPage = null }, onClose = { close() },
+                ) {
+                    Text(
+                        "组「${gid}」共 ${allSchemas.size} 个方案，勾选实际使用的启用；" +
+                            "全部不选 = 全部启用。应用后重新部署。",
+                        fontSize = 12.sp, color = c.subText,
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
+                    )
+                    allSchemas.chunked(2).forEach { rowIds ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            rowIds.forEach { id ->
+                                val on = id in selected
+                                Column(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .background(if (on) c.accentKeyBg else c.keyBg, RoundedCornerShape(12.dp))
+                                        .clickable {
+                                            if (on) selected.remove(id) else selected.add(id)
+                                        }
+                                        .padding(vertical = 10.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                ) {
+                                    Text(
+                                        RimeManager.schemaDisplayName(id),
+                                        fontSize = 11.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        color = if (on) c.accentActive else c.text,
+                                        fontWeight = if (on) FontWeight.Bold else FontWeight.Normal,
+                                    )
+                                    Text(
+                                        if (on) "已启用" else "未启用",
+                                        fontSize = 9.sp,
+                                        color = c.subText,
+                                    )
+                                }
+                            }
+                            repeat(2 - rowIds.size) { Spacer(Modifier.weight(1f)) }
+                        }
+                        Spacer(Modifier.height(10.dp))
+                    }
+                    // 应用按钮：保存启用集并重新部署
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(c.accentKeyBg, RoundedCornerShape(12.dp))
+                            .clickable {
+                                onAction(KeyAction.ApplySchemaEnable(selected.toList()))
+                                subPage = null
+                            }
+                            .padding(vertical = 12.dp),
+                        horizontalArrangement = Arrangement.Center,
+                    ) {
+                        Text(
+                            "应用（${selected.size} 个方案）",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = c.accentActive,
+                        )
+                    }
+                }
+            }
             "schema" -> MenuSubPanel(
                 c = c, title = "输入方案", totalHeight = totalHeight,
                 onBack = { subPage = null }, onClose = { close() },
@@ -1184,6 +1343,8 @@ private fun MenuPanel(
                             Triple(Icons.Default.Tune, "方案开关") { subPage = "switches" },
                             // 反馈轮13：方案组大项（组 → 方案 两级，一次只加载一个组）
                             Triple(Icons.Default.Apps, "方案组") { subPage = "groups" },
+                            // 反馈轮15：方案管理 —— 组内启用集选择（部署范围 + 「输入方案」列表）
+                            Triple(Icons.Default.PlaylistAddCheck, "方案管理") { subPage = "manage" },
                             Triple(Icons.Default.List, "输入方案") { subPage = "schema" },
                             Triple(Icons.Default.Sync, "部署") { close(); onAction(KeyAction.Deploy) },
                             Triple(Icons.Default.Category, "定制工具栏") { subPage = "toolbar" },

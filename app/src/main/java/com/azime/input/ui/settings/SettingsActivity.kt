@@ -266,6 +266,65 @@ fun SettingsScreen(
                         )
                     } }
                 }
+                item {
+                    // 语音输入（轮15）：麦克风权限 + 识别方式（系统接口可用；本地模型/联网 API 占位）
+                    Card { Column(Modifier.padding(vertical = 4.dp)) {
+                        val micGranted = remember {
+                            mutableStateOf(
+                                androidx.core.content.ContextCompat.checkSelfPermission(
+                                    context, android.Manifest.permission.RECORD_AUDIO,
+                                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                            )
+                        }
+                        val micLauncher = rememberLauncherForActivityResult(
+                            ActivityResultContracts.RequestPermission()
+                        ) { micGranted.value = it }
+                        KsuItem(
+                            icon = Icons.Default.Mic,
+                            title = "麦克风权限",
+                            subtitle = if (micGranted.value) "已授权（长按 ○ 键开始听写）" else "语音输入需要录音权限",
+                            onClick = { if (!micGranted.value) micLauncher.launch(android.Manifest.permission.RECORD_AUDIO) },
+                        )
+                        val voicePrefs = remember { context.getSharedPreferences("voice_prefs", android.content.Context.MODE_PRIVATE) }
+                        var voiceMode by remember { mutableStateOf(voicePrefs.getString("mode", "system") ?: "system") }
+                        Text(
+                            "识别方式",
+                            style = MaterialTheme.typography.titleSmall,
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
+                        )
+                        listOf(
+                            "system" to "系统接口（SpeechRecognizer）",
+                            "local" to "本地模型（暂未开放）",
+                            "api" to "联网 API（暂未开放）",
+                        ).forEach { (value, label) ->
+                            val enabled = value == "system"
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable(enabled = enabled) {
+                                        voiceMode = value
+                                        voicePrefs.edit().putString("mode", value).apply()
+                                    }
+                                    .padding(horizontal = 20.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                RadioButton(selected = voiceMode == value, onClick = {
+                                    if (enabled) {
+                                        voiceMode = value
+                                        voicePrefs.edit().putString("mode", value).apply()
+                                    }
+                                }, enabled = enabled)
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    label,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = if (enabled) MaterialTheme.colorScheme.onSurface
+                                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    } }
+                }
             }
             return@Scaffold
         }
@@ -372,7 +431,7 @@ fun SettingsScreen(
                             KsuItem(
                                 icon = Icons.Default.Info,
                                 title = "版本",
-                                subtitle = "0.9.5-oime · 包名 com.oime.input · 平台 RIME",
+                                subtitle = "0.9.6-oime · 包名 com.oime.input · 平台 RIME",
                                 onClick = {},
                                 showChevron = false,
                             )
@@ -462,7 +521,7 @@ fun SettingsScreen(
                                     Spacer(Modifier.width(4.dp))
                                     Text("版本", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
                                 }
-                                Text("0.9.5-oime", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                Text("0.9.6-oime", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                             }
                         }
                         Card(
@@ -720,6 +779,87 @@ private fun SchemaList() {
             .height(1.dp)
             .background(MaterialTheme.colorScheme.outlineVariant),
     )
+
+    // ── 方案管理（轮15：组 → 启用集 → 切换，参考 trime2/同文）──
+    // 组内 N 个 schema 全量识别，用户实际只用其中几个：勾选启用集，应用后
+    // schema_list（部署范围）与「输入方案」列表都只含启用方案。
+    var manageSchemas by remember(currentGroup) {
+        mutableStateOf(
+            RimeManager.schemaGroups(context).firstOrNull { it.id == currentGroup }?.schemaIds ?: emptyList()
+        )
+    }
+    var enabledSet by remember(currentGroup, manageSchemas) {
+        mutableStateOf(
+            RimeManager.groupEnabledIds(context, currentGroup)?.filter { it in manageSchemas }?.toSet()
+                ?: manageSchemas.toSet()
+        )
+    }
+    var applyingManage by remember { mutableStateOf(false) }
+
+    Text(
+        "方案管理（启用集）",
+        style = MaterialTheme.typography.titleSmall,
+        modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+    )
+    if (manageSchemas.isNotEmpty()) {
+        Text(
+            "组内共 ${manageSchemas.size} 个方案，勾选实际使用的（${enabledSet.size} 个已启用）",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 20.dp),
+        )
+        manageSchemas.forEach { id ->
+            val checked = id in enabledSet
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        enabledSet = if (checked) enabledSet - id else enabledSet + id
+                    }
+                    .padding(horizontal = 20.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Checkbox(checked = checked, onCheckedChange = {
+                    enabledSet = if (it) enabledSet + id else enabledSet - id
+                })
+                Text(RimeManager.schemaDisplayName(id), style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 8.dp)
+                .clickable(enabled = !applyingManage) {
+                    applyingManage = true
+                    groupScope.launch {
+                        runCatching {
+                            RimeManager.setGroupEnabled(context.applicationContext, currentGroup, enabledSet.toList())
+                            RimeManager.switchSchemaGroup(context.applicationContext, currentGroup)
+                        }
+                        applyingManage = false
+                        groups = RimeManager.schemaGroups(context)
+                        schemas = RimeManager.availableSchemas()
+                        current = RimeManager.currentSchema()
+                    }
+                }
+                .padding(vertical = 10.dp),
+            horizontalArrangement = Arrangement.Center,
+        ) {
+            Text(
+                if (applyingManage) "应用中，请稍候…" else "应用方案选择（${enabledSet.size} 个）",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Bold,
+            )
+        }
+        Box(
+            modifier = Modifier
+                .padding(horizontal = 16.dp, vertical = 6.dp)
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(MaterialTheme.colorScheme.outlineVariant),
+        )
+    }
     if (schemas.isNotEmpty()) {
         schemas.forEach { id ->
             val selected = id == current
