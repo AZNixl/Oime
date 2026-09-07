@@ -270,11 +270,11 @@ class AZimeService : InputMethodService() {
                 KeyAction.Shift -> uiState.update { it.copy(shiftOn = !it.shiftOn, capsOn = false) }
                 KeyAction.Backspace -> handleBackspace()
                 KeyAction.Space -> {
-                    // 对齐 xime.az：无编码时空格直出。反馈轮10：只看 preedit，
-                    // 不再要求候选为空——部分方案空编码下也有常驻候选，
-                    // 旧条件会让空格送 librime 被吞，设置页等场景打不出空格
-                    val st = uiState.value
-                    if (st.preedit.isEmpty()) {
+                    // 抄 xime.az ImeKeyRouter "space"：以引擎实时组词状态（inputText）
+                    // 为准，非组词状态一律直出空格。不依赖 UI state（残留态曾吞空格）：
+                    // 组词中 → 选首选/顶屏；非组词 → commitText(" ")
+                    val composing = RimeManager.getProcessResult().inputText.isNotEmpty()
+                    if (!composing) {
                         currentInputConnection?.commitText(" ", 1)
                         pushUndo(" ")
                         refreshState()

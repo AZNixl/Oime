@@ -298,6 +298,9 @@ fun SettingsScreen(
                     Card { Column { ResponseTimingSettings() } }
                 }
                 item {
+                    Card { Column { GesturePositionSettings() } }
+                }
+                item {
                     Card { Column { VibrationSettings() } }
                 }
                 item {
@@ -363,7 +366,7 @@ fun SettingsScreen(
                             KsuItem(
                                 icon = Icons.Default.Info,
                                 title = "版本",
-                                subtitle = "0.9.1-oime · 包名 com.oime.input · 平台 RIME",
+                                subtitle = "0.9.2-oime · 包名 com.oime.input · 平台 RIME",
                                 onClick = {},
                                 showChevron = false,
                             )
@@ -450,7 +453,7 @@ fun SettingsScreen(
                                 )
                                 Spacer(Modifier.height(4.dp))
                                 Text("版本", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
-                                Text("0.9.1-oime", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                Text("0.9.2-oime", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                             }
                         }
                         Card(
@@ -832,6 +835,33 @@ private fun ResponseTimingSettings() {
         }
         Text(
             "长按 = 按住多久触发长按符号；连发 = 长按退格的起动延时与每字间隔；滑动 = 手势触发距离。下次键盘弹出即生效。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/** 手势提示位置（反馈轮11）：长按气泡偏移与四向预览显示位置。 */
+@Composable
+private fun GesturePositionSettings() {
+    val km = com.azime.input.core.keyboard.KeyboardManager
+    var bubbleX by remember { mutableStateOf(km.bubbleXDp().toFloat()) }
+    var bubbleY by remember { mutableStateOf(km.bubbleYExtraDp().toFloat()) }
+    var previewAbove by remember { mutableStateOf(km.swipePreviewAbove()) }
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
+        Text("手势提示位置", style = MaterialTheme.typography.titleSmall)
+        Spacer(Modifier.height(6.dp))
+        XimeSlider("长按气泡水平偏移", "${bubbleX.toInt()}dp", bubbleX, 0f..24f) {
+            bubbleX = it; km.setBubbleXDp(it.toInt())
+        }
+        XimeSlider("气泡垂直余量", "${bubbleY.toInt()}dp", bubbleY, 5f..40f) {
+            bubbleY = it; km.setBubbleYExtraDp(it.toInt())
+        }
+        SettingSwitchRow("四向预览显示在键上方", previewAbove) { on ->
+            previewAbove = on; km.setSwipePreviewAbove(on)
+        }
+        Text(
+            "水平偏移 = 长按气泡相对按键的右移量；垂直余量 = 气泡与按键的间距。关闭「键上方」时四向预览显示在键面中央。下次键盘弹出即生效。",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

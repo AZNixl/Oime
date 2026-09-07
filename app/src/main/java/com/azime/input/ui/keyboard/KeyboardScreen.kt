@@ -83,7 +83,6 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Switch
 import com.azime.input.core.font.FontManager
 import com.azime.input.core.haptic.HapticsManager
 import com.azime.input.core.keyboard.KeyboardManager
@@ -297,7 +296,8 @@ fun AzimeKeyboardScreen(
             ToolbarRow(
                 state = state,
                 onAction = onAction,
-                barHeight = 46.dp,
+                // 反馈轮11：工具栏高度按 ○ 菜单键（36dp）+ 上下 4dp 留白 = 44dp，整体居中
+                barHeight = 44.dp,
                 onOpenCustomize = { showToolbarCustomize = true },
             )
             // 面板优先：定制工具栏 / 更多候选 / ○ 菜单 / 剪贴板 覆盖主键盘区（等高），否则显示键盘
@@ -711,7 +711,7 @@ private fun ToolbarRow(
                 }
                 Box(
                     modifier = Modifier
-                        .size(34.dp)
+                        .size(36.dp)
                         .pointerInput(Unit) {
                             awaitEachGesture {
                                 awaitFirstDown(requireUnconsumed = false)
@@ -759,24 +759,30 @@ private fun ToolbarRow(
                         .clickable { onAction(KeyAction.ToggleMenuPanel) },
                     contentAlignment = Alignment.Center,
                 ) {
-                    // 圆环：底环 + 按下旋转弧 + 拖动内点（Canvas 自绘，动画等价 lottie 效果）
+                    // 圆环本体动画（反馈轮11）：虚线圆环整体旋转（虚线随环流动），
+                    // 描边加粗 2.5dp、平时 text 色 0.8 透明度，按下变强调色更醒目
                     val spin = rememberInfiniteTransition(label = "oRing")
                     val angle by spin.animateFloat(
                         0f, 360f,
-                        infiniteRepeatable(tween(1800, easing = LinearEasing)),
+                        infiniteRepeatable(tween(3600, easing = LinearEasing)),
                         label = "oAngle",
                     )
-                    Canvas(Modifier.size(34.dp)) {
-                        val strokeW = 2.dp.toPx()
-                        val ringR = size.minDimension / 2f - strokeW
-                        drawCircle(c.subText.copy(alpha = 0.55f), radius = ringR, style = Stroke(strokeW))
-                        if (oPressing) {
-                            rotate(angle) {
-                                drawArc(
-                                    c.accentActive, startAngle = 0f, sweepAngle = 80f, useCenter = false,
-                                    style = Stroke(strokeW, cap = StrokeCap.Round),
-                                )
-                            }
+                    Canvas(Modifier.size(36.dp)) {
+                        val strokeW = 2.5.dp.toPx()
+                        val ringR = size.minDimension / 2f - strokeW - 1f
+                        val dash = 6.dp.toPx()
+                        val gap = 4.dp.toPx()
+                        rotate(angle, pivot = center) {
+                            drawCircle(
+                                color = if (oPressing) c.accentActive else c.text.copy(alpha = 0.8f),
+                                radius = ringR,
+                                style = Stroke(
+                                    strokeW,
+                                    pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(
+                                        floatArrayOf(dash, gap),
+                                    ),
+                                ),
+                            )
                         }
                         val knob = ringKnob
                         if (knob != Offset.Zero) {
@@ -815,7 +821,7 @@ private fun ToolbarRow(
                 }
                 state.schemas.forEach { schemaId ->
                     Text(
-                        text = schemaDisplay(schemaId).removePrefix("○输入法 · "),
+                        text = RimeManager.schemaDisplayName(schemaId),
                         fontSize = 15.sp,
                         color = if (schemaId == state.schemaName) c.accentActive else c.text,
                         fontWeight = if (schemaId == state.schemaName) FontWeight.Bold else FontWeight.Normal,
@@ -857,13 +863,14 @@ private fun RowScope.toolbarToolItem(id: String, state: KeyboardUiState, onActio
                     "settings" -> onAction(KeyAction.OpenSettings)
                 }
             }
-            .padding(horizontal = 9.dp, vertical = 4.dp),
+            .padding(horizontal = 8.dp, vertical = 6.dp),
     ) {
         Icon(
             icon,
             contentDescription = id,
-            tint = c.subText,
-            modifier = Modifier.size(18.dp),
+            tint = c.text,
+            // 反馈轮11：图标调大（18→24dp），与 ○ 菜单键（36dp）比例协调
+            modifier = Modifier.size(24.dp),
         )
     }
 }
@@ -939,11 +946,11 @@ private fun MenuPanel(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                             ) {
                                 Text(
-                                    text = schemaDisplay(schemaId)
-                                        .removePrefix("○输入法 · ")
-                                        .take(6),
+                                    // 反馈轮11：读方案 yaml 的 name 字段（方案名），不再只显示文件名
+                                    text = RimeManager.schemaDisplayName(schemaId),
                                     fontSize = 11.sp,
                                     maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
                                     color = if (selected) c.accentActive else c.text,
                                     fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
                                 )
@@ -969,40 +976,51 @@ private fun MenuPanel(
                             modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp),
                         )
                     }
-                    switches.forEach { sw ->
-                        var checked by remember(state.schemaName, sw.name) {
-                            mutableStateOf(RimeManager.getOption(sw.name))
-                        }
-                        val stateText = when {
-                            sw.states.size >= 2 -> if (checked) sw.states[1] else sw.states[0]
-                            sw.states.size == 1 -> if (checked) sw.states[0] else "关"
-                            else -> if (checked) "开" else "关"
-                        }
-                        // 开关卡片：状态名 + 开关名 + Switch（一级菜单同款卡片）
+                    // 反馈轮11：横向 2 列卡片网格（状态名 + 开关名；开 → accent 底色，点按切换）
+                    switches.chunked(2).forEach { rowSwitches ->
                         Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(c.keyBg, RoundedCornerShape(12.dp))
-                                .clickable {
-                                    checked = !checked
-                                    onAction(KeyAction.ToggleSwitch(sw.name))
-                                }
-                                .padding(horizontal = 14.dp, vertical = 6.dp),
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
                         ) {
-                            Column(Modifier.weight(1f)) {
-                                Text(stateText, fontSize = 15.sp, color = c.text)
-                                Text(sw.name, fontSize = 11.sp, color = c.subText)
+                            rowSwitches.forEach { sw ->
+                                var checked by remember(state.schemaName, sw.name) {
+                                    mutableStateOf(RimeManager.getOption(sw.name))
+                                }
+                                val stateText = when {
+                                    sw.states.size >= 2 -> if (checked) sw.states[1] else sw.states[0]
+                                    sw.states.size == 1 -> if (checked) sw.states[0] else "关"
+                                    else -> if (checked) "开" else "关"
+                                }
+                                Column(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .background(if (checked) c.accentKeyBg else c.keyBg, RoundedCornerShape(12.dp))
+                                        .clickable {
+                                            checked = !checked
+                                            onAction(KeyAction.ToggleSwitch(sw.name))
+                                        }
+                                        .padding(vertical = 10.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                ) {
+                                    Text(
+                                        stateText,
+                                        fontSize = 14.sp,
+                                        maxLines = 1,
+                                        color = if (checked) c.accentActive else c.text,
+                                        fontWeight = if (checked) FontWeight.Bold else FontWeight.Normal,
+                                    )
+                                    Text(
+                                        sw.name,
+                                        fontSize = 10.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        color = c.subText,
+                                    )
+                                }
                             }
-                            Switch(
-                                checked = checked,
-                                onCheckedChange = { on ->
-                                    checked = on
-                                    onAction(KeyAction.ToggleSwitch(sw.name))
-                                },
-                            )
+                            repeat(2 - rowSwitches.size) { Spacer(Modifier.weight(1f)) }
                         }
-                        Spacer(Modifier.height(6.dp))
+                        Spacer(Modifier.height(8.dp))
                     }
                 }
             }
@@ -1015,33 +1033,33 @@ private fun MenuPanel(
                         .padding(horizontal = 12.dp, vertical = 8.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    // 顶行：↑ 关闭（左） + ⚙ 设置（右），仿 xime；悬浮样式半透明（反馈轮10）
+                    // 顶部悬浮栏：↑ 关闭 + 标题 + ⚙ 设置（反馈轮11：功能键与标题同栏悬浮半透明）
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier
+                            .background(c.funcKeyBg.copy(alpha = 0.55f), RoundedCornerShape(22.dp))
+                            .padding(horizontal = 6.dp, vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Box(
+                        Text(
+                            "↑",
+                            fontSize = 16.sp,
+                            color = c.text,
+                            fontWeight = FontWeight.Bold,
                             modifier = Modifier
-                                .size(28.dp)
-                                .background(c.funcKeyBg.copy(alpha = 0.55f), CircleShape)
-                                .clickable { close() },
-                            contentAlignment = Alignment.Center,
-                        ) { Text("↑", fontSize = 16.sp, color = c.text, fontWeight = FontWeight.Bold) }
-                        Box(
+                                .clickable { close() }
+                                .padding(horizontal = 10.dp, vertical = 2.dp),
+                        )
+                        Text("○ 菜单", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = c.text)
+                        Icon(
+                            Icons.Default.Settings,
+                            contentDescription = "设置",
+                            tint = c.text,
                             modifier = Modifier
-                                .size(28.dp)
-                                .background(c.funcKeyBg.copy(alpha = 0.55f), CircleShape)
-                                .clickable { close(); onAction(KeyAction.OpenSettings) },
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(
-                                Icons.Default.Settings,
-                                contentDescription = "设置",
-                                tint = c.text,
-                                modifier = Modifier.size(18.dp),
-                            )
-                        }
+                                .size(20.dp)
+                                .clickable { close(); onAction(KeyAction.OpenSettings) }
+                                .padding(2.dp),
+                        )
                     }
                     Spacer(Modifier.height(8.dp))
 
@@ -1102,26 +1120,34 @@ private fun MenuSubPanel(
             .height(totalHeight)
             .padding(horizontal = 12.dp, vertical = 8.dp),
     ) {
+        // 顶部悬浮栏：← 返回 + 标题 + ↑ 关闭（反馈轮11：功能键与标题同栏悬浮半透明）
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier
+                .align(Alignment.CenterHorizontally)
+                .background(c.funcKeyBg.copy(alpha = 0.55f), RoundedCornerShape(22.dp))
+                .padding(horizontal = 6.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Box(
+            Text(
+                "←",
+                fontSize = 16.sp,
+                color = c.text,
+                fontWeight = FontWeight.Bold,
                 modifier = Modifier
-                    .size(28.dp)
-                    .background(c.funcKeyBg.copy(alpha = 0.55f), CircleShape)
-                    .clickable { onBack() },
-                contentAlignment = Alignment.Center,
-            ) { Text("←", fontSize = 16.sp, color = c.text, fontWeight = FontWeight.Bold) }
+                    .clickable { onBack() }
+                    .padding(horizontal = 10.dp, vertical = 2.dp),
+            )
             Text(title, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = c.text)
-            Box(
+            Text(
+                "↑",
+                fontSize = 16.sp,
+                color = c.text,
+                fontWeight = FontWeight.Bold,
                 modifier = Modifier
-                    .size(28.dp)
-                    .background(c.funcKeyBg.copy(alpha = 0.55f), CircleShape)
-                    .clickable { onClose() },
-                contentAlignment = Alignment.Center,
-            ) { Text("↑", fontSize = 16.sp, color = c.text, fontWeight = FontWeight.Bold) }
+                    .clickable { onClose() }
+                    .padding(horizontal = 10.dp, vertical = 2.dp),
+            )
         }
         Spacer(Modifier.height(8.dp))
         Column(
@@ -1576,11 +1602,6 @@ private fun NumpadSliderKey(onAction: (KeyAction) -> Unit, modifier: Modifier) {
 
 
 
-private fun schemaDisplay(schemaId: String): String = when {
-    schemaId.isBlank() -> "○输入法"
-    else -> "○输入法 · $schemaId"
-}
-
 // ── 按键 ─────────────────────────────────────────────────────
 
 /** 手势方向。 */
@@ -1602,11 +1623,11 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
         else -> c.text
     }
     val label = when {
-        // 空格键显示：自定义文本 > 当前方案名（短名） > 默认「空格」
+        // 空格键显示：自定义文本 > 当前方案名（短名） > 默认「空格」（轮11：isNotEmpty，纯空格标签也生效）
         key.code == "space" && state.page == "main" -> {
             val custom = KeyboardManager.spaceLabel()
             when {
-                custom.isNotBlank() -> custom
+                custom.isNotEmpty() -> custom
                 state.schemaName.isNotBlank() -> state.schemaName.substringAfterLast('.')
                 else -> key.label
             }
@@ -1698,10 +1719,14 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
 
     val density = LocalDensity.current
     val haptics = LocalHapticFeedback.current
-    // 反馈轮10：气泡位置相对键高（键高变化时不再与字母重叠），右移 3dp、上移 = 键高 + 15dp
+    // 反馈轮11：气泡位置可在设置微调（水平偏移 + 键高之上的垂直余量）
     val bubbleOffset = with(density) {
-        IntOffset(3.dp.roundToPx(), -(KeyboardManager.keyHeightDp().dp + 15.dp).roundToPx())
+        IntOffset(
+            KeyboardManager.bubbleXDp().dp.roundToPx(),
+            -(KeyboardManager.keyHeightDp().dp + KeyboardManager.bubbleYExtraDp().dp).roundToPx(),
+        )
     }
+    val swipePreviewAbove = KeyboardManager.swipePreviewAbove()
     // 滑动手势触发距离（设置内可调，反馈轮10）
     val swipeThreshold = with(density) { KeyboardManager.swipeThresholdDp().dp.toPx() }
     // 长按气泡滑动选择步长（每个符号占 40dp）
@@ -1887,7 +1912,8 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text = swipePreview ?: label,
+            // 反馈轮11：四向预览位置可选——键面中央（默认替换键名）或键上方气泡
+            text = if (swipePreviewAbove) label else (swipePreview ?: label),
             // 反馈轮9：键面字号可调（键盘/工具栏分开设置）
             fontSize = if (key.type == KeyType.CHARACTER) KeyboardManager.fontSizeKey().sp
             else (KeyboardManager.fontSizeKey() * 0.7f).sp,
@@ -1895,6 +1921,23 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
             color = fg,
             maxLines = 1,
         )
+        // 键上方气泡预览（设置「四向预览位置」选键面上方时生效）
+        val pv = swipePreview
+        if (swipePreviewAbove && pv != null) {
+            Popup(
+                alignment = Alignment.TopCenter,
+                offset = bubbleOffset,
+            ) {
+                Text(
+                    text = pv,
+                    fontSize = 13.sp,
+                    color = c.text,
+                    modifier = Modifier
+                        .background(c.barBg, RoundedCornerShape(8.dp))
+                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                )
+            }
+        }
         // 键面右上角长按符号提示（受设置「长按符号提示」开关控制）
         val hintText = key.hint ?: longPressHint(key.code)
         if (swipePreview == null && KeyboardManager.hintLong() && hintText != null && key.type == KeyType.CHARACTER) {

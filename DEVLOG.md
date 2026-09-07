@@ -376,3 +376,19 @@ vendored RimeEngine 中 `getAvailableSchemas / getSchemaString / getSchemaList`
 - commit 608c8e0 首次 CI 失败：KeyboardScreen.kt `size.minDimension` 不存在（IntSize 只有 width/height，minDimension 属于浮点 Size），capR 类型污染连带 `r > capR` compareTo 歧义。修复 `minOf(size.width, size.height)` → commit 0c8a7f3c，run 34109422790 ✅ success。
 - APK 已取回：app-debug.apk 26.9MB（artifact app-debug #10013919428）。
 - 构建完成后首次连接手机失败（adb devices 为空，2026-09-07 18:13），按指示记录后停止，待用户指令再装机验证。
+
+## 反馈轮 11（0.9.2-oime vc12）：6 条
+
+| # | 需求 | 实现 |
+|---|------|------|
+| 1 | 工具图标调大 / 工具栏按 O 键居中 | toolbarToolItem 图标 16→24dp（tint c.text）；ToolbarRow barHeight 46→44dp（O 键 36dp + 上下 4dp），左右工具组在剩余空间居中，与 O 键视觉居中 |
+| 2 | 菜单功能键/标题改悬浮栏；子级横向；方案名 | 主菜单顶行合并悬浮栏（↑ + 「○ 菜单」标题 + ⚙，R22 胶囊 funcKeyBg alpha 0.55）；MenuSubPanel 顶部改居中悬浮栏（← 标题 ↑）；switches 子级改 2 列卡片网格（开 → accentKeyBg + accentActive 状态字，点按整卡切换，去 material3.Switch）；schema 子级 4 列卡片改 RimeManager.schemaDisplayName（读 shared/&lt;id&gt;.schema.yaml 的 name 字段，超长 Ellipsis），不再截 6 字符；工具栏方案快捷菜单同步改方案名；死函数 schemaDisplay() 删除 |
+| 3 | emoji 手势分类 | EmojiData 新增 👍 手势分类 40 个（👍👎👌✌🤞🤟🤘🤙…🫶🫰🫵🫱🫲等） |
+| 4 | 空格不识别（第三轮根因） | 照抄 xime.az ImeKeyRouter "space"：以引擎实时组词状态为准——非组词（getProcessResult().inputText 为空）一律 commitText(" ") 直出，组词走 processKey(KEY_SPACE) 交引擎选首选；不再依赖 UI preedit 残留态。配套 setSpaceLabel 去 .trim()（空格是合法标签字符），显示条件改 isNotEmpty |
+| 5 | 四向/长按符号位置进设置 | KeyboardManager 新增 bubbleXDp(3, 0-24)/bubbleYExtraDp(15, 5-40)（进 sizeSignature）+ swipePreviewAbove(false)；KeyboardKey 长按气泡 offset 接 prefs；swipePreviewAbove=true 时四向预览改键上方 Popup 气泡（13sp barBg R8），false 时键面中央原样显示；设置页键盘组新增「手势提示位置」卡片（2 滑杆 + 1 开关） |
+| 6 | O 圆环加粗明显 + 圆环本体动画 | 底环改虚线圆环 PathEffect.dashPathEffect(6dp/4dp) + Stroke 2.5dp + alpha 0.8；动画改整环 rotate（InfiniteTransition 3600ms 匀速 LinearEasing）——虚线环本体旋转，不再是附加弧线动画；按下 accentActive 高亮，拖动强调色内点跟随手指不变 |
+
+技术记录：
+- KeyboardScreen 净删 schemaDisplay 死函数与 material3.Switch import
+- GesturePositionSettings：长按气泡水平偏移 0-24dp / 垂直余量 5-40dp / 四向预览键上方开关，下次键盘弹出即生效
+- 版本 0.9.2-oime（versionCode 12）

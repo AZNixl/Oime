@@ -153,9 +153,9 @@ object KeyboardManager {
 
     fun spaceLabel(): String = prefs.getString(PREF_SPACE_LABEL, "") ?: ""
 
-    /** 保留用户输入的空格（自定义文本可含空格），仅去首尾。 */
+    /** 原样保存（反馈轮11：不再 trim——空格也是有效标签字符）。 */
     fun setSpaceLabel(v: String) {
-        synchronized(lock) { prefs.edit().putString(PREF_SPACE_LABEL, v.trim()).apply() }
+        synchronized(lock) { prefs.edit().putString(PREF_SPACE_LABEL, v).apply() }
     }
 
     // ── 字号 / 外观（反馈轮9：键盘与工具栏字号分开；圆角/行距/列距可调） ──
@@ -335,12 +335,40 @@ object KeyboardManager {
         synchronized(lock) { prefs.edit().putInt(PREF_SWIPE_THRESHOLD_DP, v.coerceIn(10, 80)).apply() }
     }
 
+    // ── 手势提示位置（反馈轮11：四向预览与长按符号位置可调） ──
+
+    private const val PREF_BUBBLE_X_DP = "bubble_x_dp"
+    private const val PREF_BUBBLE_Y_EXTRA_DP = "bubble_y_extra_dp"
+    private const val PREF_SWIPE_PREVIEW_ABOVE = "swipe_preview_above"
+
+    /** 长按符号气泡水平偏移 dp（默认 3，0-24）。 */
+    fun bubbleXDp(): Int = prefs.getInt(PREF_BUBBLE_X_DP, 3)
+
+    fun setBubbleXDp(v: Int) {
+        synchronized(lock) { prefs.edit().putInt(PREF_BUBBLE_X_DP, v.coerceIn(0, 24)).apply() }
+    }
+
+    /** 长按符号气泡垂直余量 dp（气泡上移 = 键高 + 该值，默认 15，5-40）。 */
+    fun bubbleYExtraDp(): Int = prefs.getInt(PREF_BUBBLE_Y_EXTRA_DP, 15)
+
+    fun setBubbleYExtraDp(v: Int) {
+        synchronized(lock) { prefs.edit().putInt(PREF_BUBBLE_Y_EXTRA_DP, v.coerceIn(5, 40)).apply() }
+    }
+
+    /** 四向滑动预览显示位置：false = 键面中央（默认），true = 键面上方气泡。 */
+    fun swipePreviewAbove(): Boolean = prefs.getBoolean(PREF_SWIPE_PREVIEW_ABOVE, false)
+
+    fun setSwipePreviewAbove(v: Boolean) {
+        synchronized(lock) { prefs.edit().putBoolean(PREF_SWIPE_PREVIEW_ABOVE, v).apply() }
+    }
+
     /** 尺寸指纹：变化时 Service 重建键盘视图（onStartInputView 检查）。 */
     fun sizeSignature(): String =
         "${keyHeightDp()}x${barHeightDp()}x${barEnabled()}x${hintLong()}" +
             "x${hintUp()}x${hintDown()}x${hintLeft()}x${hintRight()}x${spaceLabel()}x${sliderSymbolsRaw()}" +
             "x${fontSizeKey()}x${fontSizeBar()}x${keyCornerDp()}x${rowGapDp()}x${colGapDp()}" +
             "x${floatEnabled()}x${floatMode()}x${floatXDp()}x${floatYDp()}x${floatTextSp()}x${floatBgAlpha()}" +
+            "x${bubbleXDp()}x${bubbleYExtraDp()}" +
             "x${com.azime.input.core.font.FontManager.rev()}"
 
     // ── 工具栏自定义（○ 菜单键之外的可显示工具） ────────────
