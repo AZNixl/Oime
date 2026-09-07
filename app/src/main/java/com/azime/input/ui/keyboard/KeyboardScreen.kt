@@ -2,10 +2,15 @@ package com.azime.input.ui.keyboard
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.background
@@ -68,6 +73,8 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
@@ -1930,10 +1937,35 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
         }
     }
 
+    // 反馈轮14：按下动画反馈——背景高亮渐变 + 轻微缩放（spring 回弹）。
+    // 有手势键用 pressing（awaitEachGesture down/up），无手势键走 InteractionSource。
+    val clickSource = remember { MutableInteractionSource() }
+    val clickPressed by clickSource.collectIsPressedAsState()
+    val pressProgress by animateFloatAsState(
+        targetValue = if (pressing || clickPressed) 1f else 0f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMediumHigh,
+        ),
+        label = "keyPress",
+    )
+    // 暗色键盘按下变亮、亮色键盘按下变暗（以工具栏底色亮度判定明暗）
+    val pressTint = if (c.barBg.luminance() < 0.5f) Color.White else Color.Black
+    val bgAnimated = lerp(
+        bg,
+        pressTint.copy(alpha = 0.12f).compositeOver(bg),
+        pressProgress,
+    )
+
     var baseModifier = Modifier
         .weight(key.width)
         .fillMaxSize()
-        .background(bg, RoundedCornerShape(keyCornerDp))
+        .graphicsLayer {
+            val s = 1f - 0.05f * pressProgress
+            scaleX = s
+            scaleY = s
+        }
+        .background(bgAnimated, RoundedCornerShape(keyCornerDp))
     if (hasGestures) {
         // 手势闭包内读取最新 state（preedit 等会随打字频繁变化）
         val currentState by rememberUpdatedState(state)
@@ -2063,7 +2095,10 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
             }
         }
     } else {
-        baseModifier = baseModifier.clickable {
+        baseModifier = baseModifier.clickable(
+            interactionSource = clickSource,
+            indication = null,
+        ) {
             HapticsManager.press()
             onKeyAction(key, onAction)
             HapticsManager.release()

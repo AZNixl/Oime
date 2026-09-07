@@ -284,6 +284,7 @@ object RimeManager {
                         .mapNotNull { schemaIdOf(it) }
                         .filter { it.isNotBlank() }
                         .distinct()
+                        .toList()
                     if (ids.isNotEmpty()) groups.add(SchemaGroup(dir.name, dir.name, false, ids))
                 }
         }
