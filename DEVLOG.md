@@ -460,3 +460,10 @@ vendored RimeEngine 中 `getAvailableSchemas / getSchemaString / getSchemaList`
 - librime 资源解析规则：schema/dict/custom yaml 与 txt 词典只查 shared_data_dir 根；lua/opencc/models 子目录资源与 build/（预编译产物）支持子目录
 - ime set 需完整类名：com.oime.input/com.azime.input.ime.AZimeService（applicationId 与 namespace 不同，`.短类名` 展开会失败）
 - 版本 0.9.5-oime（versionCode 15）
+
+## vc15 构建与装机记录
+- commit 4037803（parent 8544d48，67 文件），CI run 34131155961 ✅ success，一次通过。
+- APK 已取回：app-debug.apk 26.4MB（artifact），工作区副本 oime-0.9.5-vc15.apk。
+- 手机 b72e0041 装机 Success，dumpsys 确认 0.9.5-oime。
+- **修复实机验证通过**：切回 AZ 组重新部署后，default.custom.yaml 22 个唯一 id 无重复；shared 根 23 个 .schema.yaml（22 组内 + pinyin_simp 内置）全部拍平到位；build/ 编译产物 41 个（core2022/double_pinyin 全家/easy_english/japanese/rime_frost/tiger 等 prism+table+reverse）——librime 已完整部署组内全部方案。
+- 按工作流：记录上传后停止工作，等待下一步指令。
