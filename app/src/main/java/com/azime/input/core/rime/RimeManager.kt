@@ -150,11 +150,17 @@ object RimeManager {
         runCatching {
             f.useLines { raw ->
                 for (rawLine in raw) {
-                    val line = rawLine.trimEnd()
+                    // 剥离行内注释（" #" 之后）：如 "switches: # 0 默认关" / "states: [ 中文, 西文 ]  #中英文"
+                    val noComment = run {
+                        val i = rawLine.indexOf(" #")
+                        if (i >= 0) rawLine.substring(0, i) else rawLine
+                    }
+                    val line = noComment.trimEnd()
                     val t = line.trim()
                     if (t.isEmpty() || t.startsWith("#")) continue
                     if (!inSwitches) {
-                        if (t == "switches:") inSwitches = true
+                        // 允许 "switches:" 后带行内注释（虎单整即此格式）
+                        if (t.startsWith("switches:")) inSwitches = true
                         continue
                     }
                     // switches 段结束：遇到顶格非注释键
