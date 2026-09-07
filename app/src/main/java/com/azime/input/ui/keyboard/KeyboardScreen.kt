@@ -1311,7 +1311,8 @@ private fun CategoryGridPane(
                 modifier = Modifier
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
-                    .padding(top = KeySpacing, horizontal = KeySpacing),
+                    .padding(horizontal = KeySpacing)
+                    .padding(top = KeySpacing),
                 verticalArrangement = Arrangement.spacedBy(KeySpacing),
             ) {
                 items.chunked(8).forEach { chunk ->

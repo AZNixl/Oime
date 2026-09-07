@@ -8,6 +8,7 @@ import android.widget.EditText
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.BorderStroke
@@ -115,7 +116,7 @@ class SettingsActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // 反馈轮9：设置界面状态栏沉浸（edge-to-edge，状态栏随主题深浅色）
-        androidx.activity.enableEdgeToEdge()
+        enableEdgeToEdge()
         setContent {
             // 主题色跟随键盘回车键颜色，并跟随系统深浅色
             val dark = androidx.compose.foundation.isSystemInDarkTheme()
