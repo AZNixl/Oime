@@ -392,3 +392,8 @@ vendored RimeEngine 中 `getAvailableSchemas / getSchemaString / getSchemaList`
 - KeyboardScreen 净删 schemaDisplay 死函数与 material3.Switch import
 - GesturePositionSettings：长按气泡水平偏移 0-24dp / 垂直余量 5-40dp / 四向预览键上方开关，下次键盘弹出即生效
 - 版本 0.9.2-oime（versionCode 12）
+
+## vc12 构建记录
+- commit 44ebdd82（parent fb1cd17，67 文件），CI run 34117992551 ✅ success。
+- APK 已取回：app-debug.apk 26.9MB（artifact app-debug #10017190209），工作区副本 oime-0.9.2-vc12.apk。
+- 构建完成后手机未连接（adb devices 为空，2026-09-07 19:56），按指示记录后停止，待用户指令再装机验证。
