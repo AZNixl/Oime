@@ -80,7 +80,8 @@ class SettingsActivity : AppCompatActivity() {
         lifecycleScope.launch {
             action().onSuccess { name ->
                 RimeManager.deployImportedSchemas(applicationContext)
-                Toast.makeText(this@SettingsActivity, "已导入「$name」，方案部署中…", Toast.LENGTH_SHORT).show()
+                // 轮13：导入即创建方案组（Documents/Oime/schema/<名>/），不自动切换
+                Toast.makeText(this@SettingsActivity, "已导入方案组「$name」，可在方案组中切换", Toast.LENGTH_SHORT).show()
                 promptRename(name)
             }.onFailure { e ->
                 Toast.makeText(this@SettingsActivity, "导入失败：${e.message}", Toast.LENGTH_LONG).show()
@@ -110,6 +111,10 @@ class SettingsActivity : AppCompatActivity() {
                 if (!src.exists() || dst.exists() || !src.renameTo(dst)) {
                     Toast.makeText(this, "重命名失败（目标文件夹已存在？）", Toast.LENGTH_LONG).show()
                     return@setPositiveButton
+                }
+                // 轮13：重命名的正好是当前方案组时，同步更新 current_group 指向
+                if (importedName == RimeManager.currentGroupId(applicationContext)) {
+                    RimeManager.setCurrentGroup(applicationContext, newName)
                 }
                 lifecycleScope.launch {
                     RimeManager.deployImportedSchemas(applicationContext)
@@ -367,7 +372,7 @@ fun SettingsScreen(
                             KsuItem(
                                 icon = Icons.Default.Info,
                                 title = "版本",
-                                subtitle = "0.9.3-oime · 包名 com.oime.input · 平台 RIME",
+                                subtitle = "0.9.4-oime · 包名 com.oime.input · 平台 RIME",
                                 onClick = {},
                                 showChevron = false,
                             )
@@ -457,7 +462,7 @@ fun SettingsScreen(
                                     Spacer(Modifier.width(4.dp))
                                     Text("版本", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
                                 }
-                                Text("0.9.3-oime", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                Text("0.9.4-oime", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                             }
                         }
                         Card(
@@ -646,6 +651,12 @@ private fun StatusCard(fillWidth: Boolean = false) {
 
 @Composable
 private fun SchemaList() {
+    val context = LocalContext.current
+    // 反馈轮13：方案组区 —— 组 → 方案 两级（参考 trime2，一次只加载一个组）
+    var groups by remember { mutableStateOf(RimeManager.schemaGroups(context)) }
+    var currentGroup by remember { mutableStateOf(RimeManager.currentGroupId(context)) }
+    var switchingGroup by remember { mutableStateOf(false) }
+    val groupScope = rememberCoroutineScope()
     var schemas by remember { mutableStateOf(RimeManager.availableSchemas()) }
     var current by remember { mutableStateOf(RimeManager.currentSchema()) }
     var refreshed by remember { mutableStateOf(false) }
@@ -659,6 +670,56 @@ private fun SchemaList() {
         }
     }
 
+    fun switchGroup(groupId: String) {
+        if (groupId == currentGroup || switchingGroup) return
+        currentGroup = groupId
+        switchingGroup = true
+        groupScope.launch {
+            runCatching { RimeManager.switchSchemaGroup(context.applicationContext, groupId) }
+            switchingGroup = false
+            groups = RimeManager.schemaGroups(context)
+            schemas = RimeManager.availableSchemas()
+            current = RimeManager.currentSchema()
+        }
+    }
+
+    Text(
+        "方案组（一次加载一组）",
+        style = MaterialTheme.typography.titleSmall,
+        modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+    )
+    groups.forEach { g ->
+        val selected = g.id == currentGroup
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { switchGroup(g.id) }
+                .padding(horizontal = 20.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            RadioButton(selected = selected, onClick = { switchGroup(g.id) })
+            Spacer(Modifier.width(8.dp))
+            Text(g.name, style = MaterialTheme.typography.bodyLarge)
+            Spacer(Modifier.weight(1f))
+            Text(
+                "${g.schemaIds.size} 个方案",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (selected) {
+                Spacer(Modifier.width(8.dp))
+                Icon(Icons.Default.Check, contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+            }
+        }
+    }
+    Box(
+        modifier = Modifier
+            .padding(horizontal = 16.dp, vertical = 6.dp)
+            .fillMaxWidth()
+            .height(1.dp)
+            .background(MaterialTheme.colorScheme.outlineVariant),
+    )
     if (schemas.isNotEmpty()) {
         schemas.forEach { id ->
             val selected = id == current
@@ -668,6 +729,8 @@ private fun SchemaList() {
                     .clickable {
                         current = id
                         RimeManager.switchSchema(id)
+                        // 轮13：记录组内上次使用的方案（部署后回落 schema_list[0] 即回到它）
+                        runCatching { RimeManager.recordGroupSchema(context.applicationContext, id) }
                     }
                     .padding(horizontal = 20.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -675,6 +738,7 @@ private fun SchemaList() {
                 RadioButton(selected = selected, onClick = {
                     current = id
                     RimeManager.switchSchema(id)
+                    runCatching { RimeManager.recordGroupSchema(context.applicationContext, id) }
                 })
                 Spacer(Modifier.width(8.dp))
                 Text(RimeManager.schemaDisplayName(id), style = MaterialTheme.typography.bodyLarge)
@@ -685,13 +749,6 @@ private fun SchemaList() {
                 }
             }
         }
-        Box(
-            modifier = Modifier
-                .padding(horizontal = 16.dp, vertical = 6.dp)
-                .fillMaxWidth()
-                .height(1.dp)
-                .background(MaterialTheme.colorScheme.outlineVariant),
-        )
     }
 }
 

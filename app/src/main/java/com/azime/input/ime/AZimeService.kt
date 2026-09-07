@@ -299,11 +299,21 @@ class AZimeService : InputMethodService() {
                     // 部署进行中 switchSchema 会直接返回 false——给出提示而非静默失败
                     val ok = runCatching { RimeManager.switchSchema(action.schemaId) }.getOrDefault(false)
                     if (ok) {
+                        // 轮13：记录组内上次使用的方案（重写 schema_list 时置首 → 部署后回落即回到它）
+                        runCatching { RimeManager.recordGroupSchema(applicationContext, action.schemaId) }
                         uiState.update { it.copy(statusMessage = "") }
                         refreshState()
                     } else {
                         uiState.update { it.copy(statusMessage = "引擎部署中，请稍后重试") }
                     }
+                }
+                is KeyAction.SelectSchemaGroup -> {
+                    // 轮13：切换方案组——一次只加载一个组，切换=重装组文件+全量部署
+                    // （部署完成后 librime 回落 schema_list[0] = 组内上次使用的方案）
+                    uiState.update { it.copy(statusMessage = "正在切换方案组…") }
+                    runCatching { RimeManager.switchSchemaGroup(applicationContext, action.groupId) }
+                    uiState.update { it.copy(statusMessage = "") }
+                    refreshState()
                 }
                 is KeyAction.ToggleSwitch -> {
                     RimeManager.setOption(action.name, !RimeManager.getOption(action.name))

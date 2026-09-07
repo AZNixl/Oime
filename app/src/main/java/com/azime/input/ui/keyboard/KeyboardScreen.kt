@@ -35,6 +35,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Assignment
+import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Dialpad
@@ -120,6 +121,8 @@ sealed interface KeyAction {
     data class Candidate(val index: Int) : KeyAction
     data object PageDown : KeyAction
     data class SelectSchema(val schemaId: String) : KeyAction
+    /** ○ 菜单「方案组」（轮13）：切换方案组（一次只加载一个组，切换=重装组文件+全量部署）。 */
+    data class SelectSchemaGroup(val groupId: String) : KeyAction
     /** ○ 菜单「方案开关」：切换当前方案 schema.yaml 的 switches 开关。 */
     data class ToggleSwitch(val name: String) : KeyAction
 
@@ -976,7 +979,7 @@ private fun MenuPanel(
     totalHeight: androidx.compose.ui.unit.Dp,
 ) {
     val c = keyboardColors()
-    // 子级页：null=主菜单 | switches=方案开关 | schema=输入方案 | toolbar=定制工具栏
+    // 子级页：null=主菜单 | switches=方案开关 | groups=方案组 | schema=输入方案 | toolbar=定制工具栏
     // 子级面板与一级菜单同区域同风格（同背景、同顶部行），在本面板内切换，不跳转独立界面。
     var subPage by remember { mutableStateOf<String?>(null) }
     fun close() = onAction(KeyAction.ToggleMenuPanel)
@@ -997,6 +1000,73 @@ private fun MenuPanel(
                 onDismiss = { subPage = null },
                 totalHeight = totalHeight,
             )
+            "groups" -> {
+                // 反馈轮13：方案组大项 —— 组 → 方案 两级（参考 trime2）。
+                // 一次只加载一个组；切换=重装组文件+全量部署（SelectSchemaGroup）。
+                // state.schemas 作为缓存 key：切组后 refreshState 更新 → 此处重新枚举高亮。
+                val groups = remember(state.schemas) {
+                    RimeManager.schemaGroups(com.azime.input.AZimeApplication.instance)
+                }
+                val currentGid = remember(state.schemas) {
+                    RimeManager.currentGroupId(com.azime.input.AZimeApplication.instance)
+                }
+                MenuSubPanel(
+                    c = c, title = "方案组", totalHeight = totalHeight,
+                    onBack = { subPage = null }, onClose = { close() },
+                ) {
+                    if (state.statusMessage.isNotEmpty()) {
+                        Text(
+                            state.statusMessage,
+                            fontSize = 13.sp, color = c.subText,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp),
+                        )
+                    }
+                    if (groups.size <= 1) {
+                        Text(
+                            "暂无其他方案组：在设置中导入方案包（ZIP / 文件夹）即可创建新组",
+                            fontSize = 13.sp, color = c.subText,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp),
+                        )
+                    }
+                    groups.chunked(4).forEach { rowGroups ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            rowGroups.forEach { g ->
+                                val selected = g.id == currentGid
+                                Column(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .background(if (selected) c.accentKeyBg else c.keyBg, RoundedCornerShape(12.dp))
+                                        .clickable {
+                                            if (!selected) onAction(KeyAction.SelectSchemaGroup(g.id))
+                                        }
+                                        .padding(vertical = 10.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                ) {
+                                    Text(
+                                        g.name,
+                                        fontSize = 11.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        color = if (selected) c.accentActive else c.text,
+                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                                    )
+                                    Text(
+                                        "${g.schemaIds.size} 个方案",
+                                        fontSize = 9.sp,
+                                        maxLines = 1,
+                                        color = c.subText,
+                                    )
+                                }
+                            }
+                            repeat(4 - rowGroups.size) { Spacer(Modifier.weight(1f)) }
+                        }
+                        Spacer(Modifier.height(10.dp))
+                    }
+                }
+            }
             "schema" -> MenuSubPanel(
                 c = c, title = "输入方案", totalHeight = totalHeight,
                 onBack = { subPage = null }, onClose = { close() },
@@ -1154,6 +1224,8 @@ private fun MenuPanel(
                     val menuItems: List<Triple<androidx.compose.ui.graphics.vector.ImageVector, String, () -> Unit>> = listOf(
                         Triple(Icons.AutoMirrored.Filled.Assignment, "剪贴板") { close(); onAction(KeyAction.ToggleClipboardPanel) },
                         Triple(Icons.Default.Tune, "方案开关") { subPage = "switches" },
+                        // 反馈轮13：方案组大项（组 → 方案 两级，一次只加载一个组）
+                        Triple(Icons.Default.Apps, "方案组") { subPage = "groups" },
                         Triple(Icons.Default.List, "输入方案") { subPage = "schema" },
                         Triple(Icons.Default.Sync, "部署") { close(); onAction(KeyAction.Deploy) },
                         Triple(Icons.Default.Category, "定制工具栏") { subPage = "toolbar" },

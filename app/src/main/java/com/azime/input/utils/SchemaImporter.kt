@@ -18,8 +18,8 @@ import java.nio.charset.Charset
  * - ZIP 压缩包：自动探测文件名编码（UTF-8 标记位 / GBK 兜底），解决中文文件名乱码
  * - SAF 文件夹：复制其中全部 yaml/txt（含子目录拍平），文件名由系统解码，天然无乱码
  *
- * 落盘到 Documents/AZime/schema/<名>/，随后由 RimeManager.deployPendingImport
- * 在引擎初始化（或显式调用）时同步进 shared 目录并触发重新部署。
+ * 落盘到 Documents/Oime/schema/<名>/（每个子目录即一个「方案组」，轮13 起），
+ * 由 RimeManager.syncGroup / switchSchemaGroup 在启动或切组时同步进 shared 目录并触发重新部署。
  */
 class SchemaImporter {
 

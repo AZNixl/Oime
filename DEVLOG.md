@@ -418,3 +418,17 @@ vendored RimeEngine 中 `getAvailableSchemas / getSchemaString / getSchemaList`
 - commit ee95753f（parent 95395fc9，67 文件），CI run 34121280492 ✅ success，一次通过。
 - APK 已取回：app-debug.apk 27.0MB（artifact app-debug #10018470161），工作区副本 oime-0.9.3-vc13.apk。
 - 构建完成后手机未连接（adb devices 为空，2026-09-07 20:29 两次确认），按指示记录后停止，待用户指令再装机验证。
+
+## 反馈轮 13（0.9.4-oime vc14）：方案组架构重做
+
+| # | 需求 | 实现 |
+|---|------|------|
+| 1 | 排查「方案自己变动成别的方案」根因 | **根因确认**：旧 deployPendingImport 把所有导入方案的 schema_id 全量平铺进 default.custom.yaml（pinyin_simp 恒第一），librime 每次部署完成后激活方案回落 schema_list[0]，用户切过的方案被跳回拼音 |
+| 2 | 方案管理重做：方案组→方案 两级（参考 trime2） | RimeManager 新增方案组区块：SchemaGroup(id/name/builtin/schemaIds)、schemaGroups()（内置组 + Documents/Oime/schema/ 子目录=方案组，组内扫 *.schema.yaml）、currentGroupId/setCurrentGroup/recordGroupSchema（schema_group_prefs）；syncGroup 共用启动/切组——删上一组文件（.imported 清单，与内置资产同名从 assets 恢复）→ 拷入组文件（组覆盖层）→ 重写 default.custom.yaml（schema_list 仅含组内方案，组内上次使用置首）→ 不变化跳过；switchSchemaGroup=setCurrentGroup→syncGroup→全量维护→重建会话；删 deployPendingImport；ensureReady/deployImportedSchemas 接线 |
+| 3 | O 菜单加「方案组」大项 + 设置页同步 | KeyAction.SelectSchemaGroup + Service 处理（statusMessage「正在切换方案组…」）；SelectSchema 成功后 recordGroupSchema（组内记忆）；主菜单第 3 项「方案组」（Apps 图标）+ groups 子级 4 列卡片网格（组名 + 「N 个方案」副文本，当前组 accent 高亮，state.schemas 作刷新 key）；设置页 SchemaList 顶部方案组单选区（RadioButton + 方案数），组内方案列表保留并同样记录；导入文案改「已导入方案组，可在方案组中切换」（不自动切换，对齐 trime2 安装语义）；promptRename 重命名当前组时同步 setCurrentGroup |
+
+技术记录：
+- 修复机制：schema_list 只写当前组 + recordGroupSchema 把组内最后使用的方案置首 → 部署后 librime 回落 schema_list[0] 即回到用户方案，不再跳回
+- 旧版平滑迁移：升级后首次启动 currentGroup=内置组，syncGroup 按旧 .imported 清单删除全部导入文件（同名内置资产从 assets 恢复），源文件仍留在 Documents/Oime/schema/<组名>/ 不丢
+- syncAssets 顺序保持在前（组文件未动时 marker 命中即跳过，不覆盖组定制同名文件）
+- 版本 0.9.4-oime（versionCode 14）
