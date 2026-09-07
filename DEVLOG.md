@@ -348,3 +348,26 @@ vendored RimeEngine 中 `getAvailableSchemas / getSchemaString / getSchemaList`
 - KeyboardManager 新增 fontSizeKey/fontSizeBar/keyCornerDp/rowGapDp/colGapDp/float* 系列 prefs，全部纳入 sizeSignature
 - AZimeService handleSpace 分流逻辑；AZimeService currentEditorInfo 沿用轮 8
 - 版本 0.9.0-oime（versionCode 10）
+
+## 反馈轮 10（0.9.1-oime vc11）：12 条
+
+| # | 需求 | 实现 |
+|---|------|------|
+| 1 | 删⌄收起键 / O键下滑关键盘 / 工具居中 | 工具栏 ⌄ 关闭键删除，○ 菜单键下滑（>40dp 且纵向占优）触发 HideKeyboard；左右工具组在各自剩余空间内居中排列 |
+| 2 | ○菜单去指针模式 / 子级横向 / 悬浮半透明 | 菜单删除「光标/指针模式」项；方案开关子级只留功能开关（去方案选择+当前方案显示）；输入方案、定制工具栏子级改 4 列横向卡片网格；父/子级圆形功能键 funcKeyBg alpha 0.55 半透明悬浮样式；底部悬浮栏 alpha 0.8 |
+| 3 | 打字时工具栏不加高 | composing 分支 heightIn(min=barHeight+10) → 固定 height(barHeight)，preedit 11sp/13sp 行高 + 候选 16sp 压缩塞入，打字全程 46dp 恒定 |
+| 4 | 设置布局/部署/关于子级/BackHandler/未启用灰态 | 右侧两小方块 IntrinsicSize.Min 等高 + weight 均分 + 图标 20→16dp；「项目」→「部署」（CloudUpload 图标）；备份设置移入关于页；SettingsScreen 加 BackHandler(subPage!="main")；StatusCard 检测 Settings.Secure.DEFAULT_INPUT_METHOD，未启用时整体灰色 +「未启用 · 点击去启用」+ 跳转系统启用页 |
+| 5 | 滑条改 xime 样式 | XimeSlider 重写为自绘（pointerInput tap+horizontal drag）：深色圆角轨道(#232527, R5) + 强调色填充段 + 白色竖线 thumb(8x22dp 描边)；不依赖 material3 Slider thumb/track slot API（BOM 2024.02 兼容性风险规避） |
+| 6 | 内置配色切换选中框不实时刷新 | 选中态依赖 km.accentLight() 直接读取不触发重组；改 remember(accentRev){km.accentLight()/accentDark()}，应用配色后 accentRev++ 使预设卡与自定义卡选中态实时刷新 |
+| 7 | 空格键显示文本不识别空格 | 根因：Space 直出条件要求 candidates.isEmpty()，部分方案空编码带常驻候选 → 空格送 librime 被吞。AZimeService KeyAction.Space 条件放宽为仅 preedit.isEmpty() 即直出空格 |
+| 8 | 按键响应时间进设置 | KeyboardManager 新增 longPressMs(默认180)/repeatStartMs(150)/repeatIntervalMs(45)/swipeThresholdDp(30) 四 prefs；KeyboardKey 长按定时/连发/滑动阈值全部接入；键盘页新增「按键响应」卡片 4 滑杆 |
+| 9 | 符号提示相对位置 | 长按气泡 offset 由固定 -61dp 改为 -(键高+15dp)，键高 36-64dp 变化时气泡始终悬浮在按键上方不与字母重叠 |
+| 10 | 悬浮栏同心圆角 | 剪贴板/分类网格底部悬浮栏外层 R22 + 内层选项卡 R9→R18（同心：22-4padding=18，内方外圆） |
+| 11 | 图标 material 化 / O键圆环动画 | toolbarToolItem 的 📋/方案/123/☺/符/⚙ 全部替换 Material 图标（Assignment/List/Dialpad/EmojiEmotions/Category/Settings）；○ 键改为 Canvas 圆环造型：底环 + 按下旋转弧（InfiniteTransition 1.8s 旋转，等价 lottie）+ 拖动时强调色内点跟随手指（限幅圆环半径内，满足「移动距离不超过圆环中心点」） |
+| 12 | 增高行支持九宫格 | NumpadPane 末尾接入 barEnabled + barHeightDp 增高行，主键盘/九宫格切换高度一致 |
+
+技术记录：
+- ToolbarRow ○ 键 pointerInput(Unit)：下滑收起 (dy>40dp && |dy|>|dx|)、拖动移光标 18dp/步、ringKnob Offset 限幅 off*(capR/r)
+- ResponseTimingSettings 四滑杆（100-800/50-500/20-200/10-80），下次键盘弹出生效
+- 遗留：joystickMode/SetJoystickMode 字段保留未删（兼容），MyLocation/Checkbox/heightIn import 未清理
+- 版本 0.9.1-oime（versionCode 11）

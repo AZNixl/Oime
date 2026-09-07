@@ -300,6 +300,41 @@ object KeyboardManager {
     fun setHintLeft(v: Boolean) = setHintPref(PREF_HINT_LEFT, v)
     fun setHintRight(v: Boolean) = setHintPref(PREF_HINT_RIGHT, v)
 
+    // ── 按键响应时间（反馈轮10：用户自行微调） ──────────────
+
+    private const val PREF_LONG_PRESS_MS = "long_press_ms"
+    private const val PREF_REPEAT_START_MS = "repeat_start_ms"
+    private const val PREF_REPEAT_MS = "repeat_interval_ms"
+    private const val PREF_SWIPE_THRESHOLD_DP = "swipe_threshold_dp"
+
+    /** 长按触发时间 ms（默认 180，100-1000）。 */
+    fun longPressMs(): Int = prefs.getInt(PREF_LONG_PRESS_MS, 180)
+
+    fun setLongPressMs(v: Int) {
+        synchronized(lock) { prefs.edit().putInt(PREF_LONG_PRESS_MS, v.coerceIn(100, 1000)).apply() }
+    }
+
+    /** 连发起动延时 ms（默认 150，50-500）。 */
+    fun repeatStartMs(): Int = prefs.getInt(PREF_REPEAT_START_MS, 150)
+
+    fun setRepeatStartMs(v: Int) {
+        synchronized(lock) { prefs.edit().putInt(PREF_REPEAT_START_MS, v.coerceIn(50, 500)).apply() }
+    }
+
+    /** 连发间隔 ms（默认 45，20-200）。 */
+    fun repeatIntervalMs(): Int = prefs.getInt(PREF_REPEAT_MS, 45)
+
+    fun setRepeatIntervalMs(v: Int) {
+        synchronized(lock) { prefs.edit().putInt(PREF_REPEAT_MS, v.coerceIn(20, 200)).apply() }
+    }
+
+    /** 滑动手势触发距离 dp（默认 30，10-80）。 */
+    fun swipeThresholdDp(): Int = prefs.getInt(PREF_SWIPE_THRESHOLD_DP, 30)
+
+    fun setSwipeThresholdDp(v: Int) {
+        synchronized(lock) { prefs.edit().putInt(PREF_SWIPE_THRESHOLD_DP, v.coerceIn(10, 80)).apply() }
+    }
+
     /** 尺寸指纹：变化时 Service 重建键盘视图（onStartInputView 检查）。 */
     fun sizeSignature(): String =
         "${keyHeightDp()}x${barHeightDp()}x${barEnabled()}x${hintLong()}" +

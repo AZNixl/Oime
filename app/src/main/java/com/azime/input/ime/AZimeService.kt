@@ -270,10 +270,11 @@ class AZimeService : InputMethodService() {
                 KeyAction.Shift -> uiState.update { it.copy(shiftOn = !it.shiftOn, capsOn = false) }
                 KeyAction.Backspace -> handleBackspace()
                 KeyAction.Space -> {
-                    // 对齐 xime.az：无编码无候选时空格直出（否则 librime 吞掉空格，
-                    // 设置页文本框等场景打不出空格）；有编码时 = 选首选/顶屏
+                    // 对齐 xime.az：无编码时空格直出。反馈轮10：只看 preedit，
+                    // 不再要求候选为空——部分方案空编码下也有常驻候选，
+                    // 旧条件会让空格送 librime 被吞，设置页等场景打不出空格
                     val st = uiState.value
-                    if (st.preedit.isEmpty() && st.candidates.isEmpty()) {
+                    if (st.preedit.isEmpty()) {
                         currentInputConnection?.commitText(" ", 1)
                         pushUndo(" ")
                         refreshState()

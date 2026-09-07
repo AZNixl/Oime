@@ -8,12 +8,16 @@ import android.widget.EditText
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.compose.BackHandler
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
@@ -30,6 +34,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -183,6 +189,8 @@ fun SettingsScreen(
         "float" to "悬浮窗",
         "about" to "关于",
     )
+    // 反馈轮10：设置子级页支持系统返回键（原来滑动/返回直接回桌面）
+    BackHandler(enabled = subPage != "main") { subPage = "main" }
 
     Scaffold(
         containerColor = cs.surface,
@@ -287,6 +295,9 @@ fun SettingsScreen(
                     Card { Column { KeyAppearanceSettings() } }
                 }
                 item {
+                    Card { Column { ResponseTimingSettings() } }
+                }
+                item {
                     Card { Column { VibrationSettings() } }
                 }
                 item {
@@ -352,7 +363,7 @@ fun SettingsScreen(
                             KsuItem(
                                 icon = Icons.Default.Info,
                                 title = "版本",
-                                subtitle = "0.9.0-oime · 包名 com.oime.input · 平台 RIME",
+                                subtitle = "0.9.1-oime · 包名 com.oime.input · 平台 RIME",
                                 onClick = {},
                                 showChevron = false,
                             )
@@ -369,6 +380,21 @@ fun SettingsScreen(
                                     }
                                 },
                                 showChevron = false,
+                            )
+                            KsuItem(
+                                icon = Icons.Default.Backup,
+                                title = "备份设置",
+                                subtitle = "导出全部偏好到 Download 目录（反馈轮10 移入关于）",
+                                onClick = {
+                                    scope.launch {
+                                        val name = backupSettings(context)
+                                        Toast.makeText(
+                                            context,
+                                            if (name != null) "已备份：Download/$name" else "备份失败",
+                                            Toast.LENGTH_LONG,
+                                        ).show()
+                                    }
+                                },
                             )
                             KsuItem(
                                 icon = Icons.Default.WavingHand,
@@ -398,35 +424,39 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
             contentPadding = PaddingValues(vertical = 8.dp),
         ) {
-            // 反馈轮9：KSU 布局——左侧一个大状态方块 + 右侧两个小方块（版本/项目）
+            // 反馈轮9：KSU 布局——左侧一个大状态方块 + 右侧两个小方块
+            // 反馈轮10：两小方块与大方块等高、图标缩小、「项目」改「部署」
             item {
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Box(Modifier.weight(1.2f)) { StatusCard(fillWidth = true) }
+                Row(
+                    modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Box(Modifier.weight(1.2f).fillMaxHeight()) { StatusCard(fillWidth = true) }
                     Column(
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         Card(
                             colors = CardDefaults.cardColors(containerColor = cs.surfaceVariant),
                             shape = RoundedCornerShape(16.dp),
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().weight(1f),
                         ) {
-                            Column(Modifier.padding(14.dp)) {
+                            Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
                                 Icon(
                                     Icons.Default.Info,
                                     contentDescription = null,
                                     tint = cs.primary,
-                                    modifier = Modifier.size(20.dp),
+                                    modifier = Modifier.size(16.dp),
                                 )
-                                Spacer(Modifier.height(8.dp))
+                                Spacer(Modifier.height(4.dp))
                                 Text("版本", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
-                                Text("0.9.0-oime", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                Text("0.9.1-oime", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                             }
                         }
                         Card(
                             colors = CardDefaults.cardColors(containerColor = cs.surfaceVariant),
                             shape = RoundedCornerShape(16.dp),
-                            modifier = Modifier.fillMaxWidth().clickable {
+                            modifier = Modifier.fillMaxWidth().weight(1f).clickable {
                                 runCatching {
                                     context.startActivity(android.content.Intent(
                                         android.content.Intent.ACTION_VIEW,
@@ -435,15 +465,15 @@ fun SettingsScreen(
                                 }
                             },
                         ) {
-                            Column(Modifier.padding(14.dp)) {
+                            Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
                                 Icon(
-                                    Icons.Default.Link,
+                                    Icons.Default.CloudUpload,
                                     contentDescription = null,
                                     tint = cs.primary,
-                                    modifier = Modifier.size(20.dp),
+                                    modifier = Modifier.size(16.dp),
                                 )
-                                Spacer(Modifier.height(8.dp))
-                                Text("项目", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+                                Spacer(Modifier.height(4.dp))
+                                Text("部署", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
                                 Text("AZNixl/Oime", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                             }
                         }
@@ -480,21 +510,6 @@ fun SettingsScreen(
                             onClick = { subPage = "theme" },
                         )
                         KsuItem(
-                            icon = Icons.Default.Backup,
-                            title = "备份设置",
-                            subtitle = "导出全部偏好到 Download 目录",
-                            onClick = {
-                                scope.launch {
-                                    val name = backupSettings(context)
-                                    Toast.makeText(
-                                        context,
-                                        if (name != null) "已备份：Download/$name" else "备份失败",
-                                        Toast.LENGTH_LONG,
-                                    ).show()
-                                }
-                            },
-                        )
-                        KsuItem(
                             icon = Icons.Default.Code,
                             title = "预设置",
                             subtitle = "preset_keys.lua（按键动作预设）",
@@ -519,6 +534,16 @@ private fun StatusCard(fillWidth: Boolean = false) {
     val context = LocalContext.current
     var ready by remember { mutableStateOf(false) }
     var schema by remember { mutableStateOf("") }
+    // 反馈轮10：输入法未启用时大方块灰色显示「未启用」，点击跳转系统启用页
+    val imeEnabled = remember {
+        runCatching {
+            val current = android.provider.Settings.Secure.getString(
+                context.contentResolver, android.provider.Settings.Secure.DEFAULT_INPUT_METHOD,
+            ) ?: ""
+            current.startsWith(context.packageName)
+        }.getOrDefault(false)
+    }
+    val notEnabled = !imeEnabled
 
     LaunchedEffect(Unit) {
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
@@ -529,9 +554,17 @@ private fun StatusCard(fillWidth: Boolean = false) {
     }
 
     Card(
-        colors = CardDefaults.cardColors(containerColor = cs.primaryContainer),
+        colors = CardDefaults.cardColors(
+            containerColor = if (notEnabled) Color(0xFFB9BEC4) else cs.primaryContainer,
+        ),
         shape = RoundedCornerShape(16.dp),
-        modifier = if (fillWidth) Modifier.fillMaxHeight() else Modifier,
+        modifier = (
+            if (notEnabled) Modifier.clickable {
+                runCatching {
+                    context.startActivity(Intent(android.provider.Settings.ACTION_INPUT_METHOD_SETTINGS))
+                }
+            } else Modifier
+        ).let { if (fillWidth) it.fillMaxHeight() else it },
     ) {
         Row(
             modifier = Modifier
@@ -539,14 +572,19 @@ private fun StatusCard(fillWidth: Boolean = false) {
                 .padding(20.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // ○ logo
+            // ○ logo（未启用时灰色）
             Box(
                 modifier = Modifier
                     .size(52.dp)
-                    .background(cs.primary, CircleShape),
+                    .background(if (notEnabled) Color(0xFF8A8F94) else cs.primary, CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("○", color = cs.onPrimary, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    "○",
+                    color = if (notEnabled) Color(0xFFE3E5E8) else cs.onPrimary,
+                    fontSize = 26.sp,
+                    fontWeight = FontWeight.Bold,
+                )
             }
             Spacer(Modifier.width(16.dp))
             Column(Modifier.weight(1f)) {
@@ -556,16 +594,24 @@ private fun StatusCard(fillWidth: Boolean = false) {
                     Box(
                         modifier = Modifier
                             .size(8.dp)
-                            .background(if (ready) Color(0xFF2E9E5B) else cs.tertiary, CircleShape)
+                            .background(
+                                when {
+                                    notEnabled -> Color(0xFF6B7075)
+                                    ready -> Color(0xFF2E9E5B)
+                                    else -> cs.tertiary
+                                },
+                                CircleShape,
+                            )
                     )
                     Spacer(Modifier.width(6.dp))
                     Text(
                         text = when {
+                            notEnabled -> "未启用 · 点击去启用"
                             ready -> "运行正常 · $schema"
                             else -> "引擎未就绪 / 首次部署中…"
                         },
                         style = MaterialTheme.typography.bodyMedium,
-                        color = cs.onPrimaryContainer,
+                        color = if (notEnabled) Color(0xFF3C4043) else cs.onPrimaryContainer,
                     )
                 }
             }
@@ -684,7 +730,8 @@ private fun KeyHeightSliders() {
 }
 
 /**
- * xime.az 风格滑条：标题左 + 当前值右 + 细轨道滑杆。
+ * xime.az 风格滑条：标题左 + 当前值右 + 深色圆角轨道 + 白色竖线 thumb。
+ * 反馈轮10：自绘实现（pointerInput），不依赖 material3 Slider 的 thumb/track slot API。
  */
 @Composable
 private fun XimeSlider(
@@ -694,6 +741,7 @@ private fun XimeSlider(
     range: ClosedFloatingPointRange<Float>,
     onChange: (Float) -> Unit,
 ) {
+    val cs = MaterialTheme.colorScheme
     Column(Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -703,14 +751,89 @@ private fun XimeSlider(
             Text(
                 valueText,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.primary,
+                color = cs.primary,
                 fontWeight = FontWeight.Bold,
             )
         }
-        Slider(
-            value = value,
-            onValueChange = onChange,
-            valueRange = range,
+        val span = (range.endInclusive - range.start).coerceAtLeast(0.001f)
+        fun frac() = ((value - range.start) / span).coerceIn(0f, 1f)
+        BoxWithConstraints(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(32.dp)
+                .pointerInput(range) {
+                    fun setFromX(x: Float) {
+                        val f = (x / size.width.toFloat()).coerceIn(0f, 1f)
+                        onChange(range.start + f * span)
+                    }
+                    detectTapGestures { off -> setFromX(off.x) }
+                }
+                .pointerInput(range) {
+                    detectHorizontalDragGestures { change, _ ->
+                        val f = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f)
+                        onChange(range.start + f * span)
+                        change.consume()
+                    }
+                },
+            contentAlignment = Alignment.CenterStart,
+        ) {
+            // 深色圆角轨道
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(10.dp)
+                    .background(Color(0xFF232527), RoundedCornerShape(5.dp)),
+            )
+            // 强调色已填充段
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(frac())
+                    .height(10.dp)
+                    .background(cs.primary, RoundedCornerShape(5.dp)),
+            )
+            // 白色竖线 thumb（描边保证对比度）
+            val density = LocalDensity.current
+            val thumbX = with(density) {
+                (((constraints.maxWidth - 8.dp.toPx()) * frac()).coerceAtLeast(0f)).toDp()
+            }
+            Box(
+                modifier = Modifier
+                    .offset(x = thumbX)
+                    .size(8.dp, 22.dp)
+                    .background(Color.White, RoundedCornerShape(4.dp))
+                    .border(1.dp, Color(0x33000000), RoundedCornerShape(4.dp)),
+            )
+        }
+    }
+}
+
+/** 按键响应时间（反馈轮10）：长按/连发/滑动阈值微调，键盘内即时读取。 */
+@Composable
+private fun ResponseTimingSettings() {
+    val km = com.azime.input.core.keyboard.KeyboardManager
+    var longPress by remember { mutableStateOf(km.longPressMs().toFloat()) }
+    var repeatStart by remember { mutableStateOf(km.repeatStartMs().toFloat()) }
+    var repeatInterval by remember { mutableStateOf(km.repeatIntervalMs().toFloat()) }
+    var swipe by remember { mutableStateOf(km.swipeThresholdDp().toFloat()) }
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
+        Text("按键响应", style = MaterialTheme.typography.titleSmall)
+        Spacer(Modifier.height(6.dp))
+        XimeSlider("长按触发", "${longPress.toInt()}ms", longPress, 100f..800f) {
+            longPress = it; km.setLongPressMs(it.toInt())
+        }
+        XimeSlider("连发起动", "${repeatStart.toInt()}ms", repeatStart, 50f..500f) {
+            repeatStart = it; km.setRepeatStartMs(it.toInt())
+        }
+        XimeSlider("连发间隔", "${repeatInterval.toInt()}ms", repeatInterval, 20f..200f) {
+            repeatInterval = it; km.setRepeatIntervalMs(it.toInt())
+        }
+        XimeSlider("滑动触发距离", "${swipe.toInt()}dp", swipe, 10f..80f) {
+            swipe = it; km.setSwipeThresholdDp(it.toInt())
+        }
+        Text(
+            "长按 = 按住多久触发长按符号；连发 = 长按退格的起动延时与每字间隔；滑动 = 手势触发距离。下次键盘弹出即生效。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
@@ -959,6 +1082,9 @@ private fun ThemeColorSettings() {
 
         Text("主题配色", style = MaterialTheme.typography.titleSmall)
         Spacer(Modifier.height(8.dp))
+        // 反馈轮10：选中态读取 accentRev（应用配色后触发重组，选中框实时变动）
+        val currentLight = remember(accentRev) { km.accentLight() }
+        val currentDark = remember(accentRev) { km.accentDark() }
         // 主题卡片网格（2 列）：迷你键盘预览（工具栏 + 三行键 + 强调色回车键），点击应用
         km.accentPresets.chunked(2).forEach { rowPresets ->
             Row(
@@ -966,7 +1092,7 @@ private fun ThemeColorSettings() {
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 rowPresets.forEach { (name, light, dark) ->
-                    val selected = km.accentLight() == light && km.accentDark() == dark
+                    val selected = currentLight == light && currentDark == dark
                     ThemeCard(
                         name = name,
                         accentLight = light,
@@ -985,7 +1111,7 @@ private fun ThemeColorSettings() {
 
         // 反馈轮9：樱粉右侧加「自定义」卡片，点击才展开下方自定义颜色调整
         val presets = km.accentPresets
-        val isCustomSelected = presets.none { (_, l, d) -> km.accentLight() == l && km.accentDark() == d }
+        val isCustomSelected = presets.none { (_, l, d) -> currentLight == l && currentDark == d }
         var showCustom by remember { mutableStateOf(false) }
         Row(
             modifier = Modifier.fillMaxWidth(),
