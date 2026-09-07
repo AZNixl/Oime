@@ -36,9 +36,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Assignment
 import androidx.compose.material.icons.filled.Category
+import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Dialpad
 import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.Keyboard
+import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Settings
@@ -139,6 +141,8 @@ sealed interface KeyAction {
     data object OpenSettings : KeyAction
     /** 重新部署方案（方案设置页 / ○ 菜单）。 */
     data object Deploy : KeyAction
+    /** ○ 菜单亮暗切换（反馈轮12）：翻转 KeyboardTheme 深浅模式并立即换色。 */
+    data object ToggleThemeMode : KeyAction
     /** 收起键盘（工具栏末尾关闭键）。 */
     data object HideKeyboard : KeyAction
     data object ToggleClipboardPanel : KeyAction
@@ -196,6 +200,8 @@ data class KeyboardUiState(
     val joystickMode: String = "cursor", // cursor | pointer
     /** 工具栏配置版本号：自定义保存后触发重组 */
     val toolbarRev: Int = 0,
+    /** 主题亮暗版本号：O 菜单切换后触发整键盘重组换色（反馈轮12）。 */
+    val themeRev: Int = 0,
 )
 
 // ── 配色：浅色/深色双主题（跟随系统或强制，参考小企鹅 fcitx5-android） ──
@@ -838,19 +844,11 @@ private fun ToolbarRow(
     }
 }
 
-/** 工具栏单个工具项（剪贴板/方案/数字/emoji/符号/设置；反馈轮10：全部 Material 图标）。 */
+/** 工具栏单个工具项（剪贴板/方案/数字/emoji/符号/设置；反馈轮12：细线自绘图标）。 */
 @Composable
 private fun RowScope.toolbarToolItem(id: String, state: KeyboardUiState, onAction: (KeyAction) -> Unit, c: KeyboardColors, onSchema: () -> Unit) {
-    val icon: androidx.compose.ui.graphics.vector.ImageVector? = when (id) {
-        "clipboard" -> Icons.AutoMirrored.Filled.Assignment
-        "schema" -> Icons.Default.List
-        "numpad" -> Icons.Default.Dialpad
-        "emoji" -> Icons.Default.EmojiEmotions
-        "symbols" -> Icons.Default.Category
-        "settings" -> Icons.Default.Settings
-        else -> null
-    }
-    if (icon == null) return
+    // 工具 id 来自 availableToolbarTools 白名单，直接取图标
+    val icon = toolbarToolIcon(id)
     Box(
         modifier = Modifier
             .clickable {
@@ -875,15 +873,99 @@ private fun RowScope.toolbarToolItem(id: String, state: KeyboardUiState, onActio
     }
 }
 
-/** 工具栏工具 id → Material 图标（反馈轮10：图标 material 化）。 */
+/** 工具栏工具 id → 细线图标（反馈轮12 方案A：1.8px 圆头描边自绘，随 tint 变色）。 */
 private fun toolbarToolIcon(id: String): androidx.compose.ui.graphics.vector.ImageVector = when (id) {
-    "clipboard" -> Icons.AutoMirrored.Filled.Assignment
-    "schema" -> Icons.Default.List
-    "numpad" -> Icons.Default.Dialpad
-    "emoji" -> Icons.Default.EmojiEmotions
-    "symbols" -> Icons.Default.Category
-    "settings" -> Icons.Default.Settings
-    else -> Icons.Default.Tune
+    "clipboard" -> ToolbarOutlineIcons.clipboard
+    "schema" -> ToolbarOutlineIcons.schemas
+    "numpad" -> ToolbarOutlineIcons.digits
+    "emoji" -> ToolbarOutlineIcons.emoji
+    "symbols" -> ToolbarOutlineIcons.symbols
+    "settings" -> ToolbarOutlineIcons.settings
+    else -> ToolbarOutlineIcons.schemas
+}
+
+// ── 工具栏细线图标（反馈轮12 方案A 定稿）：24 网格手绘，stroke 1.8 圆头 ──
+
+private object ToolbarOutlineIcons {
+
+    private val stroke = androidx.compose.ui.graphics.SolidColor(androidx.compose.ui.graphics.Color.Black)
+
+    private fun build(name: String, vararg parts: Pair<String, Boolean>): androidx.compose.ui.graphics.vector.ImageVector =
+        androidx.compose.ui.graphics.vector.ImageVector.Builder(
+            name = name,
+            defaultWidth = 24.dp, defaultHeight = 24.dp,
+            viewportWidth = 24f, viewportHeight = 24f,
+        ).apply {
+            parts.forEach { (d, isFill) ->
+                addPath(
+                    pathData = androidx.compose.ui.graphics.vector.PathParser().parsePathString(d).toNodes(),
+                    fill = if (isFill) stroke else null,
+                    stroke = if (isFill) null else stroke,
+                    strokeLineWidth = 1.8f,
+                    strokeLineCap = androidx.compose.ui.graphics.StrokeCap.Round,
+                    strokeLineJoin = androidx.compose.ui.graphics.StrokeJoin.Round,
+                )
+            }
+        }.build()
+
+    /** 剪贴板：圆角板 + 顶部夹子 + 两行内容线。 */
+    val clipboard by lazy {
+        build(
+            "tb_clipboard",
+            "M7.5 4H16.5A2.5 2.5 0 0 1 19 6.5V18.5A2.5 2.5 0 0 1 16.5 21H7.5A2.5 2.5 0 0 1 5 18.5V6.5A2.5 2.5 0 0 1 7.5 4Z" to false,
+            "M10.5 2.2H13.5A1.5 1.5 0 0 1 15 3.7V4.3A1.5 1.5 0 0 1 13.5 5.8H10.5A1.5 1.5 0 0 1 9 4.3V3.7A1.5 1.5 0 0 1 10.5 2.2Z" to false,
+            "M8.5 11.5H15.5M8.5 15.5H13" to false,
+        )
+    }
+
+    /** 输入方案：三组「点 + 横线」列表。 */
+    val schemas by lazy {
+        build(
+            "tb_schemas",
+            "M5.5 4.5a1.5 1.5 0 1 0 0 3a1.5 1.5 0 1 0 0-3zM5.5 10.5a1.5 1.5 0 1 0 0 3a1.5 1.5 0 1 0 0-3zM5.5 16.5a1.5 1.5 0 1 0 0 3a1.5 1.5 0 1 0 0-3z" to true,
+            "M10 6H18.5M10 12H18.5M10 18H15.5" to false,
+        )
+    }
+
+    /** 数字：3x3 空心点阵 + 底中横线（拨号盘意象）。 */
+    val digits by lazy {
+        build(
+            "tb_digits",
+            "M5 3.3a1.7 1.7 0 1 0 0 3.4a1.7 1.7 0 1 0 0-3.4zM12 3.3a1.7 1.7 0 1 0 0 3.4a1.7 1.7 0 1 0 0-3.4zM19 3.3a1.7 1.7 0 1 0 0 3.4a1.7 1.7 0 1 0 0-3.4zM5 10.3a1.7 1.7 0 1 0 0 3.4a1.7 1.7 0 1 0 0-3.4zM12 10.3a1.7 1.7 0 1 0 0 3.4a1.7 1.7 0 1 0 0-3.4zM19 10.3a1.7 1.7 0 1 0 0 3.4a1.7 1.7 0 1 0 0-3.4zM5 17.3a1.7 1.7 0 1 0 0 3.4a1.7 1.7 0 1 0 0-3.4z" to false,
+            "M9.7 19H14.3" to false,
+        )
+    }
+
+    /** 表情：圆脸 + 双眼 + 微笑弧。 */
+    val emoji by lazy {
+        build(
+            "tb_emoji",
+            "M12 3.4a8.6 8.6 0 1 0 0 17.2a8.6 8.6 0 1 0 0-17.2z" to false,
+            "M9 8.75a1.25 1.25 0 1 0 0 2.5a1.25 1.25 0 1 0 0-2.5zM15 8.75a1.25 1.25 0 1 0 0 2.5a1.25 1.25 0 1 0 0-2.5z" to true,
+            "M8.4 14.2C10.6 16.5 13.4 16.5 15.6 14.2" to false,
+        )
+    }
+
+    /** 符号：圆 / 方 / 三角 / 菱形四形状。 */
+    val symbols by lazy {
+        build(
+            "tb_symbols",
+            "M7.5 4.5a3 3 0 1 0 0 6a3 3 0 1 0 0-6z" to false,
+            "M14.8 4.5H18.4A1.2 1.2 0 0 1 19.6 5.7V9.3A1.2 1.2 0 0 1 18.4 10.5H14.8A1.2 1.2 0 0 1 13.6 9.3V5.7A1.2 1.2 0 0 1 14.8 4.5Z" to false,
+            "M7.5 13.6L10.6 19H4.4Z" to false,
+            "M16.6 13.2L19.8 17.1L16.6 21L13.4 17.1Z" to false,
+        )
+    }
+
+    /** 设置：双圆齿轮 + 八向齿线。 */
+    val settings by lazy {
+        build(
+            "tb_settings",
+            "M12 5.4a6.6 6.6 0 1 0 0 13.2a6.6 6.6 0 1 0 0-13.2z" to false,
+            "M12 9.4a2.6 2.6 0 1 0 0 5.2a2.6 2.6 0 1 0 0-5.2z" to false,
+            "M12 2.6V5.2M12 18.8V21.4M2.6 12H5.2M18.8 12H21.4M5.55 5.55L7.4 7.4M16.6 16.6L18.45 18.45M18.45 5.55L16.6 7.4M7.4 16.6L5.55 18.45" to false,
+        )
+    }
 }
 // ── ○ 菜单面板（参考 xime MenuBar：顶部关闭/设置 + 图标网格分页 + 方案 chips） ──
 
@@ -1064,12 +1146,21 @@ private fun MenuPanel(
                     Spacer(Modifier.height(8.dp))
 
                     // 图标网格：4 列（icon + label，仿 xime MenuItemButton）
+                    // 反馈轮12：第 6 项亮暗切换——显示切换目标（暗色态显示「亮色」）
+                    val sysDark = isSystemInDarkTheme()
+                    val themeDark = remember(state.themeRev, sysDark) {
+                        com.azime.input.core.theme.KeyboardTheme.isDark(sysDark)
+                    }
                     val menuItems: List<Triple<androidx.compose.ui.graphics.vector.ImageVector, String, () -> Unit>> = listOf(
                         Triple(Icons.AutoMirrored.Filled.Assignment, "剪贴板") { close(); onAction(KeyAction.ToggleClipboardPanel) },
                         Triple(Icons.Default.Tune, "方案开关") { subPage = "switches" },
                         Triple(Icons.Default.List, "输入方案") { subPage = "schema" },
                         Triple(Icons.Default.Sync, "部署") { close(); onAction(KeyAction.Deploy) },
                         Triple(Icons.Default.Category, "定制工具栏") { subPage = "toolbar" },
+                        Triple(
+                            if (themeDark) Icons.Default.LightMode else Icons.Default.DarkMode,
+                            if (themeDark) "亮色" else "暗色",
+                        ) { onAction(KeyAction.ToggleThemeMode) },
                     )
                     menuItems.chunked(4).forEach { rowItems ->
                         Row(

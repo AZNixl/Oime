@@ -397,3 +397,19 @@ vendored RimeEngine 中 `getAvailableSchemas / getSchemaString / getSchemaList`
 - commit 44ebdd82（parent fb1cd17，67 文件），CI run 34117992551 ✅ success。
 - APK 已取回：app-debug.apk 26.9MB（artifact app-debug #10017190209），工作区副本 oime-0.9.2-vc12.apk。
 - 构建完成后手机未连接（adb devices 为空，2026-09-07 19:56），按指示记录后停止，待用户指令再装机验证。
+
+## 反馈轮 12（0.9.3-oime vc13）：4+1 条
+
+| # | 需求 | 实现 |
+|---|------|------|
+| 7 | ○ 菜单加主题亮暗切换键 | KeyAction.ToggleThemeMode：跟随系统时按当前实际状态取反（sysDark→LIGHT，否则 DARK）；themeRev++ 强制 uiState 变化整键盘立即重组换色；sizeSignature 纳入 KeyboardTheme.mode()（下次弹出兜底重建）；主菜单第 6 项（4+2 两行网格），图标/标签显示切换目标（暗色态显示「亮色」+ LightMode） |
+| 8 | 两套键盘图标供选，两处应用 | 四套 SVG 设计稿（A 细线 / B 圆面 / C 双色 / D 粗线）供选，**用户定稿 A · 细线**：①工具栏六图标改自绘 ImageVector（PathParser 解析 24 网格 path，stroke 1.8 圆头，tint 随主题变色）替换 Material 图标；②桌面启动图标同风格重绘——adaptive foreground 改「细线 ○ 环 + 3x3 空心点阵 + 底中横线」（#2C2C2A on #F1EFE8 暖浅灰），legacy PNG（48-192px 五密度，PIL 432px 超采样生成）同步替换 |
+| 9 | 设置主页排版修正 | 大方块「○输入法」titleLarge→17sp + 状态行 bodyMedium→12sp，均 maxLines=1 + Ellipsis（窄方块不换行）；右上版本块「版本」并到 (i) 图标同行（两行结构）；右下块去掉「部署」字样与 CloudUpload，改「项目」卡（Language 图标 + AZNixl/Oime，排版同版本块，点击开 GitHub 保留） |
+| 10 | 构建后记录 / 无连接即停 | 按工作流执行（见下方构建记录） |
+| 11 | 复制内容显示到工具栏，打字不能消亡 | 根因：onKeyAction 对任意按键清除 clipText + updateFromResult 组词时清空。两处移除——复制条仅在「剪贴板面板上屏（CommitClipboard）」或「新复制覆盖」时更新，打字/组词不再消亡 |
+
+技术记录：
+- KeyboardUiState 新增 themeRev（toggle 后强制重组换色；toolbarRev 同款模式）
+- ToolbarOutlineIcons：ImageVector.Builder + PathParser().parsePathString(d).toNodes()，fill/stroke 双模式 parts；工具栏细线图标不可 tint 双色（方案 C 弃选原因之一）
+- 启动图标 legacy PNG：gen_launcher_icons.py（432px 超采样 LANCZOS 缩 5 密度）；空心点参数 r2.4/stroke1.5（r2/stroke2 会内孔填满变实心）
+- 版本 0.9.3-oime（versionCode 13）

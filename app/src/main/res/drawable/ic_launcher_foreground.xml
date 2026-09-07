@@ -4,13 +4,21 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- ○ 主标识：白色圆环（自适应图标安全区中央 66dp 内） -->
+    <!-- 反馈轮12：细线风格 ○ 品牌环（自适应安全区中央 66dp 内） -->
     <path
-        android:pathData="M54,31.5a22.5,22.5 0 1,0 0.001,0z"
-        android:strokeWidth="6.5"
-        android:strokeColor="#F5F5F5"/>
-    <!-- 红点：红摇杆签名，嵌在圆环右缘 -->
+        android:pathData="M54,33.5a20.5,20.5 0 1,0 0.001,0z"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:strokeColor="#2C2C2A"/>
+    <!-- 3x3 空心点阵：数字键盘意象 -->
     <path
-        android:fillColor="#E5484D"
-        android:pathData="M76.5,54m-6.5,0a6.5,6.5 0 1,0 13,0a6.5,6.5 0 1,0 -13,0z"/>
+        android:pathData="M46,43.6a2.4,2.4 0 1,0 0.001,0zM54,43.6a2.4,2.4 0 1,0 0.001,0zM62,43.6a2.4,2.4 0 1,0 0.001,0zM46,51.6a2.4,2.4 0 1,0 0.001,0zM54,51.6a2.4,2.4 0 1,0 0.001,0zM62,51.6a2.4,2.4 0 1,0 0.001,0zM46,59.6a2.4,2.4 0 1,0 0.001,0z"
+        android:strokeWidth="1.5"
+        android:strokeColor="#2C2C2A"/>
+    <!-- 点阵底中横线（拨号盘惯例） -->
+    <path
+        android:pathData="M50,62H58"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:strokeColor="#2C2C2A"/>
 </vector>

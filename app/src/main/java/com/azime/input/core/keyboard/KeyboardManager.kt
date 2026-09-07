@@ -369,6 +369,7 @@ object KeyboardManager {
             "x${fontSizeKey()}x${fontSizeBar()}x${keyCornerDp()}x${rowGapDp()}x${colGapDp()}" +
             "x${floatEnabled()}x${floatMode()}x${floatXDp()}x${floatYDp()}x${floatTextSp()}x${floatBgAlpha()}" +
             "x${bubbleXDp()}x${bubbleYExtraDp()}" +
+            "x${com.azime.input.core.theme.KeyboardTheme.mode()}" +
             "x${com.azime.input.core.font.FontManager.rev()}"
 
     // ── 工具栏自定义（○ 菜单键之外的可显示工具） ────────────

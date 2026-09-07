@@ -245,10 +245,7 @@ class AZimeService : InputMethodService() {
 
     private fun onKeyAction(action: KeyAction) {
         scope.launch {
-            // 剪贴板条显示时，点击任意按键都让其消亡（点条本身上屏由 CommitClipboard 处理）
-            if (action !is KeyAction.CommitClipboard && uiState.value.clipText.isNotBlank()) {
-                uiState.update { it.copy(clipText = "", clipAtMs = 0L) }
-            }
+            // 反馈轮12：打字不再清除工具栏复制条（仅上屏使用 CommitClipboard / 新复制覆盖时才更新）
             when (action) {
                 is KeyAction.CharKey -> handleChar(action.c)
                 is KeyAction.DirectCommit -> {
@@ -357,6 +354,20 @@ class AZimeService : InputMethodService() {
                     runCatching { RimeManager.deployImportedSchemas(applicationContext) }
                     uiState.update { it.copy(statusMessage = "") }
                     refreshState()
+                }
+                KeyAction.ToggleThemeMode -> {
+                    // 反馈轮12：O 菜单亮暗切换——跟随系统时按当前实际状态取反，
+                    // themeRev++ 强制 uiState 变化 → 键盘立即重组换色
+                    val sysDark = (resources.configuration.uiMode and
+                        android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+                        android.content.res.Configuration.UI_MODE_NIGHT_YES
+                    val next = if (com.azime.input.core.theme.KeyboardTheme.isDark(sysDark)) {
+                        com.azime.input.core.theme.KeyboardTheme.MODE_LIGHT
+                    } else {
+                        com.azime.input.core.theme.KeyboardTheme.MODE_DARK
+                    }
+                    com.azime.input.core.theme.KeyboardTheme.setMode(next)
+                    uiState.update { it.copy(themeRev = it.themeRev + 1) }
                 }
                 KeyAction.ToggleClipboardPanel ->
                     uiState.update { it.copy(showClipboardPanel = !it.showClipboardPanel) }
@@ -678,9 +689,7 @@ class AZimeService : InputMethodService() {
                 hasPrevPage = result.hasPrevPage,
                 // 编码清空（候选消失）时自动收起更多候选面板
                 showCandidatePanel = it.showCandidatePanel && result.candidates.isNotEmpty(),
-                // 打字即消亡：开始组合后工具栏剪贴板条消失（参考 复制自动添加到候选.lua）
-                clipText = if (result.preeditText.isNotEmpty()) "" else it.clipText,
-                clipAtMs = if (result.preeditText.isNotEmpty()) 0L else it.clipAtMs,
+                // 反馈轮12：组词不再清空工具栏复制条（打字不能消亡复制内容）
             )
         }
     }

@@ -37,6 +37,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
@@ -366,7 +367,7 @@ fun SettingsScreen(
                             KsuItem(
                                 icon = Icons.Default.Info,
                                 title = "版本",
-                                subtitle = "0.9.2-oime · 包名 com.oime.input · 平台 RIME",
+                                subtitle = "0.9.3-oime · 包名 com.oime.input · 平台 RIME",
                                 onClick = {},
                                 showChevron = false,
                             )
@@ -445,15 +446,18 @@ fun SettingsScreen(
                             modifier = Modifier.fillMaxWidth().weight(1f),
                         ) {
                             Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-                                Icon(
-                                    Icons.Default.Info,
-                                    contentDescription = null,
-                                    tint = cs.primary,
-                                    modifier = Modifier.size(16.dp),
-                                )
-                                Spacer(Modifier.height(4.dp))
-                                Text("版本", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
-                                Text("0.9.2-oime", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                // 反馈轮12：「版本」并到图标同行，压缩为两行
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        Icons.Default.Info,
+                                        contentDescription = null,
+                                        tint = cs.primary,
+                                        modifier = Modifier.size(16.dp),
+                                    )
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("版本", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+                                }
+                                Text("0.9.3-oime", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                             }
                         }
                         Card(
@@ -469,15 +473,24 @@ fun SettingsScreen(
                             },
                         ) {
                             Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-                                Icon(
-                                    Icons.Default.CloudUpload,
-                                    contentDescription = null,
-                                    tint = cs.primary,
-                                    modifier = Modifier.size(16.dp),
+                                // 反馈轮12：去掉「部署」，改为项目地址卡（排版同上方版本卡）
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        Icons.Default.Language,
+                                        contentDescription = null,
+                                        tint = cs.primary,
+                                        modifier = Modifier.size(16.dp),
+                                    )
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("项目", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+                                }
+                                Text(
+                                    "AZNixl/Oime",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
                                 )
-                                Spacer(Modifier.height(4.dp))
-                                Text("部署", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
-                                Text("AZNixl/Oime", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -591,7 +604,14 @@ private fun StatusCard(fillWidth: Boolean = false) {
             }
             Spacer(Modifier.width(16.dp))
             Column(Modifier.weight(1f)) {
-                Text("○输入法", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                // 反馈轮12：字号调小 + 单行省略，窄方块内不换行
+                Text(
+                    "○输入法",
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
                 Spacer(Modifier.height(4.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
@@ -613,7 +633,9 @@ private fun StatusCard(fillWidth: Boolean = false) {
                             ready -> "运行正常 · $schema"
                             else -> "引擎未就绪 / 首次部署中…"
                         },
-                        style = MaterialTheme.typography.bodyMedium,
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                         color = if (notEnabled) Color(0xFF3C4043) else cs.onPrimaryContainer,
                     )
                 }
