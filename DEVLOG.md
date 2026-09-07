@@ -413,3 +413,8 @@ vendored RimeEngine 中 `getAvailableSchemas / getSchemaString / getSchemaList`
 - ToolbarOutlineIcons：ImageVector.Builder + PathParser().parsePathString(d).toNodes()，fill/stroke 双模式 parts；工具栏细线图标不可 tint 双色（方案 C 弃选原因之一）
 - 启动图标 legacy PNG：gen_launcher_icons.py（432px 超采样 LANCZOS 缩 5 密度）；空心点参数 r2.4/stroke1.5（r2/stroke2 会内孔填满变实心）
 - 版本 0.9.3-oime（versionCode 13）
+
+## vc13 构建记录
+- commit ee95753f（parent 95395fc9，67 文件），CI run 34121280492 ✅ success，一次通过。
+- APK 已取回：app-debug.apk 27.0MB（artifact app-debug #10018470161），工作区副本 oime-0.9.3-vc13.apk。
+- 构建完成后手机未连接（adb devices 为空，2026-09-07 20:29 两次确认），按指示记录后停止，待用户指令再装机验证。
