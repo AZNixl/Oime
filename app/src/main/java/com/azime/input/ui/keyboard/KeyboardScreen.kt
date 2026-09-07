@@ -720,7 +720,7 @@ private fun ToolbarRow(
                                 ringKnob = Offset.Zero
                                 val cx = size.width / 2f
                                 val cy = size.height / 2f
-                                val capR = size.minDimension / 2f - 5f
+                                val capR = minOf(size.width, size.height) / 2f - 5f
                                 val downPx = with(this@pointerInput) { 40.dp.toPx() }
                                 var anchor: Offset? = null
                                 var swipedDown = false
