@@ -371,3 +371,8 @@ vendored RimeEngine 中 `getAvailableSchemas / getSchemaString / getSchemaList`
 - ResponseTimingSettings 四滑杆（100-800/50-500/20-200/10-80），下次键盘弹出生效
 - 遗留：joystickMode/SetJoystickMode 字段保留未删（兼容），MyLocation/Checkbox/heightIn import 未清理
 - 版本 0.9.1-oime（versionCode 11）
+
+## vc11 构建与装机记录
+- commit 608c8e0 首次 CI 失败：KeyboardScreen.kt `size.minDimension` 不存在（IntSize 只有 width/height，minDimension 属于浮点 Size），capR 类型污染连带 `r > capR` compareTo 歧义。修复 `minOf(size.width, size.height)` → commit 0c8a7f3c，run 34109422790 ✅ success。
+- APK 已取回：app-debug.apk 26.9MB（artifact app-debug #10013919428）。
+- 构建完成后首次连接手机失败（adb devices 为空，2026-09-07 18:13），按指示记录后停止，待用户指令再装机验证。
