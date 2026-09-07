@@ -372,7 +372,7 @@ fun SettingsScreen(
                             KsuItem(
                                 icon = Icons.Default.Info,
                                 title = "版本",
-                                subtitle = "0.9.4-oime · 包名 com.oime.input · 平台 RIME",
+                                subtitle = "0.9.5-oime · 包名 com.oime.input · 平台 RIME",
                                 onClick = {},
                                 showChevron = false,
                             )
@@ -462,7 +462,7 @@ fun SettingsScreen(
                                     Spacer(Modifier.width(4.dp))
                                     Text("版本", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
                                 }
-                                Text("0.9.4-oime", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                Text("0.9.5-oime", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                             }
                         }
                         Card(

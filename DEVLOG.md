@@ -446,3 +446,17 @@ vendored RimeEngine 中 `getAvailableSchemas / getSchemaString / getSchemaList`
 - APK 已取回：app-debug.apk 26.4MB（artifact #10021193864），工作区副本 oime-0.9.4-vc14.apk。
 - 手机 b72e0041 在线，Streamed Install Success，dumpsys 确认 versionCode=14 / 0.9.4-oime。
 - 按用户指令：记录上传后停止工作，等待下一步指令。
+
+## 反馈轮 14（0.9.5-oime vc15）：3 条
+
+| # | 需求 | 实现 |
+|---|------|------|
+| 1 | 加载方案组后组内方案未被识别 | **logcat+run-as 现场定位两个根因**：①librime 只在 shared 根目录解析 `<id>.schema.yaml`，聚合组（组内嵌套方案包子目录，如 AZ 组内嵌 rime-frost 完整包、build/ 预编译）保留结构拷贝后嵌套包的 schema 引擎全部找不到 → schema_list 里的 id 无法部署；②syncGroup 的 ids 漏 distinct，schema_list 出现重复条目（设备上 33 条实况确认）。修复：syncGroup 拷贝规则改为 **yaml/txt 一律拍平到 shared 根**（同名后者覆盖），lua/opencc/models/build 等资源保留子目录结构；组内自带 default.custom.yaml 跳过（schema_list 由 Oime 生成）；ids 加 distinct |
+| 2 | O 菜单所有悬浮栏移到底部（对齐剪贴板） | MenuSubPanel 改 Box 布局：滚动内容（底部 Spacer 56dp 避让）+ BottomCenter 悬浮栏（alpha 0.55→0.8 + bottom 8dp，同剪贴板参数）；主菜单顶行「↑ ○ 菜单 ⚙」同样移到底部居中，菜单网格顶部起排 |
+| 3 | O 键白色圆环、不要一直转圈 | 去掉 InfiniteTransition 3600ms 旋转 + 虚线（dashPathEffect），改**静态白色实线圆环**（Color.White，stroke 2.5dp）；按下 accentActive 高亮、拖动内点跟随限幅行为保留；清理 LinearEasing/animateFloat/infiniteRepeatable/rememberInfiniteTransition/tween 五个失效 import |
+
+技术记录：
+- 调试手段：logcat 无应用日志（unchanged 静默路径 + 缓冲被冲）→ `run-as com.oime.input cat files/rime/shared/default.custom.yaml` 直接看部署产物定位（比日志快）
+- librime 资源解析规则：schema/dict/custom yaml 与 txt 词典只查 shared_data_dir 根；lua/opencc/models 子目录资源与 build/（预编译产物）支持子目录
+- ime set 需完整类名：com.oime.input/com.azime.input.ime.AZimeService（applicationId 与 namespace 不同，`.短类名` 展开会失败）
+- 版本 0.9.5-oime（versionCode 15）

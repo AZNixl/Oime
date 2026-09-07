@@ -4,14 +4,9 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
-import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -775,31 +770,16 @@ private fun ToolbarRow(
                         .clickable { onAction(KeyAction.ToggleMenuPanel) },
                     contentAlignment = Alignment.Center,
                 ) {
-                    // 圆环本体动画（反馈轮11）：虚线圆环整体旋转（虚线随环流动），
-                    // 描边加粗 2.5dp、平时 text 色 0.8 透明度，按下变强调色更醒目
-                    val spin = rememberInfiniteTransition(label = "oRing")
-                    val angle by spin.animateFloat(
-                        0f, 360f,
-                        infiniteRepeatable(tween(3600, easing = LinearEasing)),
-                        label = "oAngle",
-                    )
+                    // 圆环（反馈轮14 重构）：静态白色实线圆环，去掉持续旋转动画；
+                    // 按下变强调色、拖动内点跟随手指（行为保留）
                     Canvas(Modifier.size(36.dp)) {
                         val strokeW = 2.5.dp.toPx()
                         val ringR = size.minDimension / 2f - strokeW - 1f
-                        val dash = 6.dp.toPx()
-                        val gap = 4.dp.toPx()
-                        rotate(angle, pivot = center) {
-                            drawCircle(
-                                color = if (oPressing) c.accentActive else c.text.copy(alpha = 0.8f),
-                                radius = ringR,
-                                style = Stroke(
-                                    strokeW,
-                                    pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(
-                                        floatArrayOf(dash, gap),
-                                    ),
-                                ),
-                            )
-                        }
+                        drawCircle(
+                            color = if (oPressing) c.accentActive else Color.White,
+                            radius = ringR,
+                            style = Stroke(strokeW),
+                        )
                         val knob = ringKnob
                         if (knob != Offset.Zero) {
                             drawCircle(c.accentActive, radius = 3.dp.toPx(), center = center + knob)
@@ -1184,18 +1164,67 @@ private fun MenuPanel(
                 }
             }
             else -> {
-                // ── 主菜单 ──
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .verticalScroll(rememberScrollState())
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    // 顶部悬浮栏：↑ 关闭 + 标题 + ⚙ 设置（反馈轮11：功能键与标题同栏悬浮半透明）
+                // ── 主菜单 ──（反馈轮14：悬浮栏移到底部居中，对齐剪贴板面板）
+                Box(Modifier.fillMaxSize()) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState())
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        // 图标网格：4 列（icon + label，仿 xime MenuItemButton）
+                        // 反馈轮12：第 6 项亮暗切换——显示切换目标（暗色态显示「亮色」）
+                        val sysDark = isSystemInDarkTheme()
+                        val themeDark = remember(state.themeRev, sysDark) {
+                            com.azime.input.core.theme.KeyboardTheme.isDark(sysDark)
+                        }
+                        val menuItems: List<Triple<androidx.compose.ui.graphics.vector.ImageVector, String, () -> Unit>> = listOf(
+                            Triple(Icons.AutoMirrored.Filled.Assignment, "剪贴板") { close(); onAction(KeyAction.ToggleClipboardPanel) },
+                            Triple(Icons.Default.Tune, "方案开关") { subPage = "switches" },
+                            // 反馈轮13：方案组大项（组 → 方案 两级，一次只加载一个组）
+                            Triple(Icons.Default.Apps, "方案组") { subPage = "groups" },
+                            Triple(Icons.Default.List, "输入方案") { subPage = "schema" },
+                            Triple(Icons.Default.Sync, "部署") { close(); onAction(KeyAction.Deploy) },
+                            Triple(Icons.Default.Category, "定制工具栏") { subPage = "toolbar" },
+                            Triple(
+                                if (themeDark) Icons.Default.LightMode else Icons.Default.DarkMode,
+                                if (themeDark) "亮色" else "暗色",
+                            ) { onAction(KeyAction.ToggleThemeMode) },
+                        )
+                        menuItems.chunked(4).forEach { rowItems ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                rowItems.forEach { (icon, label, action) ->
+                                    Column(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .background(c.keyBg, RoundedCornerShape(12.dp))
+                                            .clickable { action() }
+                                            .padding(vertical = 10.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                    ) {
+                                        Icon(icon, contentDescription = label, tint = c.text.copy(alpha = 0.75f), modifier = Modifier.size(22.dp))
+                                        Spacer(Modifier.height(3.dp))
+                                        Text(label, fontSize = 10.sp, color = c.text, maxLines = 1)
+                                    }
+                                }
+                                // 补位空格保持 4 列
+                                repeat(4 - rowItems.size) { Spacer(Modifier.weight(1f)) }
+                            }
+                            Spacer(Modifier.height(10.dp))
+                        }
+                        // 底部留白避开悬浮栏
+                        Spacer(Modifier.height(56.dp))
+                    }
+                    // 底部悬浮栏：↑ 关闭 + 标题 + ⚙ 设置（反馈轮14，alpha 0.8 同剪贴板）
                     Row(
                         modifier = Modifier
-                            .background(c.funcKeyBg.copy(alpha = 0.55f), RoundedCornerShape(22.dp))
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = 8.dp)
+                            .background(c.funcKeyBg.copy(alpha = 0.8f), RoundedCornerShape(22.dp))
                             .padding(horizontal = 6.dp, vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1220,51 +1249,6 @@ private fun MenuPanel(
                                 .padding(2.dp),
                         )
                     }
-                    Spacer(Modifier.height(8.dp))
-
-                    // 图标网格：4 列（icon + label，仿 xime MenuItemButton）
-                    // 反馈轮12：第 6 项亮暗切换——显示切换目标（暗色态显示「亮色」）
-                    val sysDark = isSystemInDarkTheme()
-                    val themeDark = remember(state.themeRev, sysDark) {
-                        com.azime.input.core.theme.KeyboardTheme.isDark(sysDark)
-                    }
-                    val menuItems: List<Triple<androidx.compose.ui.graphics.vector.ImageVector, String, () -> Unit>> = listOf(
-                        Triple(Icons.AutoMirrored.Filled.Assignment, "剪贴板") { close(); onAction(KeyAction.ToggleClipboardPanel) },
-                        Triple(Icons.Default.Tune, "方案开关") { subPage = "switches" },
-                        // 反馈轮13：方案组大项（组 → 方案 两级，一次只加载一个组）
-                        Triple(Icons.Default.Apps, "方案组") { subPage = "groups" },
-                        Triple(Icons.Default.List, "输入方案") { subPage = "schema" },
-                        Triple(Icons.Default.Sync, "部署") { close(); onAction(KeyAction.Deploy) },
-                        Triple(Icons.Default.Category, "定制工具栏") { subPage = "toolbar" },
-                        Triple(
-                            if (themeDark) Icons.Default.LightMode else Icons.Default.DarkMode,
-                            if (themeDark) "亮色" else "暗色",
-                        ) { onAction(KeyAction.ToggleThemeMode) },
-                    )
-                    menuItems.chunked(4).forEach { rowItems ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        ) {
-                            rowItems.forEach { (icon, label, action) ->
-                                Column(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .background(c.keyBg, RoundedCornerShape(12.dp))
-                                        .clickable { action() }
-                                        .padding(vertical = 10.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                ) {
-                                    Icon(icon, contentDescription = label, tint = c.text.copy(alpha = 0.75f), modifier = Modifier.size(22.dp))
-                                    Spacer(Modifier.height(3.dp))
-                                    Text(label, fontSize = 10.sp, color = c.text, maxLines = 1)
-                                }
-                            }
-                            // 补位空格保持 4 列
-                            repeat(4 - rowItems.size) { Spacer(Modifier.weight(1f)) }
-                        }
-                        Spacer(Modifier.height(10.dp))
-                    }
                 }
             }
         }
@@ -1284,17 +1268,29 @@ private fun MenuSubPanel(
     onClose: () -> Unit,
     content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
 ) {
-    Column(
+    // 反馈轮14：悬浮栏对齐剪贴板面板——移到底部居中（BottomCenter + alpha 0.8 + R22）
+    Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(totalHeight)
             .padding(horizontal = 12.dp, vertical = 8.dp),
     ) {
-        // 顶部悬浮栏：← 返回 + 标题 + ↑ 关闭（反馈轮11：功能键与标题同栏悬浮半透明）
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState()),
+            content = {
+                content()
+                // 底部留白避开悬浮栏
+                Spacer(Modifier.height(56.dp))
+            },
+        )
+        // 底部悬浮栏：← 返回 + 标题 + ↑ 关闭
         Row(
             modifier = Modifier
-                .align(Alignment.CenterHorizontally)
-                .background(c.funcKeyBg.copy(alpha = 0.55f), RoundedCornerShape(22.dp))
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 8.dp)
+                .background(c.funcKeyBg.copy(alpha = 0.8f), RoundedCornerShape(22.dp))
                 .padding(horizontal = 6.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1319,14 +1315,6 @@ private fun MenuSubPanel(
                     .padding(horizontal = 10.dp, vertical = 2.dp),
             )
         }
-        Spacer(Modifier.height(8.dp))
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
-                .verticalScroll(rememberScrollState()),
-            content = content,
-        )
     }
 }
 

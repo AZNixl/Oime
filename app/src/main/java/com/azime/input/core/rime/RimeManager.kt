@@ -305,22 +305,30 @@ object RimeManager {
         else File(com.azime.input.core.storage.StorageManager.schemaDir, groupId)
             .takeIf { it.isDirectory }
 
+        // 轮14 修复：librime 只在 shared 根目录解析 <id>.schema.yaml / *.dict.yaml 等配置与词典，
+        // 聚合组（组内嵌套方案包子目录）此前保留结构拷贝导致嵌套包的方案全部无法部署（「方案未识别」）。
+        // 新规则：yaml/txt 一律拍平到 shared 根（同名后者覆盖）；lua/opencc/models/build 等资源保留子目录结构；
+        // 组内自带 default.custom.yaml 跳过（schema_list 由本函数生成，见 defaultText）。
         val newFiles: List<Pair<String, File>> = groupRoot
             ?.walkTopDown()
-            ?.filter { it.isFile && !it.name.startsWith(".") }
-            ?.map { it.relativeTo(groupRoot).invariantSeparatorsPath to it }
+            ?.filter { it.isFile && !it.name.startsWith(".") && it.name != "default.custom.yaml" }
+            ?.map { src ->
+                val rel = src.relativeTo(groupRoot).invariantSeparatorsPath
+                val flat = src.extension == "yaml" || src.extension == "txt"
+                (if (flat) src.name else rel) to src
+            }
             ?.toList()
             ?: emptyList()
 
         val manifest = TreeMap<String, Long>()
-        newFiles.forEach { (rel, f) -> manifest[rel] = f.length() }
+        newFiles.forEach { (target, f) -> manifest[target] = f.length() }
         val manifestText = manifest.entries.joinToString("\n") { "${it.key}:${it.value}" }
         val marker = File(sharedDir, ".imported")
         val oldManifest = if (marker.exists()) marker.readText() else ""
 
-        val ids = newFiles.mapNotNull { (rel, f) ->
-            if (rel.endsWith(".schema.yaml")) schemaIdOf(f) else null
-        }.filter { it.isNotBlank() }
+        val ids = newFiles.mapNotNull { (target, f) ->
+            if (target.endsWith(".schema.yaml")) schemaIdOf(f) else null
+        }.filter { it.isNotBlank() }.distinct()
         val preferred = groupPreferredSchema(context, groupId)?.takeIf { it in ids }
             ?: ids.firstOrNull() ?: BUILTIN_SCHEMA_ID
         val ordered = (listOf(preferred) + ids.filter { it != preferred })
