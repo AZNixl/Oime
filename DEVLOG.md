@@ -432,3 +432,17 @@ vendored RimeEngine 中 `getAvailableSchemas / getSchemaString / getSchemaList`
 - 旧版平滑迁移：升级后首次启动 currentGroup=内置组，syncGroup 按旧 .imported 清单删除全部导入文件（同名内置资产从 assets 恢复），源文件仍留在 Documents/Oime/schema/<组名>/ 不丢
 - syncAssets 顺序保持在前（组文件未动时 marker 命中即跳过，不覆盖组定制同名文件）
 - 版本 0.9.4-oime（versionCode 14）
+| 4 | 按键按下没有动画，做按下的动画反馈 | KeyboardKey 统一按下动画：有手势键复用 pressing（awaitEachGesture down/up），无手势键新增 MutableInteractionSource + collectIsPressedAsState；animateFloatAsState（spring NoBouncy StiffnessHigh）驱动 ①背景渐变 lerp(bg, 白/黑 12% compositeOver(bg))——暗色键盘按下变亮、亮色键盘按下变暗（c.barBg.luminance() 判定）②graphicsLayer 缩放 1→0.95（lambda 内 deferred read，不触发重组）；主键盘/符号/九宫格共用 KeyboardKey，一处改动全键盘生效；clickable 分支 indication=null，以自绘渐变替代 ripple |
+
+技术记录（续）：
+- 踩坑①：walkTopDown() 链式结果是 Sequence，无 isNotEmpty()、不能直接传 List 参数——需 .toList()（CI 首败）
+- 踩坑②：compose Spring 常量没有 StiffnessMediumHigh（只有 High/Medium/MediumLow/Low/VeryLow）——按键反馈用 StiffnessHigh（CI 二败）
+- 版本 0.9.4-oime（versionCode 14）
+
+## vc14 构建与装机记录
+- commit c156590（parent 049fa9e，67 文件）首推 CI 失败：RimeManager.kt:287 walkTopDown Sequence 未 toList。
+- commit d6baf1f（按下动画 + 修复）二推 CI 失败：Spring.StiffnessMediumHigh Unresolved。
+- commit f5b402e（StiffnessHigh 修复）run 34128229025 ✅ success。
+- APK 已取回：app-debug.apk 26.4MB（artifact #10021193864），工作区副本 oime-0.9.4-vc14.apk。
+- 手机 b72e0041 在线，Streamed Install Success，dumpsys 确认 versionCode=14 / 0.9.4-oime。
+- 按用户指令：记录上传后停止工作，等待下一步指令。
