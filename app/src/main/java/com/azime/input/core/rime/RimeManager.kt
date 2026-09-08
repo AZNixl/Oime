@@ -6,6 +6,7 @@ import com.kingzcheung.xime.rime.RimeCandidate
 import com.kingzcheung.xime.rime.RimeEngine
 import com.kingzcheung.xime.rime.RimeProcessResult
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.TreeMap
@@ -410,10 +411,35 @@ object RimeManager {
                 .getOrDefault(false)
             // 切组必须重新部署：部署完成后 librime 回落 schema_list[0]（组内上次使用的方案）
             if (runCatching { RimeEngine.getInstance().startMaintenance(true) }.getOrDefault(false)) {
+                // 反馈轮16 修复「O 菜单切组失败」：startMaintenance 是异步的，而旧会话在维护
+                // 结束前仍存活 → ensureSession() 被「有会话且有方案」短路直接返回，会话仍挂在
+                // 上一组的方案上。改为：先等维护真正结束，再把会话显式切到新组首选方案。
+                var waited = 0L
+                while (RimeEngine.getInstance().isMaintaining() && waited < 180_000L) {
+                    delay(100)
+                    waited += 100
+                }
                 ensureSessionNow()
+                val preferred = groupPreferredSchemaId(context, groupId)
+                runCatching { switchSchema(preferred) }
+                    .onFailure { Log.e(TAG, "switchSchema($preferred) after group switch failed", it) }
             }
             changed
         }
+
+    /**
+     * 组内首选方案 id：上次使用的（且在启用集内）→ 启用集第一个 → 内置兜底。
+     * 与 syncGroup 生成 schema_list 时的置首规则一致（维护后新会话回落的首选）。
+     */
+    fun groupPreferredSchemaId(context: Context, groupId: String): String {
+        if (groupId == BUILTIN_GROUP_ID) return BUILTIN_SCHEMA_ID
+        val ids = schemaGroups(context).firstOrNull { it.id == groupId }?.schemaIds ?: emptyList()
+        val enabledSet = groupEnabledIds(context, groupId)
+        val enabledIds = if (enabledSet != null) ids.filter { it in enabledSet } else ids
+        return groupPreferredSchema(context, groupId)?.takeIf { it in enabledIds }
+            ?: enabledIds.firstOrNull()
+            ?: BUILTIN_SCHEMA_ID
+    }
 
     /** 立即重新部署当前方案组（导入/重命名/部署键由设置页调用）。 */
     suspend fun deployImportedSchemas(context: Context) = withContext(Dispatchers.IO) {

@@ -23,6 +23,7 @@ import com.azime.input.core.rime.RimeManager.KEY_RETURN
 import com.azime.input.core.rime.RimeManager.KEY_SPACE
 import com.azime.input.core.rime.toCandidate
 import com.azime.input.core.speech.SpeechInputManager
+import com.azime.input.ui.editor.KeyboardEditorActivity
 import com.azime.input.ui.keyboard.AzimeKeyboardScreen
 import com.azime.input.ui.keyboard.KeyAction
 import com.azime.input.ui.keyboard.KeyboardUiState
@@ -208,6 +209,12 @@ class AZimeService : InputMethodService() {
             return
         }
         if (!SpeechInputManager.isAvailable(this)) {
+            // 反馈轮16：本机无系统语音识别服务（实测 ColorOS 该 ROM 无 RecognitionService）——
+            // statusMessage 在工具栏不易察觉，改用 Toast 醒目告知；本地模型/联网 API 后续版本接入
+            android.widget.Toast.makeText(
+                this, "本机无系统语音识别服务，暂无法听写（本地模型后续版本接入）",
+                android.widget.Toast.LENGTH_LONG,
+            ).show()
             uiState.update { it.copy(statusMessage = "此设备缺少系统语音识别服务") }
             return
         }
@@ -418,6 +425,12 @@ class AZimeService : InputMethodService() {
                 is KeyAction.SetJoystickMode -> uiState.update { it.copy(joystickMode = action.mode) }
                 KeyAction.OpenSettings -> {
                     val intent = Intent(this@AZimeService, SettingsActivity::class.java)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    startActivity(intent)
+                }
+                KeyAction.OpenKeyboardEditor -> {
+                    // 反馈轮16：O 菜单「键盘编辑」直达布局编辑器
+                    val intent = Intent(this@AZimeService, KeyboardEditorActivity::class.java)
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     startActivity(intent)
                 }

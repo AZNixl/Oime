@@ -76,6 +76,11 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
+    // 反馈轮16：启动界面自动申请麦克风权限（语音输入长按 ○ 听写用）
+    private val micPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { /* 授权结果由语音输入卡自行复查，这里不需要额外处理 */ }
+
     private fun importSchema(action: () -> Result<String>) {
         lifecycleScope.launch {
             action().onSuccess { name ->
@@ -127,6 +132,13 @@ class SettingsActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 反馈轮16：启动界面自动申请麦克风权限（语音输入；IME 界面无法弹权限框，统一在设置入口申请）
+        if (androidx.core.content.ContextCompat.checkSelfPermission(
+                this, android.Manifest.permission.RECORD_AUDIO,
+            ) != android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            micPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+        }
         // 反馈轮9：设置界面状态栏沉浸（edge-to-edge，状态栏随主题深浅色）
         enableEdgeToEdge()
         setContent {
@@ -188,6 +200,8 @@ fun SettingsScreen(
     val scope = rememberCoroutineScope()
     // 一级菜单（main）+ 二级页：schemas | keyboard | theme | about
     var subPage by remember { mutableStateOf("main") }
+    // 反馈轮16：输入方案页的「方案管理」子级页（勾选启用集）
+    var showManage by remember { mutableStateOf(false) }
     val subTitles = mapOf(
         "schemas" to "输入方案",
         "keyboard" to "键盘",
@@ -196,17 +210,51 @@ fun SettingsScreen(
         "about" to "关于",
     )
     // 反馈轮10：设置子级页支持系统返回键（原来滑动/返回直接回桌面）
-    BackHandler(enabled = subPage != "main") { subPage = "main" }
+    BackHandler(enabled = subPage != "main" || showManage) {
+        if (showManage) showManage = false else subPage = "main"
+    }
+    // 反馈轮16：「部署」提到标题文本后面（原独立卡片移除）
+    var deploying by remember { mutableStateOf(false) }
 
     Scaffold(
         containerColor = cs.surface,
         topBar = {
             TopAppBar(
                 title = {
-                    Text(subTitles[subPage] ?: "○输入法", fontWeight = FontWeight.SemiBold)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            if (subPage == "schemas" && showManage) "方案管理"
+                            else subTitles[subPage] ?: "○输入法",
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        if (subPage == "schemas" && !showManage) {
+                            Text(
+                                if (deploying) "部署中…" else "部署",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (deploying) MaterialTheme.colorScheme.onSurfaceVariant
+                                else MaterialTheme.colorScheme.primary,
+                                modifier = Modifier
+                                    .padding(start = 12.dp)
+                                    .clickable(enabled = !deploying) {
+                                        deploying = true
+                                        scope.launch {
+                                            runCatching {
+                                                com.azime.input.core.rime.RimeManager.deployImportedSchemas(context.applicationContext)
+                                            }
+                                            deploying = false
+                                            Toast.makeText(context, "部署完成", Toast.LENGTH_SHORT).show()
+                                        }
+                                    },
+                            )
+                        }
+                    }
                 },
                 navigationIcon = {
-                    IconButton(onClick = { if (subPage != "main") subPage = "main" else onBackClick() }) {
+                    IconButton(onClick = {
+                        if (showManage) showManage = false
+                        else if (subPage != "main") subPage = "main" else onBackClick()
+                    }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
                     }
                 },
@@ -216,6 +264,13 @@ fun SettingsScreen(
     ) { padding ->
         // ── 二级页：输入方案 ──
         if (subPage == "schemas") {
+            // 反馈轮16：方案管理子级页（从所选方案组行后的入口进入，勾选启用集）
+            if (showManage) {
+                Column(Modifier.fillMaxSize().padding(padding)) {
+                    SchemaManagePage()
+                }
+                return@Scaffold
+            }
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
@@ -224,11 +279,18 @@ fun SettingsScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 contentPadding = PaddingValues(vertical = 8.dp),
             ) {
+                // 父级菜单①：方案组（组单选 → 选中组后挂「方案管理」入口 → 下方只显示已选方案）
                 item {
-                    Card { Column(Modifier.padding(vertical = 4.dp)) { SchemaList() } }
+                    Card { Column(Modifier.padding(vertical = 4.dp)) { SchemaList(onOpenManage = { showManage = true }) } }
                 }
+                // 父级菜单②：导入方案
                 item {
                     Card { Column(Modifier.padding(vertical = 4.dp)) {
+                        Text(
+                            "导入方案",
+                            style = MaterialTheme.typography.titleSmall,
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                        )
                         KsuItem(
                             icon = Icons.Default.FileDownload,
                             title = "导入方案（ZIP）",
@@ -243,32 +305,14 @@ fun SettingsScreen(
                         )
                     } }
                 }
+                // 父级菜单③：语音输入（轮15：麦克风权限 + 识别方式；本地模型/联网 API 占位）
                 item {
-                    // 重新部署：方案 config 改动后手动触发
-                    var deploying by remember { mutableStateOf(false) }
                     Card { Column(Modifier.padding(vertical = 4.dp)) {
-                        KsuItem(
-                            icon = Icons.Default.Build,
-                            title = "重新部署",
-                            subtitle = if (deploying) "部署中，请稍候…" else "方案 config 改动后重新部署全部方案",
-                            onClick = {
-                                if (!deploying) {
-                                    deploying = true
-                                    scope.launch {
-                                        runCatching {
-                                            com.azime.input.core.rime.RimeManager.deployImportedSchemas(context.applicationContext)
-                                        }
-                                        deploying = false
-                                        Toast.makeText(context, "部署完成", Toast.LENGTH_SHORT).show()
-                                    }
-                                }
-                            },
+                        Text(
+                            "语音输入",
+                            style = MaterialTheme.typography.titleSmall,
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
                         )
-                    } }
-                }
-                item {
-                    // 语音输入（轮15）：麦克风权限 + 识别方式（系统接口可用；本地模型/联网 API 占位）
-                    Card { Column(Modifier.padding(vertical = 4.dp)) {
                         val micGranted = remember {
                             mutableStateOf(
                                 androidx.core.content.ContextCompat.checkSelfPermission(
@@ -431,7 +475,7 @@ fun SettingsScreen(
                             KsuItem(
                                 icon = Icons.Default.Info,
                                 title = "版本",
-                                subtitle = "0.9.6-oime · 包名 com.oime.input · 平台 RIME",
+                                subtitle = "0.9.7-oime · 包名 com.oime.input · 平台 RIME",
                                 onClick = {},
                                 showChevron = false,
                             )
@@ -521,7 +565,7 @@ fun SettingsScreen(
                                     Spacer(Modifier.width(4.dp))
                                     Text("版本", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
                                 }
-                                Text("0.9.6-oime", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                Text("0.9.7-oime", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                             }
                         }
                         Card(
@@ -709,7 +753,7 @@ private fun StatusCard(fillWidth: Boolean = false) {
 }
 
 @Composable
-private fun SchemaList() {
+private fun SchemaList(onOpenManage: () -> Unit) {
     val context = LocalContext.current
     // 反馈轮13：方案组区 —— 组 → 方案 两级（参考 trime2，一次只加载一个组）
     var groups by remember { mutableStateOf(RimeManager.schemaGroups(context)) }
@@ -772,6 +816,46 @@ private fun SchemaList() {
             }
         }
     }
+    // 反馈轮16：选中组「后面显示方案管理」——第一次启用方案必须先进管理勾选启用集
+    groups.firstOrNull { it.id == currentGroup }?.let { g ->
+        val enabledIdsNow = RimeManager.groupEnabledIds(context, currentGroup)
+        val enabledCount = enabledIdsNow?.size ?: g.schemaIds.size
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onOpenManage() }
+                .padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.Default.Tune,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(20.dp),
+            )
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "方案管理",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    if (enabledIdsNow == null) "尚未选择方案，点此勾选实际使用的（组内 ${g.schemaIds.size} 个）"
+                    else "已启用 $enabledCount 个，点此修改勾选",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp),
+            )
+        }
+    }
     Box(
         modifier = Modifier
             .padding(horizontal = 16.dp, vertical = 6.dp)
@@ -780,88 +864,31 @@ private fun SchemaList() {
             .background(MaterialTheme.colorScheme.outlineVariant),
     )
 
-    // ── 方案管理（轮15：组 → 启用集 → 切换，参考 trime2/同文）──
-    // 组内 N 个 schema 全量识别，用户实际只用其中几个：勾选启用集，应用后
-    // schema_list（部署范围）与「输入方案」列表都只含启用方案。
-    var manageSchemas by remember(currentGroup) {
-        mutableStateOf(
-            RimeManager.schemaGroups(context).firstOrNull { it.id == currentGroup }?.schemaIds ?: emptyList()
-        )
-    }
-    var enabledSet by remember(currentGroup, manageSchemas) {
-        mutableStateOf(
-            RimeManager.groupEnabledIds(context, currentGroup)?.filter { it in manageSchemas }?.toSet()
-                ?: manageSchemas.toSet()
-        )
-    }
-    var applyingManage by remember { mutableStateOf(false) }
-
+    // ── 已选方案（反馈轮16：父级菜单下只显示勾选启用的方案；切换仍为单选）──
     Text(
-        "方案管理（启用集）",
+        "已选方案（点击切换）",
         style = MaterialTheme.typography.titleSmall,
         modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
     )
-    if (manageSchemas.isNotEmpty()) {
-        Text(
-            "组内共 ${manageSchemas.size} 个方案，勾选实际使用的（${enabledSet.size} 个已启用）",
+    val enabledIds = remember(currentGroup, schemas) { RimeManager.groupEnabledIds(context, currentGroup) }
+    val enabledList = remember(enabledIds, schemas) {
+        if (enabledIds != null) schemas.filter { it in enabledIds } else emptyList()
+    }
+    when {
+        // 未做过方案管理：引导先进「方案管理」勾选（第一次启用方案必须进入方案管理）
+        enabledIds == null -> Text(
+            "尚未选择使用的方案 —— 请先进入上方「方案管理」勾选实际使用的方案",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 20.dp),
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
         )
-        manageSchemas.forEach { id ->
-            val checked = id in enabledSet
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable {
-                        enabledSet = if (checked) enabledSet - id else enabledSet + id
-                    }
-                    .padding(horizontal = 20.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Checkbox(checked = checked, onCheckedChange = {
-                    enabledSet = if (it) enabledSet + id else enabledSet - id
-                })
-                Text(RimeManager.schemaDisplayName(id), style = MaterialTheme.typography.bodyMedium)
-            }
-        }
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 8.dp)
-                .clickable(enabled = !applyingManage) {
-                    applyingManage = true
-                    groupScope.launch {
-                        runCatching {
-                            RimeManager.setGroupEnabled(context.applicationContext, currentGroup, enabledSet.toList())
-                            RimeManager.switchSchemaGroup(context.applicationContext, currentGroup)
-                        }
-                        applyingManage = false
-                        groups = RimeManager.schemaGroups(context)
-                        schemas = RimeManager.availableSchemas()
-                        current = RimeManager.currentSchema()
-                    }
-                }
-                .padding(vertical = 10.dp),
-            horizontalArrangement = Arrangement.Center,
-        ) {
-            Text(
-                if (applyingManage) "应用中，请稍候…" else "应用方案选择（${enabledSet.size} 个）",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.Bold,
-            )
-        }
-        Box(
-            modifier = Modifier
-                .padding(horizontal = 16.dp, vertical = 6.dp)
-                .fillMaxWidth()
-                .height(1.dp)
-                .background(MaterialTheme.colorScheme.outlineVariant),
+        enabledList.isEmpty() -> Text(
+            "未启用任何方案 —— 请进入「方案管理」勾选",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
         )
-    }
-    if (schemas.isNotEmpty()) {
-        schemas.forEach { id ->
+        else -> enabledList.forEach { id ->
             val selected = id == current
             Row(
                 modifier = Modifier
@@ -888,6 +915,116 @@ private fun SchemaList() {
                         tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
                 }
             }
+        }
+    }
+}
+
+/**
+ * 方案管理子级页（反馈轮16）：从「输入方案 → 方案组 → 选中组 → 方案管理」进入。
+ * 勾选当前组内实际使用的方案（启用集），应用后 schema_list（部署范围）与
+ * 「已选方案」列表都只含启用方案。原平铺在输入方案页的方案管理区整体迁入此处。
+ */
+@Composable
+private fun SchemaManagePage() {
+    val context = LocalContext.current
+    val groupScope = rememberCoroutineScope()
+    var groups by remember { mutableStateOf(RimeManager.schemaGroups(context)) }
+    var currentGroup by remember { mutableStateOf(RimeManager.currentGroupId(context)) }
+    val group = groups.firstOrNull { it.id == currentGroup }
+    val manageSchemas = group?.schemaIds ?: emptyList()
+    var enabledSet by remember(currentGroup, manageSchemas) {
+        mutableStateOf(
+            RimeManager.groupEnabledIds(context, currentGroup)?.filter { it in manageSchemas }?.toSet()
+                ?: manageSchemas.toSet()
+        )
+    }
+    var applyingManage by remember { mutableStateOf(false) }
+
+    Column(Modifier.fillMaxSize()) {
+        Text(
+            "组：${group?.name ?: "（无）"}　共 ${manageSchemas.size} 个方案，已选 ${enabledSet.size} 个",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+        )
+        Text(
+            "勾选实际使用的方案后点「应用」；应用后键盘 O 菜单「输入方案」里只出现已选方案",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 20.dp),
+        )
+        LazyColumn(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth(),
+        ) {
+            items(manageSchemas.size) { idx ->
+                val id = manageSchemas[idx]
+                val checked = id in enabledSet
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            enabledSet = if (checked) enabledSet - id else enabledSet + id
+                        }
+                        .padding(horizontal = 20.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Checkbox(checked = checked, onCheckedChange = {
+                        enabledSet = if (it) enabledSet + id else enabledSet - id
+                    })
+                    Text(RimeManager.schemaDisplayName(id), style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        }
+        // 全选 / 清空 快捷操作
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 2.dp),
+            horizontalArrangement = Arrangement.End,
+        ) {
+            Text(
+                "全选",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier
+                    .clickable { enabledSet = manageSchemas.toSet() }
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+            )
+            Text(
+                "清空",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier
+                    .clickable { enabledSet = emptySet() }
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+            )
+        }
+        // 应用：写启用集 → 重入当前组（syncGroup 按启用集重写 schema_list 并部署）
+        Button(
+            onClick = {
+                if (applyingManage) return@Button
+                applyingManage = true
+                groupScope.launch {
+                    runCatching {
+                        RimeManager.setGroupEnabled(context.applicationContext, currentGroup, enabledSet.toList())
+                        RimeManager.switchSchemaGroup(context.applicationContext, currentGroup)
+                    }
+                    applyingManage = false
+                    Toast.makeText(
+                        context,
+                        "已应用方案选择（${enabledSet.size} 个）",
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                }
+            },
+            enabled = !applyingManage && manageSchemas.isNotEmpty(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 10.dp),
+        ) {
+            Text(if (applyingManage) "应用中，请稍候…" else "应用方案选择（${enabledSet.size} 个）")
         }
     }
 }

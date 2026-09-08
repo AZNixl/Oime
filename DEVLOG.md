@@ -487,3 +487,19 @@ vendored RimeEngine 中 `getAvailableSchemas / getSchemaString / getSchemaList`
 - APK 已取回：app-debug.apk 26.5MB（artifact），工作区副本 oime-0.9.6-vc16.apk。
 - 手机 b72e0041 装机 Success，dumpsys 确认 versionName=0.9.6-oime。
 - 按用户指令：记录上传后停止工作，等待下一步指令。
+
+## 反馈轮 16（0.9.7-oime vc17）：5 条
+
+| # | 需求 | 实现 |
+|---|------|------|
+| 1 | 输入方案页重构：方案组/导入方案/语音输入为父级菜单；选中组后挂「方案管理」子级（第一次启用必须进入）；父级下只显示已选方案；部署提到标题文本后 | TopAppBar title Row：标题旁「部署」文字按钮（schemas 页显示，部署中灰显，移除原独立部署卡）；showManage 子页状态（BackHandler/返回键/标题切「方案管理」）；SchemaList 选中组行后挂「方案管理」入口行（Tune 图标+已启用数+chevron）；「已选方案（点击切换）」只列启用集（enabledIds==null 引导先进方案管理；空集红色提示）；新 SchemaManagePage 全屏子页（Checkbox 列表+全选/清空+Button 应用，setGroupEnabled+switchSchemaGroup）；导入方案/语音输入卡各加父级标题 |
+| 2 | 键盘设计器显示模式切换（横向一排/多行，三个按钮） | GridEditorScreen 加 FilterChip 三模式：0 多行（默认，宽度权重还原）/ 1 横向一排（全部按键拼一行 horizontalScroll，EditorKeyCell 固定 64×52dp）/ 2 紧凑（行高 52→30dp、字号 12sp 纵览）；选择持久化 kb_editor_prefs.display_mode |
+| 3 | 启动界面加语音权限开启 | SettingsActivity onCreate 检查 RECORD_AUDIO 未授权即弹系统权限框（micPermissionLauncher），与语音输入卡手动入口并存 |
+| 4 | O 菜单切方案组失败（修复） | **根因**：startMaintenance 是异步的，切组时旧会话在维护结束前仍存活 → ensureSession() 第 221 行「有会话且有方案」短路直接 return true，会话仍挂在上一组方案上（部署换了、会话没换）。修复 switchSchemaGroup：startMaintenance 后轮询 isMaintaining()（≤180s）等维护真正结束 → ensureSessionNow → **显式 switchSchema(组内首选)**（新增 groupPreferredSchemaId：上次使用∈启用集 → 启用集第一个 → 内置兜底，与 schema_list 置首规则同源） |
+| 5 | 键盘设计器入口加到键盘 | KeyAction.OpenKeyboardEditor（data object）+ O 菜单「键盘编辑」（Icons.Default.Edit，第 9 项）+ AZimeService startActivity(KeyboardEditorActivity, NEW_TASK) |
+
+技术记录：
+- 实机排查（adb b72e0041）：**该 ROM 无任何系统语音识别服务**（cmd package query-services android.speech.RecognitionService = No services found；RECOGNIZE_SPEECH activity 亦无）→ isRecognitionAvailable=false，长按 ○ 的声纹动画从不出现（voiceState 停留 idle），属系统层缺失非代码 bug；本轮起 handleVoiceToggle 无服务时改 Toast 醒目告知（本地模型/联网 API 后续接入）
+- O 键长按/拖动后松手误弹菜单修复：awaitEachGesture 抬起事件在 oLongFired 时 consume()，不再传给后面的 clickable
+- 混输方案（虎单整 tiger_danzheng）现场：schema_1788533984946 组内主码=tiger.extended（custom patch）、副=lua_translator@tiger_danzheng_sentence；当前设备 active 组=AZ，虎单整文件未同步进 shared（属预期，等切组修复后实测）
+- 版本 0.9.7-oime（versionCode 17）

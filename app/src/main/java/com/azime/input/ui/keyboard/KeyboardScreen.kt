@@ -154,6 +154,8 @@ sealed interface KeyAction {
     data class Joystick(val dx: Int) : KeyAction
     data class SetJoystickMode(val mode: String) : KeyAction
     data object OpenSettings : KeyAction
+    /** 打开键盘布局编辑器（反馈轮16：O 菜单直达入口）。 */
+    data object OpenKeyboardEditor : KeyAction
     /** 重新部署方案（方案设置页 / ○ 菜单）。 */
     data object Deploy : KeyAction
     /** ○ 菜单亮暗切换（反馈轮12）：翻转 KeyboardTheme 深浅模式并立即换色。 */
@@ -751,7 +753,12 @@ private fun ToolbarRow(
                                 while (true) {
                                     val ev = awaitPointerEvent()
                                     val ch = ev.changes.firstOrNull() ?: break
-                                    if (!ch.pressed) break
+                                    if (!ch.pressed) {
+                                        // 反馈轮16：长按（语音）/拖动（移光标）后的抬起事件消费掉，
+                                        // 不再交给后面的 clickable —— 避免松手时又弹出 ○ 菜单
+                                        if (oLongFired) ch.consume()
+                                        break
+                                    }
                                     if (anchor == null) anchor = ch.position
                                     val a = anchor!!
                                     val dx = ch.position.x - a.x
@@ -1347,6 +1354,8 @@ private fun MenuPanel(
                             Triple(Icons.Default.PlaylistAddCheck, "方案管理") { subPage = "manage" },
                             Triple(Icons.Default.List, "输入方案") { subPage = "schema" },
                             Triple(Icons.Default.Sync, "部署") { close(); onAction(KeyAction.Deploy) },
+                            // 反馈轮16：键盘编辑 —— 布局编辑器直达入口
+                            Triple(Icons.Default.Edit, "键盘编辑") { close(); onAction(KeyAction.OpenKeyboardEditor) },
                             Triple(Icons.Default.Category, "定制工具栏") { subPage = "toolbar" },
                             Triple(
                                 if (themeDark) Icons.Default.LightMode else Icons.Default.DarkMode,
