@@ -351,11 +351,20 @@ object RimeManager {
         }.filter { it.isNotBlank() }.distinct()
         // 轮15：只部署「启用集」内的方案（未选择过 = 全部启用）；schema_list 同源，
         // O 菜单「输入方案」列表（availableSchemas）即启用集。
+        // 轮16修复：确保当前选中方案一定在 schema_list 内，即使不在启用集（避免无方案可用）
         val enabledSet = groupEnabledIds(context, groupId)
-        val enabledIds = if (enabledSet != null) ids.filter { it in enabledSet } else ids
-        val preferred = groupPreferredSchema(context, groupId)?.takeIf { it in enabledIds }
+        val preferred = groupPreferredSchema(context, groupId)
+        val enabledIds = when {
+            enabledSet == null -> ids  // 从未配置启用集 = 全部启用
+            enabledSet.isEmpty() -> ids  // 空启用集异常 = 回退全部启用
+            preferred != null && preferred in ids && preferred !in enabledSet -> 
+                // 当前方案不在启用集但在组内 → 强制加入（避免切组后无方案）
+                (enabledSet + preferred).filter { it in ids }
+            else -> ids.filter { it in enabledSet }
+        }
+        val preferredInList = preferred?.takeIf { it in enabledIds }
             ?: enabledIds.firstOrNull() ?: BUILTIN_SCHEMA_ID
-        val ordered = (listOf(preferred) + enabledIds.filter { it != preferred })
+        val ordered = (listOf(preferredInList) + enabledIds.filter { it != preferredInList })
 
         val groupName = if (groupId == BUILTIN_GROUP_ID) "内置" else groupId
         val defaultText = buildString {
@@ -430,13 +439,21 @@ object RimeManager {
     /**
      * 组内首选方案 id：上次使用的（且在启用集内）→ 启用集第一个 → 内置兜底。
      * 与 syncGroup 生成 schema_list 时的置首规则一致（维护后新会话回落的首选）。
+     * 轮16修复：当前方案不在启用集时也返回（避免无方案可切）。
      */
     fun groupPreferredSchemaId(context: Context, groupId: String): String {
         if (groupId == BUILTIN_GROUP_ID) return BUILTIN_SCHEMA_ID
         val ids = schemaGroups(context).firstOrNull { it.id == groupId }?.schemaIds ?: emptyList()
         val enabledSet = groupEnabledIds(context, groupId)
-        val enabledIds = if (enabledSet != null) ids.filter { it in enabledSet } else ids
-        return groupPreferredSchema(context, groupId)?.takeIf { it in enabledIds }
+        val preferred = groupPreferredSchema(context, groupId)
+        val enabledIds = when {
+            enabledSet == null -> ids
+            enabledSet.isEmpty() -> ids
+            preferred != null && preferred in ids && preferred !in enabledSet ->
+                (enabledSet + preferred).filter { it in ids }
+            else -> ids.filter { it in enabledSet }
+        }
+        return preferred?.takeIf { it in enabledIds }
             ?: enabledIds.firstOrNull()
             ?: BUILTIN_SCHEMA_ID
     }

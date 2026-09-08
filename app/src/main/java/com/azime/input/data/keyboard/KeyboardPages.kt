@@ -152,13 +152,13 @@ object KeyboardPages {
                 spacerKey(0.5f),
             ),
             row(
-                pageKey("ABC"),
+                pageKey("九宫格", "numpad"),
                 charKey("*"), charKey("\""), charKey("'"), charKey(":"),
                 charKey(";"), charKey("!"), charKey("?"),
                 backspace(),
             ),
             row(
-                pageKey("ABC", width = 1.7f),
+                pageKey("九宫格", "numpad", width = 1.7f),
                 charKey(","),
                 space(width = 4.3f),
                 charKey("."),
