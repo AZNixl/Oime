@@ -67,6 +67,10 @@ object RimeManager {
         if (RimeEngine.getInstance().getAvailableSchemas().isEmpty() || assetsChanged) {
             val kicked = RimeEngine.getInstance().startMaintenance(true)
             Log.i(TAG, "kick full maintenance: kicked=$kicked")
+            // 轮17.1 修复：触发维护后立即等待完成（避免 build/ 目录被清空后没有重新生成）
+            if (kicked) {
+                ensureSessionAfterMaintenance()
+            }
         }
         RimeEngine.isInitialized()
     }
@@ -87,6 +91,29 @@ object RimeManager {
     fun ensureSessionNow(): Boolean {
         sessionReady = RimeEngine.getInstance().ensureSession()
         return sessionReady
+    }
+
+    /**
+     * 强制等待维护完成并重建会话（轮17.1 修复）。
+     * 问题：RimeEngine.ensureSession() 第221行快速短路——旧会话活着就直接返回，
+     * 不等待维护完成 → build/ 目录被清空后没有重新生成 → 打不出字。
+     * 修复：先等待维护真正结束，再调用 ensureSession。
+     */
+    suspend fun ensureSessionAfterMaintenance(): Boolean = withContext(Dispatchers.IO) {
+        // 等待维护完成（最多 180 秒）
+        var waited = 0L
+        while (RimeEngine.getInstance().isMaintaining() && waited < 180_000L) {
+            delay(100)
+            waited += 100
+        }
+        if (RimeEngine.getInstance().isMaintaining()) {
+            Log.e(TAG, "ensureSessionAfterMaintenance: maintenance timeout after ${waited}ms")
+            return@withContext false
+        }
+        Log.i(TAG, "ensureSessionAfterMaintenance: maintenance completed in ${waited}ms")
+        // 维护完成后重建会话
+        sessionReady = RimeEngine.getInstance().ensureSession()
+        sessionReady
     }
 
     /** 处理一次 X11 键值按键，返回完整状态（候选/上屏文本/preedit）。 */
@@ -413,15 +440,9 @@ object RimeManager {
                 .getOrDefault(false)
             // 切组必须重新部署：部署完成后 librime 回落 schema_list[0]（组内上次使用的方案）
             if (runCatching { RimeEngine.getInstance().startMaintenance(true) }.getOrDefault(false)) {
-                // 反馈轮16 修复「O 菜单切组失败」：startMaintenance 是异步的，而旧会话在维护
-                // 结束前仍存活 → ensureSession() 被「有会话且有方案」短路直接返回，会话仍挂在
-                // 上一组的方案上。改为：先等维护真正结束，再把会话显式切到新组首选方案。
-                var waited = 0L
-                while (RimeEngine.getInstance().isMaintaining() && waited < 180_000L) {
-                    delay(100)
-                    waited += 100
-                }
-                ensureSessionNow()
+                // 轮17.1 修复：用 ensureSessionAfterMaintenance 替代 ensureSessionNow
+                // 确保维护真正完成后再重建会话（避免 build/ 目录被清空后没有重新生成）
+                ensureSessionAfterMaintenance()
                 val preferred = groupPreferredSchemaId(context, groupId)
                 runCatching { switchSchema(preferred) }
                     .onFailure { Log.e(TAG, "switchSchema($preferred) after group switch failed", it) }
