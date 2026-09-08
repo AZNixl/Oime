@@ -357,19 +357,30 @@ class AZimeService : InputMethodService() {
                     // 部署进行中 switchSchema 会直接返回 false——给出提示而非静默失败
                     val ok = runCatching { RimeManager.switchSchema(action.schemaId) }.getOrDefault(false)
                     if (ok) {
-                        // 轮17 重构（参考 trime）：删除 recordGroupSchema（不再需要组概念）
+                        // 轮13：记录组内上次使用的方案（重写 schema_list 时置首 → 部署后回落即回到它）
+                        runCatching { RimeManager.recordGroupSchema(applicationContext, action.schemaId) }
                         uiState.update { it.copy(statusMessage = "") }
                         refreshState()
                     } else {
                         uiState.update { it.copy(statusMessage = "引擎部署中，请稍后重试") }
                     }
                 }
+                is KeyAction.SelectSchemaGroup -> {
+                    // 轮13：切换方案组——一次只加载一个组，切换=重装组文件+全量部署
+                    // （部署完成后 librime 回落 schema_list[0] = 组内上次使用的方案）
+                    uiState.update { it.copy(statusMessage = "正在切换方案组…") }
+                    runCatching { RimeManager.switchSchemaGroup(applicationContext, action.groupId) }
+                    uiState.update { it.copy(statusMessage = "") }
+                    refreshState()
+                }
                 is KeyAction.ApplySchemaEnable -> {
-                    // 轮17 重构（参考 trime）：应用方案启用集——直接设置 selectedSchemas + 部署
+                    // 轮15：应用方案启用集（方案管理）——保存后重入当前组重新部署，
+                    // schema_list 与「输入方案」列表都只含启用的方案
                     uiState.update { it.copy(statusMessage = "正在应用方案选择…") }
                     runCatching {
-                        RimeManager.setSelectedSchemas(applicationContext, action.schemaIds)
-                        RimeManager.deploy(applicationContext)
+                        val gid = RimeManager.currentGroupId(applicationContext)
+                        RimeManager.setGroupEnabled(applicationContext, gid, action.schemaIds)
+                        RimeManager.switchSchemaGroup(applicationContext, gid)
                     }
                     uiState.update { it.copy(statusMessage = "") }
                     refreshState()
@@ -427,7 +438,7 @@ class AZimeService : InputMethodService() {
                 KeyAction.Deploy -> {
                     // 重新部署方案（○ 菜单 / 方案设置页）
                     uiState.update { it.copy(statusMessage = "正在重新部署方案…") }
-                    runCatching { RimeManager.deploy(applicationContext) }
+                    runCatching { RimeManager.deployImportedSchemas(applicationContext) }
                     uiState.update { it.copy(statusMessage = "") }
                     refreshState()
                 }
