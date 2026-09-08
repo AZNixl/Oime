@@ -503,3 +503,67 @@ vendored RimeEngine 中 `getAvailableSchemas / getSchemaString / getSchemaList`
 - O 键长按/拖动后松手误弹菜单修复：awaitEachGesture 抬起事件在 oLongFired 时 consume()，不再传给后面的 clickable
 - 混输方案（虎单整 tiger_danzheng）现场：schema_1788533984946 组内主码=tiger.extended（custom patch）、副=lua_translator@tiger_danzheng_sentence；当前设备 active 组=AZ，虎单整文件未同步进 shared（属预期，等切组修复后实测）
 - 版本 0.9.7-oime（versionCode 17）
+
+
+---
+
+# 反馈轮17（0.9.10-oime vc20）：方案管理架构重构 —— 改用 trime 方法
+
+## 用户实机反馈（vc18 测试）
+
+| 现象 | 截图证据 |
+|------|----------|
+| 勾选4个方案只显示2个 | 图1：虎码单整混输组勾选4个，已选方案只列2个 |
+| O菜单显示另一组方案 | 图2：当前组=虎码单整混输，O菜单显示 tiger_frost/tigress_frost（AZ组） |
+| 所有方案打不出字 | librime 维护未完成 + 方案列表是旧缓存 |
+
+## 根因分析
+
+1. **xime 方案组架构与 librime 模型不匹配**：librime 只管理扁平方案列表，方案组是 xime 自己发明的概念
+2. **syncGroup 重写 default.custom.yaml**：只写 schema_list，覆盖用户的 patch（switcher/menu/key_binder/混输 custom.yaml）→ 混输挂载失效
+3. **switchGroup 后读 availableSchemas()**：librime 维护未完成时返回旧缓存 → 显示错误方案
+4. **push_via_api.py 增量推送缺陷**：只上传变更文件，导致 GitHub 仓库不完整 → CI 连续失败
+
+## 重构方案（参考 trime/trime2）
+
+### 1. 删除 xime 方案组代码（约250行）
+
+删除：SchemaGroup、currentGroupId、setCurrentGroup、recordGroupSchema、groupEnabledIds、setGroupEnabled、groupPreferredSchemaId、syncGroup、switchSchemaGroup、deployImportedSchemas
+
+### 2. 实现 trime 风格 API（RimeManager）
+
+| 方法 | 对应 trime | 实现 |
+|------|-----------|------|
+| getSelectedSchemas() | getSelectedRimeSchemaList() | 解析 default.custom.yaml 的 patch.schema_list |
+| setSelectedSchemas(ids) | selectRimeSchemas(Array) | YamlPatcher 只改 schema_list，保留其他 patch |
+| deploy() | deploy() | syncAssets + startMaintenance |
+
+### 3. 新增 YamlPatcher 工具类
+
+智能解析 default.custom.yaml：只修改 patch.schema_list，保留用户所有其他 patch 内容（注释/空行/switcher/menu/key_binder 等），避免覆盖混输方案的 custom.yaml 配置。
+
+### 4. UI 简化
+
+- SchemaList：删除方案组选择 UI → 直接显示已启用方案列表
+- SchemaManagePage：删除组概念 → 直接管理所有可用方案
+- KeyboardScreen：删除 groups 分支（方案组选择），manage 分支改用扁平方案列表
+- AZimeService：删除 SelectSchemaGroup KeyAction，ApplySchemaEnable 改用 setSelectedSchemas+deploy
+
+### 5. ensureReady 简化
+
+删除 syncGroup 调用，只保留 syncAssets + startMaintenance。
+
+## 技术说明
+
+trime 正确做法是用 JNI selectRimeSchemas() 设置启用方案，完全不碰 yaml。xime RimeEngine 缺该 JNI 方法（librime_jni.so 预编译无源码），故用 YamlPatcher 模拟 trime 的 Kotlin 层行为。未来补充 JNI（参考 trime 的 C++ 实现）后可无缝切换。
+
+## 关键改进
+
+- 不再覆盖用户的 default.custom.yaml patch → 混输方案 custom.yaml 挂载生效
+- 方案列表与 librime 实际状态同步 → 不再是旧缓存
+- 代码符合 trime 架构理念（扁平方案管理）
+
+## 参考
+
+- https://github.com/nirenr/trime2
+- https://github.com/osfans/trime
