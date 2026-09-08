@@ -68,14 +68,6 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
-    private val folderPickerLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        if (result.resultCode == Activity.RESULT_OK) {
-            result.data?.data?.let { importSchema { schemaImporter.importFromFolder(this, it) } }
-        }
-    }
-
     // 反馈轮16：启动界面自动申请麦克风权限（语音输入长按 ○ 听写用）
     private val micPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -172,11 +164,6 @@ class SettingsActivity : AppCompatActivity() {
                             }
                         )
                     },
-                    onPickFolder = {
-                        folderPickerLauncher.launch(
-                            Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
-                        )
-                    },
                 )
             }
         }
@@ -193,7 +180,6 @@ fun SettingsScreen(
     onManageFonts: () -> Unit,
     onEditLuaScript: () -> Unit,
     onPickZip: () -> Unit,
-    onPickFolder: () -> Unit,
 ) {
     val cs = MaterialTheme.colorScheme
     val context = LocalContext.current
@@ -296,12 +282,6 @@ fun SettingsScreen(
                             title = "导入方案（ZIP）",
                             subtitle = "兼容 GBK 文件名压缩包",
                             onClick = onPickZip,
-                        )
-                        KsuItem(
-                            icon = Icons.Default.FolderOpen,
-                            title = "导入方案（文件夹）",
-                            subtitle = "选择含方案 yaml 的文件夹；导入后自动部署",
-                            onClick = onPickFolder,
                         )
                     } }
                 }
