@@ -480,3 +480,10 @@ vendored RimeEngine 中 `getAvailableSchemas / getSchemaString / getSchemaList`
 - ToolbarRow 签名：onOpenCustomize 参数移除（长按改语音），定制工具栏入口仅存 O 菜单
 - 语音扩展位：SpeechInputManager 单实现，后续本地模型/API 替换 start() 内部即可
 - 版本 0.9.6-oime（versionCode 16）
+
+## vc16 构建与装机记录
+- commit e367900（parent 6fa1803）首推 CI 失败：VoiceWavePanel 插入时原 toolbarToolItem 的 @Composable 注解被夹成孤立重复（"This annotation is not repeatable"），toolbarToolItem 失去注解报 Composable 上下文错误。
+- commit b3cc8eb（注解重排修复）run 34171999643 ✅ success。
+- APK 已取回：app-debug.apk 26.5MB（artifact），工作区副本 oime-0.9.6-vc16.apk。
+- 手机 b72e0041 装机 Success，dumpsys 确认 versionName=0.9.6-oime。
+- 按用户指令：记录上传后停止工作，等待下一步指令。
