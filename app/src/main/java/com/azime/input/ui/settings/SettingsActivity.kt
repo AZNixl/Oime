@@ -750,7 +750,6 @@ private fun StatusCard(fillWidth: Boolean = false) {
 }
 
 @Composable
-@Composable
 private fun SchemaList(onOpenManage: () -> Unit) {
     val context = LocalContext.current
     // 轮17 重构（参考 trime）：删除方案组概念，直接显示已启用方案列表
@@ -846,7 +845,6 @@ private fun SchemaList(onOpenManage: () -> Unit) {
     }
 }
 
-@Composable
 @Composable
 private fun SchemaManagePage() {
     val context = LocalContext.current
