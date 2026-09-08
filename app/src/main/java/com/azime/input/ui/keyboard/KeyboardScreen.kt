@@ -130,9 +130,7 @@ sealed interface KeyAction {
     data class Candidate(val index: Int) : KeyAction
     data object PageDown : KeyAction
     data class SelectSchema(val schemaId: String) : KeyAction
-    /** ○ 菜单「方案组」（轮13）：切换方案组（一次只加载一个组，切换=重装组文件+全量部署）。 */
-    data class SelectSchemaGroup(val groupId: String) : KeyAction
-    /** ○ 菜单「方案管理」（轮15）：应用当前组的启用方案集（重部署，schema_list=启用集）。 */
+    /** ○ 菜单「方案管理」（轮17 重构）：应用启用方案集（重部署，schema_list=启用集）。 */
     data class ApplySchemaEnable(val schemaIds: List<String>) : KeyAction
     /** ○ 键长按语音输入（轮15）：空闲→开始识别；识别中→停止并上屏结果。 */
     data object ToggleVoiceInput : KeyAction
@@ -1074,92 +1072,24 @@ private fun MenuPanel(
                 onDismiss = { subPage = null },
                 totalHeight = totalHeight,
             )
-            "groups" -> {
-                // 反馈轮13：方案组大项 —— 组 → 方案 两级（参考 trime2）。
-                // 一次只加载一个组；切换=重装组文件+全量部署（SelectSchemaGroup）。
-                // state.schemas 作为缓存 key：切组后 refreshState 更新 → 此处重新枚举高亮。
-                val groups = remember(state.schemas) {
-                    RimeManager.schemaGroups(com.azime.input.AZimeApplication.instance)
-                }
-                val currentGid = remember(state.schemas) {
-                    RimeManager.currentGroupId(com.azime.input.AZimeApplication.instance)
-                }
-                MenuSubPanel(
-                    c = c, title = "方案组", totalHeight = totalHeight,
-                    onBack = { subPage = null }, onClose = { close() },
-                ) {
-                    if (state.statusMessage.isNotEmpty()) {
-                        Text(
-                            state.statusMessage,
-                            fontSize = 13.sp, color = c.subText,
-                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp),
-                        )
-                    }
-                    if (groups.size <= 1) {
-                        Text(
-                            "暂无其他方案组：在设置中导入方案包（ZIP / 文件夹）即可创建新组",
-                            fontSize = 13.sp, color = c.subText,
-                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp),
-                        )
-                    }
-                    groups.chunked(4).forEach { rowGroups ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        ) {
-                            rowGroups.forEach { g ->
-                                val selected = g.id == currentGid
-                                Column(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .background(if (selected) c.accentKeyBg else c.keyBg, RoundedCornerShape(12.dp))
-                                        .clickable {
-                                            if (!selected) onAction(KeyAction.SelectSchemaGroup(g.id))
-                                        }
-                                        .padding(vertical = 10.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                ) {
-                                    Text(
-                                        g.name,
-                                        fontSize = 11.sp,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        color = if (selected) c.accentActive else c.text,
-                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                                    )
-                                    Text(
-                                        "${g.schemaIds.size} 个方案",
-                                        fontSize = 9.sp,
-                                        maxLines = 1,
-                                        color = c.subText,
-                                    )
-                                }
-                            }
-                            repeat(4 - rowGroups.size) { Spacer(Modifier.weight(1f)) }
-                        }
-                        Spacer(Modifier.height(10.dp))
-                    }
-                }
-            }
             "manage" -> {
-                // 反馈轮15：方案管理 —— 组 → 启用集 → 切换 三层（参考 trime2/同文）。
-                // 组内 N 个 schema 全量识别，用户实际只用其中几个：勾选启用集，
-                // 应用后 schema_list（部署范围）与「输入方案」列表都只含启用方案。
+                // 轮17 重构（参考 trime）：方案管理 —— 直接管理所有可用方案，不再需要方案组概念
                 val app = com.azime.input.AZimeApplication.instance
-                val gid = remember(state.schemas) { RimeManager.currentGroupId(app) }
                 val allSchemas = remember(state.schemas) {
-                    RimeManager.schemaGroups(app).firstOrNull { it.id == gid }?.schemaIds ?: emptyList()
+                    RimeManager.availableSchemas()
                 }
-                val savedSet = remember(state.schemas) { RimeManager.groupEnabledIds(app, gid) }
+                val savedSet = remember(state.schemas) {
+                    RimeManager.getSelectedSchemas(app).toSet()
+                }
                 val selected = remember(state.schemas) {
-                    mutableStateListOf<String>().apply { addAll(savedSet ?: allSchemas) }
+                    mutableStateListOf<String>().apply { addAll(savedSet) }
                 }
                 MenuSubPanel(
                     c = c, title = "方案管理", totalHeight = totalHeight,
                     onBack = { subPage = null }, onClose = { close() },
                 ) {
                     Text(
-                        "组「${gid}」共 ${allSchemas.size} 个方案，勾选实际使用的启用；" +
+                        "共 ${allSchemas.size} 个可用方案，勾选实际使用的启用；" +
                             "全部不选 = 全部启用。应用后重新部署。",
                         fontSize = 12.sp, color = c.subText,
                         modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
