@@ -71,3 +71,435 @@ assets/rime 仅保留 pinyin_simp（+symbols/default 配置与 lua）；资产�
 - undo 栈仅记录本输入法会话内的上屏内容，不覆盖 App 外部输入。
 - 图片剪贴板仅落盘保存，暂未在面板内缩略预览。
 - trime2 键盘 lua 布局文件（keyboards/*.lua）暂未直接渲染，仅 preset_keys.lua 动作约定兼容。
+
+---
+
+# 补充轮（2026-09-05 晚）：真机反馈 9 条 + native 崩溃修复
+
+## Native SIGSEGV 修复（重要）
+
+真机 tombstone：`refreshState → isReady → getAvailableSchemas`（DefaultDispatcher）
+与维护线程 `ConfigData::LoadFromFile` 并发 → 「trying to execute non-executable memory」。
+vendored RimeEngine 中 `getAvailableSchemas / getSchemaString / getSchemaList`
+三个查询是裸调 native，没走 rimeLock。已统一加 `tryLocked`（拿不到锁返回空默认，
+维护期间不进 native）。
+
+## 9 条反馈落地方案
+
+| # | 反馈 | 实现 |
+|---|---|---|
+| 1 | A-L 行键宽与第一行一致 | 每行按 10 份计宽，不足的行尾部留白 |
+| 2 | 剪贴板条不消失/挡候选 | 条目只显示 10 秒；从面板上屏后条目清除+面板收起 |
+| 3 | 工具栏自定义（参考 xime） | 长按 ○ 勾选工具（剪贴板/方案/数字/emoji/符号/设置），○ 与红摇杆固定 |
+| 4 | 摇杆短距远点 | 快捷指针模式 10 字/步远距跳转；光标模式 1 字/步 |
+| 5 | ○ 菜单面板化 | 键盘内嵌面板（剪贴板/页面/设置/方案切换），非浮窗 |
+| 6 | 中文大写/英文小写键帽 | 显示层切换；中文输入逻辑不变（仍送小写编码） |
+| 7 | 字体支持/增高行调整/方案二级菜单 | 设置页键高+增高行滑杆（下次键盘弹出热生效）；方案管理收二级页 |
+| 8 | 退格滑动删除不正常 | 按 trime2「退格键滑动删除.lua v4」锚点模型重写：24px/字符、10px 进入阈值、横向占优判定、组合中禁用、右滑回退到锚点 |
+| 9 | 开发记录 | 本文 |
+
+## 收尾轮：CI 修复 + LICENSE + ○ 图标 + lua 键盘布局导入
+
+### CI 修复（run 33963483159 → 33963940735 ✅）
+- `KeyboardScreen.kt` 两类编译错误：
+  1. 工具栏自定义对话框缺 material3 导入（AlertDialog/Checkbox/TextButton）；
+  2. 剪贴板条文本用了未定义的 `NL` 常量 → `"\n"`。
+
+### 新增
+- **GPL-3.0 LICENSE**：gnu.org 官方文本入库。
+- **○ 启动图标**：深色圆盘（#17181C）+ 白色圆环 + 红摇杆红点（#E5484D，环右缘）；
+  自适应图标（anydpi-v26 vector）+ API 24/25 五密度 PNG 回退（此前 mipmap 为空，
+  Android 7.x 会 Resources.NotFoundException）。
+- **trime2 lua 键盘布局直接渲染**（前轮遗留项落地）：
+  - 外置目录 `Documents/AZime/lua/keyboards/*.lua`，首次运行生成 example.lua 模板；
+  - `LuaScriptManager.parseKeyboardLayout()`：LuaJ 解析 `return { name=..., rows={ {keys={…}} } }`
+    （行支持无 keys 包装的直接键数组），键字段 label/click/long_click/swipe_*/width/hint；
+  - KeyType 按 click 推断：BackSpace→DELETE、Return→ENTER、space→SPACE、shift→MODIFIER、
+    单字符→CHARACTER、其余→FUNCTION；
+  - `onKeyAction` FUNCTION 分支接入 resolveAction：命令/preset 引用/文本上屏（trime2 语义：
+    非命令 click 按文本 commit），仅当解析结果为 null 时回退中英切换；
+  - 键盘编辑器列表页新增「导入 lua 键盘布局」卡片：批量解析导入为自定义布局，
+    逐文件反馈成功/失败，导入后可激活/继续可视化编辑。
+
+### 暂缓
+- 多 ABI（armeabi-v7a/x86_64）：需要与 vendored RimeEngine JNI 符号匹配的官方
+  librime_jni.so 构建，风险大于收益（目标设备 arm64），待有可靠构建源再补。
+
+## Oime 轮：7 条新需求
+
+| # | 需求 | 实现 |
+|---|---|---|
+| 1 | 打字振动系统 | 新增 HapticsManager（core/haptic）：总开关、按下震动、抬起震动、系统默认/自定义模式（5-60ms 滑杆）；Vibrator VibrationEffect（API<26 走旧 API）；KeyboardScreen 按键 down/release 钩子；设置页新增「打字振动」卡片 |
+| 2 | 按键编辑界面增强 | Key 模型新增 height 系数（0.5-2.0）；KeyEditDialog 加高度字段 + 取消按钮；编辑器网格与真实键盘行高均按行内最大 height 系数渲染 |
+| 3 | LUA 脚本改名「预设置」 | 设置入口更名；LuaEditorActivity 顶栏加「说明」按钮：用途 / 条目定义 / 动作取值优先级 / 内置命令表 / 完整示例，可滚动 |
+| 4 | 字体管理读不到 | 根因：Android 13+ File API 读 Documents 受限（READ_EXTERNAL_STORAGE 不覆盖）。修复：①外置扫描改递归（支持子文件夹）；②新增 SAF「从文件夹导入」把字体复制进应用私有 filesDir/fonts（一定可读）；③列表双源合并、同名私有优先 |
+| 5 | 包名/文件夹改 Oime | applicationId → com.oime.input（与旧版并存，需重新选输入法）；外置目录 → Documents/Oime；vendored RimeEngine 包名不动（JNI 符号绑定） |
+| 6 | 导入后重命名 | 导入方案成功后弹 Material 对话框改写 Documents/Oime/schema 子文件夹名（非法字符校验、目标存在校验），重命名后自动重新部署；内部 schema_id 不变 |
+| 7 | 开发记录/上传/APK | 本文；push 后 CI 构建 |
+
+### 顺带修复
+- 上一轮遗留编译错：KeyboardScreen FUNCTION 键误传 ResolvedAction 对象给
+  KeyAction.Resolved(String)（1219 行）→ 改传 key.code 字符串，由 Service 端 resolveAction 解析。
+
+## 反馈轮 2：8 条体验修正
+
+| # | 反馈 | 实现 |
+|---|---|---|
+| 1 | 工具栏不显示候选字 / ○ 菜单参考 xime | 根因：CandidateBar 组件写了但从未挂载。改为候选词直接占工具栏中部（打字时显示，点选上屏，横向滚动 + ▶ 翻页；空闲时恢复工具+剪贴板条）。○ 菜单参考 xime MenuBar 重做：顶部 ↑ 关闭 + ⚙ 设置圆钮，图标网格（剪贴板/26键/数字/表情/符号/定制工具栏，4 列 icon+label 磁贴），底部方案 chips |
+| 2 | 九宫格无返回键 | numpad 第 3 行末改 ⌫，第 4 行首加「26」返回主键盘；工具栏「123」在 numpad 页变「26」亦可返回 |
+| 3 | 符号键盘理解纠正 | 新增分类网格符号页 symgrid（常用/引号/数学/箭头/货币/序号/特殊 7 类，SymbolData），工具栏「符」与菜单「符号」指向它；26 键符号页保留 |
+| 4 | emoji 横滑 + 高度压缩 | emoji 与符号页共用 CategoryGridPane：HorizontalPager 左右滑动切分类（点标签同步翻页），格子高度跟随主键盘键高 |
+| 5 | 编辑器去 lua 导入 / numpad 打不开 | 移除「导入 lua 键盘布局」入口与整套 lua 键盘解析（parseKeyboardLayout/importLuaLayouts/example.lua）；builtinByName 补 numpad 修复内置九宫格无法进入编辑 |
+| 6 | 增高行开关 | KeyboardManager.barEnabled 持久化；关闭时工具栏/候选栏回落 38dp 紧凑高度；键盘二级页开关 + 高度滑杆联动显隐 |
+| 7 | 设置一级菜单 | 主页改纯入口（输入方案/键盘/外观/预设置/关于），滑杆、振动开关等全部收进对应二级页（键盘页含布局编辑器+键高+增高行+振动；外观页字体管理；关于页版本/GitHub） |
+| 8 | 设置主题跟随回车键颜色 | MaterialTheme colorScheme 按 system dark 选择基础方案，primary=键盘 accentActive、primaryContainer=回车键底色 accentKeyBg（keyboardAccentActiveColor/keyboardAccentKeyColor 公开） |
+
+### 真机验证（20:31-20:37, b72e0041）
+- 新包 com.oime.input 装机、ime enable、切默认输入法 ✅；旧外置资产（方案/fonts/lua）已复制到 Documents/Oime。
+- 键盘渲染 ✅（大写键帽/○ 工具栏/红摇杆/方案名）；○ 面板磁贴 ✅；设置页：运行正常·简体拼音（迁移方案自动部署）✅、打字振动卡片 ✅。
+- 无崩溃（logcat 无 FATAL）。期间屏幕跳变系人机同时操作，自动化盲测暂停，交由用户手测。
+
+## 反馈轮 3：7 条（jqb 剪贴板 / 更多候选 / KSU 设置）
+
+| # | 反馈 | 实现 |
+|---|---|---|
+| 1 | ○ 菜单「定制工具栏」「剪贴板」无效 | 双根因：①定制工具栏用 Compose AlertDialog——对话框窗口 z-order 低于 IME 窗口被键盘挡住（隐形）；②剪贴板面板在 clipText 为空时直接 return（不可见），工具栏 clipboard 工具也无分发分支。修复：定制工具栏改内联面板（ToolbarCustomizePanel，勾选+保存/取消）；剪贴板面板改为永远可见（空态提示）；工具栏补 clipboard 分支 |
+| 2 | 九宫格缩在左边大片空白 | numpad 每行 4 键 × 键宽 1f = 4/10 份，行尾补白 6 份。改键宽 2.5f（底行 5 键 × 2f），铺满整行 |
+| 3 | 增高行语义纠正 | 增高行 = 键盘最后一行下方多一个**无按键空行**（高度滑杆控制），不再是工具栏变高；工具栏固定 38dp 紧凑高度 |
+| 4 | 剪贴板分词等功能收进菜单（参考 jqb.lua） | 剪贴板面板整体重做：剪贴板/收藏双选项卡（滑块式高亮）、卡片列表（序号+文本）、每条 ︙ 菜单（收藏/置顶/分词/删除），分词在卡片内展开 token chips 点击上屏；Service 端剪贴板历史自动记录（去重插首、上限 100 条）+ 收藏短语，分别持久化 filesDir/clipboard.json / phrase.json（org.json） |
+| 5 | 更多候选面板 | 新增 CandidatePanel：工具栏候选行尾「▾」入口，5 列网格展示当前页全部候选（带数字前缀），◀▶ 翻页（PageUp/PageDown keysym 0xFF54/0xFF55），点选上屏；候选清空自动收起 |
+| 6 | 设置主页参考 KSU | 大方块状态卡（○ logo+引擎状态）+ 两个小方块（版本 0.5.0-oime / 项目 AZNixl/AZime）+ 下方设置项列表；增高行文案更新 |
+| 7 | 记录/上传 | 本文；push 后 CI 构建，拉 APK 装机验证 |
+
+### 顺带
+- versionCode 3 / versionName 0.5.0-oime；KeyboardUiState 新增 clipHistory/phraseItems/clipTab/showCandidatePanel；
+- KeyAction 新增 ToggleCandidatePanel/PageUp/SetClipTab/CommitClipText/ClipFav/ClipDelete/ClipTop/ClipClear；
+- 教训沉淀：**IME 内的 Compose 一律不要用 AlertDialog**（对话框窗口在键盘下层不可见），弹层用内联面板或 Popup。
+
+## 反馈轮 4：6 条（首启向导 / 仓库改名 / 面板等高）
+
+| # | 反馈 | 实现 |
+|---|---|---|
+| 1 | 首次启动界面优化（原 AZime 名称） | MainActivity 重写为 4 页 HorizontalPager 向导：①读取本地文件权限（Android 11+ 跳「所有文件访问」开关，≤Q 走运行时 READ_EXTERNAL_STORAGE；每页实时状态徽标 ✓）②启用输入法（检测 ENABLED_INPUT_METHODS）③选择输入法（showInputMethodPicker，检测 DEFAULT_INPUT_METHOD）④进入设置；页码圆点 + 上一步/下一步/完成，ON_RESUME 自动刷新状态；Manifest 增补 MANAGE_EXTERNAL_STORAGE |
+| 2 | GitHub 项目改名 Oime | API PATCH 仓库 name=Oime + 新描述（https://github.com/AZNixl/Oime）；README 整体重写为 Oime 品牌；设置页 4 处 GitHub 链接改 AZNixl/Oime；push 脚本默认仓库名改 Oime |
+| 3 | 更多候选面板跟主键盘同高度 | 统一高度公式 stdH=4×keyH+5×间距（含增高行则再加）；CandidatePanel 固定 totalHeight，网格区 weight(1f)+verticalScroll |
+| 4 | emoji 面板跟随主键盘高度 | CategoryGridPane 固定 totalHeight：标签行+Pager(weight 1f)+底行，单页内容可竖向滚动 |
+| 5 | ○ 菜单/剪贴板覆盖主键盘 | MenuPanel / ClipboardPanel 从工具栏上方移入内容区：与键盘互斥替换显示（固定 totalHeight），不再把键盘往下顶 |
+| 6 | 记录/上传 | 本文；改名后首个提交推送 AZNixl/Oime |
+
+- versionCode 4 / versionName 0.6.0-oime。
+
+### 热修复（真机崩溃）：SecurityException on ENABLED_INPUT_METHODS
+- 现象：0.6.0 装机后打开向导即崩（targetSdk 34 读 Settings.Secure.ENABLED_INPUT_METHODS 抛
+  SecurityException，Android 14 限制该 key 仅 targetSdk ≤ 33 可读；读取又在 ON_RESUME 观察器中，启动即崩）。
+- 修复：启用检测改走 InputMethodManager.enabledInputMethodList（公开 API 无权限）；
+  DEFAULT_INPUT_METHOD 读取包 runCatching，受限时视为未完成而非崩溃。
+
+## 反馈轮 5：14 条（部署键 / 向导持久化 / 主题配色 / 九宫格五列 / 长按规范 / 备份）
+
+| # | 反馈 | 实现 |
+|---|---|---|
+| 1 | 方案设置和 ○ 菜单添加部署键 | 方案页新增「重新部署」卡（调 deployImportedSchemas）；○ 菜单新增「部署」磁贴 → KeyAction.Deploy 由 Service 执行 |
+| 2 | 跳过向导无效，每次都开向导 | wizard_prefs.wizard_done 标志：跳过/完成时写入；onCreate 检测标志或「三步全部达成」直接进设置；关于页加「重新运行向导」入口（清标志） |
+| 3 | 字体设置支持多个候选字体 | FontManager 新增第三个角色「面板字体」（更多候选/emoji/符号网格用），与键帽/候选栏互相独立；字体卡三按钮：键帽/候选/面板 |
+| 4 | 增高行 1-72dp | setBarHeightDp coerceIn(1,72)，滑杆 valueRange 1..72 |
+| 5 | 设置增加主题和配色（参考小企鹅.fx） | 新建 KeyboardTheme（theme_prefs：mode system/light/dark + 亮/暗强调色）；二级页「主题与配色」：色彩模式三 chip + 7 个预设色板（默认蓝/中国红/森绿/暗紫/橙光/青碧/樱粉）+ 自定义 RGB 滑杆；KeyboardColors 全部由主题动态构建（accent 派生 accentActive/accentKeyBg/compositeOver 对比文字色），设置页主色同步跟随 |
+| 6 | 剪贴板限高 + 标签（jqb） | 卡片文本 maxLines=3；词条下方常驻标签行：网址/电话号码/英文单词正则提取，横向滑动点选上屏；删除原「分词」开关菜单项 |
+| 7 | emoji/符号面板去底行 + 左上返回 | CategoryGridPane 删除底行 ABC/空格/⌫；返回键「←」固定在顶行左上角，分类标签其右横向滑动 |
+| 8 | 打字时输入码+候选覆盖工具栏；剪贴板条参考复制自动添加到候选.lua | 组合中（preedit 或候选非空）整个工具栏替换为「输入码（强调色）+ 候选横滚 + ◀▶ 翻页 + ▾」组合行；剪贴板条常驻（不再 10s 过期）、点击直接上屏（lua 同款点选上屏），打字（进入组合）或新复制时消亡（Service 在 preedit 非空时清 clipText） |
+| 9 | ○菜单输入方案做成按键 | 「输入方案」磁贴 → 居中浮窗列表选择方案（选中高亮，空态「引擎部署中…」）；删除原底部方案 chips |
+| 10 | 九宫格五列 + 26键对齐 | NumpadPane 专用布局：左列 = 3 行高滑动选符号键（上下滑动在 15 符号带上移动、松手上屏）+ 返回键；中间三列 = 1-0 + "." ","；右列 = ⌫/中英/空格/⏎。26 键第二行左右各加 0.5 键宽 spacer（G 对齐 V），行4 本就 10 份对齐；新增 code="spacer" 占位键（不渲染不响应） |
+| 11 | 长按符号按规范重配 | Q-P→1-0；A-L→全选/-/@/#//——/+/括号气泡/=；K 长按 = 常用括号气泡（{}〈〉()《》[]【】，{Left} 光标入括号，参考 26键.lua）；Z-M→`/剪切/复制/粘贴/"/'/：；逗号→！句号→？。单符号长按松手直接上屏（不必再点气泡）；select_all/cut/copy/paste 走命令分发 |
+| 12 | 备份设置到 Download | 「备份设置」：keyboard/font/haptic/theme/wizard 五组 prefs 打包 JSON，MediaStore 写入 Download/Oime_backup_时间戳.json（API<29 走公共目录） |
+| 13 | 符号显示开关 | 设置→键盘→「符号显示」卡：长按提示/上滑/下滑/左滑/右滑 五个独立开关；关闭时键面角标（longPressHint）与滑动预览不显示，动作照常执行；hint 开关纳入 sizeSignature 热重建 |
+| 14 | 记录/上传/暂停 | 本文；推送 CI 后暂停，等用户手机连接指令 |
+
+- versionCode 5 / versionName 0.7.0-oime。
+- 注意：九宫格页由 NumpadPane 专用渲染，键盘编辑器里对 numpad 的自定义修改不影响实际九宫格页（内置布局为数据基准）。
+
+### 修复 2：NumpadSliderSymbols 作用域
+- 首推 CI 失败发现 push_via_api.py 按 git 索引（ls-files -s）取文件，需先 git add -A；
+- 二推失败：NumpadSliderSymbols 误放在 object KeyboardPages 内部，KeyboardScreen 顶层 import 无法解析 → 改 KeyboardPages.NumpadSliderSymbols 引用。
+
+### 真机自动化验证（0.7.0-oime，commit 0ea23a7e，设备 b72e0041，Android 14）
+装机 18:16:50 Success。逐项验证：
+- 跳过向导持久化 ✅：跳过后进设置；HOME 重新打开 App 直达设置不再出向导；关于页有「重新运行向导」。
+- 主题与配色 ✅：色彩模式三 chip、7 预设色板、自定义 RGB；点「中国红」→ 键帽勾选迁移、RGB 滑杆同步、键盘 preedit/选项卡/收起按钮全部变红（强调色即时生效）。
+- 备份设置 ⚠️ 入口存在（Download 文件未在自动化点击中确认，留人工验证）。
+- 26 键 ✅：A-L 偏移对齐（G 对 V），键帽角标全套新规范（Q¹-P⁰/全选/-/@/#//——/+/括号/=、Z`X剪切C复制V粘贴"B'N：M、，！。？）。
+- 长按 ✅：长按 Q 松手直接上屏「1」（单符号免二次点击）；括号气泡在 K 键。
+- 输入码+候选覆盖工具栏 ✅：组合中整条工具栏替换为 preedit（红色）+ 候选横滚 + ◀▶ + ▾；剪贴板条打字即消亡。
+- 更多候选面板 ✅：「▾」展开 5 列网格等高面板，◀▶ 翻页、收起可用。
+- ○ 菜单 ✅：8 磁贴（剪贴板/26键/数字/表情/符号/输入方案/部署/定制工具栏）；「输入方案」浮窗列表 pinyin_simp 高亮当前。
+- 九宫格 ✅：五列（3 行高滑选符号键 + 26 返回 | 1-0+.`, | ⌫/中英/空格/⏎），铺满无空白；滑键上滑一位松手直出「～」。
+- 剪贴板面板 ✅：双选项卡、卡片 3 行截断、标签行（dp/fx/jqb/lua/emoji/abc/xime 英文词 + 2481036245 电话号）、点卡片/标签上屏。
+- 符号网格 ✅：「←」固定左上角、分类标签横滑、无底部 ABC/空格/退格行。
+- 崩溃检查 ✅：logcat 无 Oime FATAL（仅 uiautomator 自身注册冲突）。
+- 验证后已恢复默认输入法为 xime.az。
+
+
+## 反馈轮 6（0.8.0-oime vc6）：11 条
+| # | 需求 | 实现 |
+|---|------|------|
+| 1 | 九宫格滑键改滑动+点击上屏；返回键改「返回」；中英键改符号面板 | NumpadSliderKey 滑动仅预览（松手保留选中），点击键面上屏当前符号并回中；第4行首键 label「返回」；右列「中/EN」→「符」（打开符号网格） |
+| 2 | 主键盘长按 popup 改滑动选择-松手上屏 | 长按气泡弹出后横向滑动切换符号（40dp/符号，高亮+震动），松手上屏选中项；单符号行为不变（松手直出）；气泡点选保留 |
+| 3 | 长按触发 180ms | KeyboardKey 长按定时 400→180ms |
+| 4 | 26键 G 对齐 V 失效 + 第四行右侧空白 + 剪贴板覆盖工具栏 | 根因：编辑器保存的旧同名自定义布局遮蔽内置（旧 JSON 无 spacer 行）。KeyboardLayout 加 rev 字段（内置 rev=2），加载时旧版同名自定义自动删除；第四行 123/⏎ 加宽到 2 填满整行；剪贴板条改为覆盖整条工具栏 |
+| 5 | 字体多选（参考 xime.az）+ 入口移主题下层 | FontManager 重写为 xime AppFonts 方式：selected_fonts 多选列表，FontFamily(fonts) 回退链（选择顺序=缺字形回退顺序），缓存签名；FontManagerActivity 改多选卡片 UI；入口移入「主题与配色」页下层，删除独立「外观」页 |
+| 6 | 主题与配色参考小企鹅重做 | ThemeCard 迷你键盘预览卡片网格（2 列：工具栏+三行键+强调色回车，按当前色彩模式即时渲染），点卡片应用；自定义 RGB 保留 |
+| 7 | 剪贴板返回键左上角 | ClipboardPanel 顶行「←」固定左上，双选项卡跟随其后，删右侧「收起▲」 |
+| 8 | 摇杆与○合一居中 + 工具先左后右 + 定制工具栏同高 | 红摇杆删除，○ 键居中：点击菜单/长按定制/横向拖动移光标（原摇杆功能）；指针模式切换移入○菜单磁贴；工具列表前半左、后半右；ToolbarCustomizePanel 加 totalHeight 参数与主键盘等高 |
+| 9 | 输入码与候选上下排布（参考 xime） | 组合行改 Column：上行 preedit 11sp 灰色 + 下行候选横滚；◀▶▾ 右侧竖排区域 |
+| 10 | 次选/三选预设键（trime2 composing=select_2/3） | 组合中主键盘 123 键变「三选」（Candidate(2)）、句号键变「次选」（Candidate(1)），强调色底显示 |
+| 11 | 记录+推送 | 本条 |
+
+- 版本 0.8.0-oime（versionCode 6）；括号配平状态机扫描 7 文件全 0。
+- 教训补充：内置键盘布局升级结构时必须递增 rev——编辑器保存的同名自定义 JSON 会遮蔽内置布局（本轮 G/V 对齐失效即此因）。
+
+
+## 反馈轮 7（0.8.1-oime vc7）：10 条 + 追加 2 条
+| # | 需求 | 实现 |
+|---|------|------|
+| 1 | 工具栏输入码+候选显示不全 | 组合行 fixed 38dp → heightIn(min=38dp) 自动增高；上行输入码 12sp + 下行候选 18sp 完整两行，不再裁剪 |
+| 2 | 关闭键盘按钮放最后 | KeyAction.HideKeyboard（requestHideSelf）；工具栏最右固定「⌄」 |
+| 3 | 增高行开关默认关闭 | barEnabled 默认 true→false |
+| 4 | 键盘背景沉浸系统圆角（尝试） | 键盘根容器顶部 18dp 圆角 clip + IME 窗口背景透明（圆角下透出应用内容，仿系统底部弹层） |
+| 5 | 第四行首键减宽 | 123/ABC 键 2.0 → 1.7（稍宽于 shift 1.5），空格 4.0 → 4.3 补位；布局 rev=3（旧 rev 自定义自动失效） |
+| 6 | 九宫格滑键改回滑动-松手上屏 | NumpadSliderKey 恢复轮5交互：滑动选择、松手 DirectCommit 并回中 |
+| 7 | numpad 编辑器同步 + 滑键符号自定义 | 编辑器 numpad 页新增「滑键符号（空格分隔）」输入框（示例"！ @ 。 、 ？"），存 prefs（numpad_slider_symbols），留空=内置默认；NumpadSliderKey 改读自定义带 |
+| 8 | 前三候选映射预设键 | 组合中：空格键=候选1、句号键=候选2、123键=候选3，键面显示实际候选文本点击上屏（无对应候选退回原动作；替代轮6的「次选/三选」文字标签） |
+| 9 | 部署键没生效/切换方案打不出字 | 根因两处：①导入只平面拷贝 yaml/txt，方案包内 lua/、opencc/、models/ 子目录全部丢失→候选翻译链挂掉（真机 logcat 证实：exe_processor/LuaTranslation 报 nil，虎单整 8+ 组件缺失）；②Deploy 键导入无变化时不触发引擎维护。修复：导入保留相对路径结构+全扩展名；Deploy 强制 startMaintenance(true)+重建会话（Lua/opencc/模型重新加载）；SelectSchema 部署中失败给「引擎部署中，请稍后重试」提示 |
+| A | 剪贴板条上屏后不消亡 | lastCommittedClip 记录已上屏文本，readClipboard 读到同文本不再弹条（复制新内容才重现，xime 式） |
+| B | 空格键自定义显示文本 | space_label 偏好：自定义 > 当前方案短名 > 默认；设置→键盘新增输入框；顺带修掉此前显示「○输入法 · pinyin_simp」全串被截断的问题 |
+
+- 版本 0.8.1-oime（versionCode 7）；括号配平状态机扫描 7 文件全 0。
+- 真机排查记录：0.8.0 上候选为空为用户导入虎单整时 lua/opencc/models 被平面导入丢失所致（非 UI 回归）；已手工向设备 shared/ 补齐 14 个 lua + rime.lua + opencc(32) + models(224MB)，装上本版后在○菜单按「部署」触发全量维护即可生效。
+- 注意：空格键=候选1、句号键=候选2、123键=候选3 仅在主键盘组合中生效；九宫格页滑键交互为滑动-松手上屏。
+
+
+## 反馈轮 7 真机验证 + 修复版（0.8.2-oime vc8）
+| # | 项 | 真机结果 |
+|---|-----|---------|
+| 1 | 组合行两行自动增高 | ✅ preedit 行 + 候选行完整显示（pinyin_simp / 虎单整均验证） |
+| 2 | 工具栏 ⌄ 收起 | ✅ 最右 ⌄ 点击 requestHideSelf 生效；注意剪贴板条覆盖工具栏时无 ⌄（设计取舍） |
+| 3 | 增高行默认关 | ✅ 默认紧凑高度，设置页开关在 |
+| 4 | 键盘顶部圆角沉浸 | ✅ 18dp 圆角可见 |
+| 5 | 123 键减宽 | ✅ 1.7 宽 + 空格补位 |
+| 6 | 滑键滑动-松手上屏 | ✅ 默认 15 符号带（、。，！？：；～·…—（）《》），松手上屏选中符号并回中（水平轻划=选中位） |
+| 7 | 滑键符号自定义 | ✅ 编辑器 numpad 页输入框生效（实测 A B C 带写入后滑动上屏对应符号） |
+| 8 | 前三候选映射 | ✅ 空格=候选1、句号=候选2、123=候选3 键面显示候选文本；仅 1 个候选时回退原动作 |
+| 9 | ○菜单部署 | ✅ 部署→切虎单整→候选恢复正常（"ed gk"→「窝去」），轮6导入丢文件问题的运行时闭环打通 |
+| A | 剪贴板条消亡 | ✅ 点击上屏后立即消失，键盘重开不复活（lastCommittedClip） |
+| B | 空格自定义文本 | ✅ 设 AZ 即显示 AZ，清空恢复方案名 |
+
+### 真机发现的新 bug（本轮修复）
+- **编辑器可把 symbols/numpad 激活为主键盘**：内置列表行点击即 setActiveMain(name)，误点 numpad 行（或保存同名副本后激活）会把主键盘指针劫持到专用页布局——主键盘页走通用分支渲染出无滑键的 4 列数字网格，qwerty 被顶掉。修复：①KeyboardManager.ReservedPageNames（symbols/numpad/emoji），setActiveMainLocked 拒绝 + initialize 读回防御；②编辑器内置/自定义列表对保留名禁用激活、副标题标注「专用页布局/不参与主键盘」。
+- 版本 0.8.2-oime（versionCode 8）。
+
+
+## 反馈轮 8（0.8.3-oime vc9）
+
+| # | 反馈 | 处理 |
+|---|------|------|
+| 1 | 键盘背景色与系统底部增高（导航条）没有沉浸 | IME 窗口 navigationBarColor 涂键盘背景色（深浅色感知 0xFFE9EBEE / 0xFF1B1D1F），关闭系统对比度压暗 isNavigationBarContrastEnforced=false；onStartInputView 每次弹键刷新（主题切换生效） |
+| 2 | 工具栏输入时两行增高突兀 | 组合行改单行内联：输入码在前 + 候选横滚同排 + 翻页/更多候选箭头，高度不变（参考 xime CandidateBar） |
+| 3 | 前三候选映射键背景变色 | 映射键保持原键背景/字色，仅键面文本换成候选词 |
+| 4 | switches 开关进○菜单 + 移除页面项 + 子面板同风格 | ①新大项「方案开关」：子级面板内切换方案 + 当前方案 schema.yaml switches 段开关（RimeManager.schemaSwitches 解析 name/states，跳过 options 型；引擎 getOption/setOption 实时切换）②○菜单移除 26键/数字/符号/表情 ③「输入方案」「定制工具栏」改为面板内子级页（MenuSubPanel：← 返回 + 标题 + ↑ 关闭，与一级菜单同区域同风格），不再跳独立界面 |
+| 5 | 九宫格「符」改「符号」 | NumpadPane 右列键标签改为「符号」 |
+| 6 | popup 每行 5 个 + 翻页 + 字号调小 | 长按气泡改纵向 5 个/页网格（16sp），滑动跨页自动翻页，底部 ‹ x/y › 指示器可点击翻页 |
+| 7 | 剪贴板条点任意键消亡 | onKeyAction 入口统一处理：剪贴板条显示时任一按键动作先清 clipText（点条本身上屏除外） |
+| 8 | 长按太容易触发；回车键微信无法发送 | ①对齐 xime.az KeyButton：长按触发前移动超 5dp 取消定时器（longCancelled），180ms 阈值不变 ②handleEnter 重写（对齐 xime.az ImeKeyRouter）：composing 交给 RIME；无编码时 imeOptions 声明 GO/SEARCH/SEND/NEXT/DONE 则 performEditorAction（微信可回车发送），否则 sendDownUpKeyEvents(KEYCODE_ENTER) 换行 |
+| 9 | Z键符号 ` 无法触发反查 | 对齐 xime.az：中文模式单字符（ASCII）DirectCommit 先 RimeManager.processKey(charCode)（recognizer 反查引导符可识别），引擎未消费再直出上屏 |
+
+技术记录：
+- RimeManager 新增 getOption/setOption/schemaSwitches(schemaId)（解析 shared/<id>.schema.yaml switches 段）+ SchemaSwitch data class
+- KeyAction 新增 ToggleSwitch(name)；AZimeService currentEditorInfo 字段
+- 参考源码：xime.az（github AZNixl/Xime.az）KeyButton.kt 长按 5dp 取消 / ImeKeyRouter.kt 回车与反查
+
+
+## 反馈轮 9（0.9.0-oime vc10）
+
+| # | 反馈 | 处理 |
+|---|------|------|
+| 1 | popup 改横向 | 长按气泡改横向网格：一行 5 个，多出的排第二行（去除纵向分页指示器） |
+| 2 | ○菜单子级界面排布 | 方案开关子级（切方案 + schema.yaml switches 开关）、输入方案、定制工具栏全部改为一级菜单同 chrome（← 标题 ↑）+ 同款卡片排布（keyBg 圆角卡） |
+| 3 | 工具栏样式 | 背景色跟随主键盘背景（c.bg）；去除圆角（键盘整体平直，不再顶部 18dp 圆角裁剪）；高度 38→46dp（+1/5）；组合行恢复上下排布（上=输入码小字 12sp，下=候选横滚 + 翻页/更多） |
+| 4 | 九宫格数字排布 | 数字列存改为 1,4,7 / 2,5,8 / 3,6,9（视觉上横向 123/456/789）；第 4 行改 返回/= 0 ./⏎（0 左 = 号、右英文句号，去掉逗号键） |
+| 5 | 长按符号位置 | 气泡向右、向上各移 3dp（offset 0,-58 → 3,-61） |
+| 6 | 空格文本框不能输空格 | 根因：Space 无条件走 RimeManager.processKey(KEY_SPACE)，中文模式无编码时 librime 吞掉空格。修复（对齐 xime.az）：preedit 与候选均空时直接 commitText(" ")；有编码时仍走引擎顶屏 |
+| 7 | 编辑器 numpad 对齐 | KeyboardPages.numpad 数据改为 5 列×4 行（滑键占位列 + 数字 + 功能列，第 4 行含 = 0 .），rev=2→3（旧自定义副本自动清理），编辑器预览与实际 NumpadPane 渲染一致 |
+| 8 | 字号设置 | 键盘键面字号（12-30sp，默认 20）与工具栏/候选字号（12-28sp，默认 18）分开滑杆；键面字号按比例缩放功能键（0.7x） |
+| 9 | 按键外观设置 | 按键圆角（0-20dp，默认 8）/ 行距（1-10dp）/ 列距（1-10dp）三条滑杆；NumpadPane 与滑键同步 |
+| 10 | 悬浮窗 | 新增「悬浮窗」设置大项（默认关）：输入时在键盘上方 Popup 悬浮显示输入码（参考 trime 悬浮窗/悬浮窗显示优化.lua）；默认模式固定样式（16dp,100dp,22sp,92% 透明度），自定义模式 X/Y 位置、字号、背景不透明度四条滑杆 |
+| 11 | 面板底部悬浮栏 | 剪贴板面板与 emoji/符号网格的返回键+选项卡/分类标签移到底部悬浮胶囊栏（参考 PiliPlus）；内容区底部留白 56dp；emoji 分类多时底栏横向滑动 |
+| 12 | 设置界面 | KSU 布局：左侧大状态方块 + 右侧两个小方块（版本/项目）上下排；滑条改 xime 风格 XimeSlider（标题左+值右+滑杆）；enableEdgeToEdge() 状态栏沉浸 |
+| 13 | 主题自定义卡片 | 樱粉后加「自定义」卡片（当前为非预设色时自动选中态），点击才展开 RGB 调整区 |
+| 14 | 字体热加载 | FontManager 增加版本号 rev()（setSelectedFonts/invalidate 自增），纳入 KeyboardManager.sizeSignature()——字体选择变化后回键盘即重建视图加载新字体 |
+| 15 | ○指针灵敏度 | 指针模式拖动步长 18dp→30dp（灵敏度降低约 40%）；光标模式不变 |
+| 16 | 退格滑动删除降敏 | 选择步长 24px→30px（每字需滑更远，降敏 1/5）；进入阈值 10→12px |
+| 17 | 语音输入调研 | 仅报告（见下） |
+
+### 第 17 条调研结论：小企鹅（fcitx5-android）语音输入
+- **原版不内置语音模型**：语音按钮只是「切到系统语音输入法」的快捷键（PR #251，imm.setInputMethod 切 Google 语音输入或 Sayboard 等第三方，输入完切回）。
+- 作者的 SpeechRecognizer 直连方案（PR #899，调系统 android.speech.SpeechRecognizer）至今仍是 WIP 未合并。
+- 三条可选路线：A 切换 IME（~1 天，零权限零模型，体验割裂）；B 系统 SpeechRecognizer（~3-5 天，需 RECORD_AUDIO，依赖设备语音引擎）；C 内置离线模型 sherpa-onnx/Vosk（1-2 周，40-80MB 中文流式模型）。待用户决策。
+
+技术记录：
+- KeyboardManager 新增 fontSizeKey/fontSizeBar/keyCornerDp/rowGapDp/colGapDp/float* 系列 prefs，全部纳入 sizeSignature
+- AZimeService handleSpace 分流逻辑；AZimeService currentEditorInfo 沿用轮 8
+- 版本 0.9.0-oime（versionCode 10）
+
+## 反馈轮 10（0.9.1-oime vc11）：12 条
+
+| # | 需求 | 实现 |
+|---|------|------|
+| 1 | 删⌄收起键 / O键下滑关键盘 / 工具居中 | 工具栏 ⌄ 关闭键删除，○ 菜单键下滑（>40dp 且纵向占优）触发 HideKeyboard；左右工具组在各自剩余空间内居中排列 |
+| 2 | ○菜单去指针模式 / 子级横向 / 悬浮半透明 | 菜单删除「光标/指针模式」项；方案开关子级只留功能开关（去方案选择+当前方案显示）；输入方案、定制工具栏子级改 4 列横向卡片网格；父/子级圆形功能键 funcKeyBg alpha 0.55 半透明悬浮样式；底部悬浮栏 alpha 0.8 |
+| 3 | 打字时工具栏不加高 | composing 分支 heightIn(min=barHeight+10) → 固定 height(barHeight)，preedit 11sp/13sp 行高 + 候选 16sp 压缩塞入，打字全程 46dp 恒定 |
+| 4 | 设置布局/部署/关于子级/BackHandler/未启用灰态 | 右侧两小方块 IntrinsicSize.Min 等高 + weight 均分 + 图标 20→16dp；「项目」→「部署」（CloudUpload 图标）；备份设置移入关于页；SettingsScreen 加 BackHandler(subPage!="main")；StatusCard 检测 Settings.Secure.DEFAULT_INPUT_METHOD，未启用时整体灰色 +「未启用 · 点击去启用」+ 跳转系统启用页 |
+| 5 | 滑条改 xime 样式 | XimeSlider 重写为自绘（pointerInput tap+horizontal drag）：深色圆角轨道(#232527, R5) + 强调色填充段 + 白色竖线 thumb(8x22dp 描边)；不依赖 material3 Slider thumb/track slot API（BOM 2024.02 兼容性风险规避） |
+| 6 | 内置配色切换选中框不实时刷新 | 选中态依赖 km.accentLight() 直接读取不触发重组；改 remember(accentRev){km.accentLight()/accentDark()}，应用配色后 accentRev++ 使预设卡与自定义卡选中态实时刷新 |
+| 7 | 空格键显示文本不识别空格 | 根因：Space 直出条件要求 candidates.isEmpty()，部分方案空编码带常驻候选 → 空格送 librime 被吞。AZimeService KeyAction.Space 条件放宽为仅 preedit.isEmpty() 即直出空格 |
+| 8 | 按键响应时间进设置 | KeyboardManager 新增 longPressMs(默认180)/repeatStartMs(150)/repeatIntervalMs(45)/swipeThresholdDp(30) 四 prefs；KeyboardKey 长按定时/连发/滑动阈值全部接入；键盘页新增「按键响应」卡片 4 滑杆 |
+| 9 | 符号提示相对位置 | 长按气泡 offset 由固定 -61dp 改为 -(键高+15dp)，键高 36-64dp 变化时气泡始终悬浮在按键上方不与字母重叠 |
+| 10 | 悬浮栏同心圆角 | 剪贴板/分类网格底部悬浮栏外层 R22 + 内层选项卡 R9→R18（同心：22-4padding=18，内方外圆） |
+| 11 | 图标 material 化 / O键圆环动画 | toolbarToolItem 的 📋/方案/123/☺/符/⚙ 全部替换 Material 图标（Assignment/List/Dialpad/EmojiEmotions/Category/Settings）；○ 键改为 Canvas 圆环造型：底环 + 按下旋转弧（InfiniteTransition 1.8s 旋转，等价 lottie）+ 拖动时强调色内点跟随手指（限幅圆环半径内，满足「移动距离不超过圆环中心点」） |
+| 12 | 增高行支持九宫格 | NumpadPane 末尾接入 barEnabled + barHeightDp 增高行，主键盘/九宫格切换高度一致 |
+
+技术记录：
+- ToolbarRow ○ 键 pointerInput(Unit)：下滑收起 (dy>40dp && |dy|>|dx|)、拖动移光标 18dp/步、ringKnob Offset 限幅 off*(capR/r)
+- ResponseTimingSettings 四滑杆（100-800/50-500/20-200/10-80），下次键盘弹出生效
+- 遗留：joystickMode/SetJoystickMode 字段保留未删（兼容），MyLocation/Checkbox/heightIn import 未清理
+- 版本 0.9.1-oime（versionCode 11）
+
+## vc11 构建与装机记录
+- commit 608c8e0 首次 CI 失败：KeyboardScreen.kt `size.minDimension` 不存在（IntSize 只有 width/height，minDimension 属于浮点 Size），capR 类型污染连带 `r > capR` compareTo 歧义。修复 `minOf(size.width, size.height)` → commit 0c8a7f3c，run 34109422790 ✅ success。
+- APK 已取回：app-debug.apk 26.9MB（artifact app-debug #10013919428）。
+- 构建完成后首次连接手机失败（adb devices 为空，2026-09-07 18:13），按指示记录后停止，待用户指令再装机验证。
+
+## 反馈轮 11（0.9.2-oime vc12）：6 条
+
+| # | 需求 | 实现 |
+|---|------|------|
+| 1 | 工具图标调大 / 工具栏按 O 键居中 | toolbarToolItem 图标 16→24dp（tint c.text）；ToolbarRow barHeight 46→44dp（O 键 36dp + 上下 4dp），左右工具组在剩余空间居中，与 O 键视觉居中 |
+| 2 | 菜单功能键/标题改悬浮栏；子级横向；方案名 | 主菜单顶行合并悬浮栏（↑ + 「○ 菜单」标题 + ⚙，R22 胶囊 funcKeyBg alpha 0.55）；MenuSubPanel 顶部改居中悬浮栏（← 标题 ↑）；switches 子级改 2 列卡片网格（开 → accentKeyBg + accentActive 状态字，点按整卡切换，去 material3.Switch）；schema 子级 4 列卡片改 RimeManager.schemaDisplayName（读 shared/&lt;id&gt;.schema.yaml 的 name 字段，超长 Ellipsis），不再截 6 字符；工具栏方案快捷菜单同步改方案名；死函数 schemaDisplay() 删除 |
+| 3 | emoji 手势分类 | EmojiData 新增 👍 手势分类 40 个（👍👎👌✌🤞🤟🤘🤙…🫶🫰🫵🫱🫲等） |
+| 4 | 空格不识别（第三轮根因） | 照抄 xime.az ImeKeyRouter "space"：以引擎实时组词状态为准——非组词（getProcessResult().inputText 为空）一律 commitText(" ") 直出，组词走 processKey(KEY_SPACE) 交引擎选首选；不再依赖 UI preedit 残留态。配套 setSpaceLabel 去 .trim()（空格是合法标签字符），显示条件改 isNotEmpty |
+| 5 | 四向/长按符号位置进设置 | KeyboardManager 新增 bubbleXDp(3, 0-24)/bubbleYExtraDp(15, 5-40)（进 sizeSignature）+ swipePreviewAbove(false)；KeyboardKey 长按气泡 offset 接 prefs；swipePreviewAbove=true 时四向预览改键上方 Popup 气泡（13sp barBg R8），false 时键面中央原样显示；设置页键盘组新增「手势提示位置」卡片（2 滑杆 + 1 开关） |
+| 6 | O 圆环加粗明显 + 圆环本体动画 | 底环改虚线圆环 PathEffect.dashPathEffect(6dp/4dp) + Stroke 2.5dp + alpha 0.8；动画改整环 rotate（InfiniteTransition 3600ms 匀速 LinearEasing）——虚线环本体旋转，不再是附加弧线动画；按下 accentActive 高亮，拖动强调色内点跟随手指不变 |
+
+技术记录：
+- KeyboardScreen 净删 schemaDisplay 死函数与 material3.Switch import
+- GesturePositionSettings：长按气泡水平偏移 0-24dp / 垂直余量 5-40dp / 四向预览键上方开关，下次键盘弹出即生效
+- 版本 0.9.2-oime（versionCode 12）
+
+## vc12 构建记录
+- commit 44ebdd82（parent fb1cd17，67 文件），CI run 34117992551 ✅ success。
+- APK 已取回：app-debug.apk 26.9MB（artifact app-debug #10017190209），工作区副本 oime-0.9.2-vc12.apk。
+- 构建完成后手机未连接（adb devices 为空，2026-09-07 19:56），按指示记录后停止，待用户指令再装机验证。
+
+## 反馈轮 12（0.9.3-oime vc13）：4+1 条
+
+| # | 需求 | 实现 |
+|---|------|------|
+| 7 | ○ 菜单加主题亮暗切换键 | KeyAction.ToggleThemeMode：跟随系统时按当前实际状态取反（sysDark→LIGHT，否则 DARK）；themeRev++ 强制 uiState 变化整键盘立即重组换色；sizeSignature 纳入 KeyboardTheme.mode()（下次弹出兜底重建）；主菜单第 6 项（4+2 两行网格），图标/标签显示切换目标（暗色态显示「亮色」+ LightMode） |
+| 8 | 两套键盘图标供选，两处应用 | 四套 SVG 设计稿（A 细线 / B 圆面 / C 双色 / D 粗线）供选，**用户定稿 A · 细线**：①工具栏六图标改自绘 ImageVector（PathParser 解析 24 网格 path，stroke 1.8 圆头，tint 随主题变色）替换 Material 图标；②桌面启动图标同风格重绘——adaptive foreground 改「细线 ○ 环 + 3x3 空心点阵 + 底中横线」（#2C2C2A on #F1EFE8 暖浅灰），legacy PNG（48-192px 五密度，PIL 432px 超采样生成）同步替换 |
+| 9 | 设置主页排版修正 | 大方块「○输入法」titleLarge→17sp + 状态行 bodyMedium→12sp，均 maxLines=1 + Ellipsis（窄方块不换行）；右上版本块「版本」并到 (i) 图标同行（两行结构）；右下块去掉「部署」字样与 CloudUpload，改「项目」卡（Language 图标 + AZNixl/Oime，排版同版本块，点击开 GitHub 保留） |
+| 10 | 构建后记录 / 无连接即停 | 按工作流执行（见下方构建记录） |
+| 11 | 复制内容显示到工具栏，打字不能消亡 | 根因：onKeyAction 对任意按键清除 clipText + updateFromResult 组词时清空。两处移除——复制条仅在「剪贴板面板上屏（CommitClipboard）」或「新复制覆盖」时更新，打字/组词不再消亡 |
+
+技术记录：
+- KeyboardUiState 新增 themeRev（toggle 后强制重组换色；toolbarRev 同款模式）
+- ToolbarOutlineIcons：ImageVector.Builder + PathParser().parsePathString(d).toNodes()，fill/stroke 双模式 parts；工具栏细线图标不可 tint 双色（方案 C 弃选原因之一）
+- 启动图标 legacy PNG：gen_launcher_icons.py（432px 超采样 LANCZOS 缩 5 密度）；空心点参数 r2.4/stroke1.5（r2/stroke2 会内孔填满变实心）
+- 版本 0.9.3-oime（versionCode 13）
+
+## vc13 构建记录
+- commit ee95753f（parent 95395fc9，67 文件），CI run 34121280492 ✅ success，一次通过。
+- APK 已取回：app-debug.apk 27.0MB（artifact app-debug #10018470161），工作区副本 oime-0.9.3-vc13.apk。
+- 构建完成后手机未连接（adb devices 为空，2026-09-07 20:29 两次确认），按指示记录后停止，待用户指令再装机验证。
+
+## 反馈轮 13（0.9.4-oime vc14）：方案组架构重做
+
+| # | 需求 | 实现 |
+|---|------|------|
+| 1 | 排查「方案自己变动成别的方案」根因 | **根因确认**：旧 deployPendingImport 把所有导入方案的 schema_id 全量平铺进 default.custom.yaml（pinyin_simp 恒第一），librime 每次部署完成后激活方案回落 schema_list[0]，用户切过的方案被跳回拼音 |
+| 2 | 方案管理重做：方案组→方案 两级（参考 trime2） | RimeManager 新增方案组区块：SchemaGroup(id/name/builtin/schemaIds)、schemaGroups()（内置组 + Documents/Oime/schema/ 子目录=方案组，组内扫 *.schema.yaml）、currentGroupId/setCurrentGroup/recordGroupSchema（schema_group_prefs）；syncGroup 共用启动/切组——删上一组文件（.imported 清单，与内置资产同名从 assets 恢复）→ 拷入组文件（组覆盖层）→ 重写 default.custom.yaml（schema_list 仅含组内方案，组内上次使用置首）→ 不变化跳过；switchSchemaGroup=setCurrentGroup→syncGroup→全量维护→重建会话；删 deployPendingImport；ensureReady/deployImportedSchemas 接线 |
+| 3 | O 菜单加「方案组」大项 + 设置页同步 | KeyAction.SelectSchemaGroup + Service 处理（statusMessage「正在切换方案组…」）；SelectSchema 成功后 recordGroupSchema（组内记忆）；主菜单第 3 项「方案组」（Apps 图标）+ groups 子级 4 列卡片网格（组名 + 「N 个方案」副文本，当前组 accent 高亮，state.schemas 作刷新 key）；设置页 SchemaList 顶部方案组单选区（RadioButton + 方案数），组内方案列表保留并同样记录；导入文案改「已导入方案组，可在方案组中切换」（不自动切换，对齐 trime2 安装语义）；promptRename 重命名当前组时同步 setCurrentGroup |
+
+技术记录：
+- 修复机制：schema_list 只写当前组 + recordGroupSchema 把组内最后使用的方案置首 → 部署后 librime 回落 schema_list[0] 即回到用户方案，不再跳回
+- 旧版平滑迁移：升级后首次启动 currentGroup=内置组，syncGroup 按旧 .imported 清单删除全部导入文件（同名内置资产从 assets 恢复），源文件仍留在 Documents/Oime/schema/<组名>/ 不丢
+- syncAssets 顺序保持在前（组文件未动时 marker 命中即跳过，不覆盖组定制同名文件）
+- 版本 0.9.4-oime（versionCode 14）
+| 4 | 按键按下没有动画，做按下的动画反馈 | KeyboardKey 统一按下动画：有手势键复用 pressing（awaitEachGesture down/up），无手势键新增 MutableInteractionSource + collectIsPressedAsState；animateFloatAsState（spring NoBouncy StiffnessHigh）驱动 ①背景渐变 lerp(bg, 白/黑 12% compositeOver(bg))——暗色键盘按下变亮、亮色键盘按下变暗（c.barBg.luminance() 判定）②graphicsLayer 缩放 1→0.95（lambda 内 deferred read，不触发重组）；主键盘/符号/九宫格共用 KeyboardKey，一处改动全键盘生效；clickable 分支 indication=null，以自绘渐变替代 ripple |
+
+技术记录（续）：
+- 踩坑①：walkTopDown() 链式结果是 Sequence，无 isNotEmpty()、不能直接传 List 参数——需 .toList()（CI 首败）
+- 踩坑②：compose Spring 常量没有 StiffnessMediumHigh（只有 High/Medium/MediumLow/Low/VeryLow）——按键反馈用 StiffnessHigh（CI 二败）
+- 版本 0.9.4-oime（versionCode 14）
+
+## vc14 构建与装机记录
+- commit c156590（parent 049fa9e，67 文件）首推 CI 失败：RimeManager.kt:287 walkTopDown Sequence 未 toList。
+- commit d6baf1f（按下动画 + 修复）二推 CI 失败：Spring.StiffnessMediumHigh Unresolved。
+- commit f5b402e（StiffnessHigh 修复）run 34128229025 ✅ success。
+- APK 已取回：app-debug.apk 26.4MB（artifact #10021193864），工作区副本 oime-0.9.4-vc14.apk。
+- 手机 b72e0041 在线，Streamed Install Success，dumpsys 确认 versionCode=14 / 0.9.4-oime。
+- 按用户指令：记录上传后停止工作，等待下一步指令。
+
+## 反馈轮 14（0.9.5-oime vc15）：3 条
+
+| # | 需求 | 实现 |
+|---|------|------|
+| 1 | 加载方案组后组内方案未被识别 | **logcat+run-as 现场定位两个根因**：①librime 只在 shared 根目录解析 `<id>.schema.yaml`，聚合组（组内嵌套方案包子目录，如 AZ 组内嵌 rime-frost 完整包、build/ 预编译）保留结构拷贝后嵌套包的 schema 引擎全部找不到 → schema_list 里的 id 无法部署；②syncGroup 的 ids 漏 distinct，schema_list 出现重复条目（设备上 33 条实况确认）。修复：syncGroup 拷贝规则改为 **yaml/txt 一律拍平到 shared 根**（同名后者覆盖），lua/opencc/models/build 等资源保留子目录结构；组内自带 default.custom.yaml 跳过（schema_list 由 Oime 生成）；ids 加 distinct |
+| 2 | O 菜单所有悬浮栏移到底部（对齐剪贴板） | MenuSubPanel 改 Box 布局：滚动内容（底部 Spacer 56dp 避让）+ BottomCenter 悬浮栏（alpha 0.55→0.8 + bottom 8dp，同剪贴板参数）；主菜单顶行「↑ ○ 菜单 ⚙」同样移到底部居中，菜单网格顶部起排 |
+| 3 | O 键白色圆环、不要一直转圈 | 去掉 InfiniteTransition 3600ms 旋转 + 虚线（dashPathEffect），改**静态白色实线圆环**（Color.White，stroke 2.5dp）；按下 accentActive 高亮、拖动内点跟随限幅行为保留；清理 LinearEasing/animateFloat/infiniteRepeatable/rememberInfiniteTransition/tween 五个失效 import |
+
+技术记录：
+- 调试手段：logcat 无应用日志（unchanged 静默路径 + 缓冲被冲）→ `run-as com.oime.input cat files/rime/shared/default.custom.yaml` 直接看部署产物定位（比日志快）
+- librime 资源解析规则：schema/dict/custom yaml 与 txt 词典只查 shared_data_dir 根；lua/opencc/models 子目录资源与 build/（预编译产物）支持子目录
+- ime set 需完整类名：com.oime.input/com.azime.input.ime.AZimeService（applicationId 与 namespace 不同，`.短类名` 展开会失败）
+- 版本 0.9.5-oime（versionCode 15）
+
+## vc15 构建与装机记录
+- commit 4037803（parent 8544d48，67 文件），CI run 34131155961 ✅ success，一次通过。
+- APK 已取回：app-debug.apk 26.4MB（artifact），工作区副本 oime-0.9.5-vc15.apk。
+- 手机 b72e0041 装机 Success，dumpsys 确认 0.9.5-oime。
+- **修复实机验证通过**：切回 AZ 组重新部署后，default.custom.yaml 22 个唯一 id 无重复；shared 根 23 个 .schema.yaml（22 组内 + pinyin_simp 内置）全部拍平到位；build/ 编译产物 41 个（core2022/double_pinyin 全家/easy_english/japanese/rime_frost/tiger 等 prism+table+reverse）——librime 已完整部署组内全部方案。
+- 按工作流：记录上传后停止工作，等待下一步指令。
+
+## 反馈轮 15（0.9.6-oime vc16）：2 条
+
+| # | 需求 | 实现 |
+|---|------|------|
+| 1 | 方案不能正确启用 + 参考同文/trime2 在方案组-方案之间插「方案选择」层；O 菜单加方案管理大项；设置同步 | 现场排查（run-as）：部署产物正常（41 编译产物全），判定痛点=组内 22 个方案全量自动启用（列表混乱+全量部署慢+选中方案被淹没）。**三层架构**：方案组 → 启用集（新增）→ 输入方案切换。RimeManager：group_enabled_&lt;gid&gt; prefs（未设置=全部启用，兼容迁移）、setGroupEnabled（空=恢复全部）、syncGroup schema_list 只写启用集。UI：O 菜单第 4 项「方案管理」（PlaylistAddCheck）+ manage 子级（2 列勾选卡片 + 底部「应用」按钮 → ApplySchemaEnable → setGroupEnabled+重入当前组重部署）；「输入方案」列表（availableSchemas）自动变为启用集；设置页 SchemaList 新增「方案管理（启用集）」区（Checkbox + 应用按钮，同套协程刷新） |
+| 2 | O 圆环缩小 1/5、加粗 1/4、呼吸动画（不刺眼）；O 长按改语音输入（声纹动画覆盖工具栏，点击结束）；系统接口 + 设置大项（本地模型/联网 API 占位） | ①圆环 36→29dp、2.5→3.1dp、InfiniteTransition alpha 0.55↔1.0（1600ms Reverse + FastOutSlowIn）白色呼吸；按下 accentActive、拖动内点保留。②长按 ○ 400ms → ToggleVoiceInput（原定制工具栏入口保留在 ○ 菜单，AzimeKeyboardScreen 死分支清理）；SpeechInputManager（新文件 core/speech）封装 SpeechRecognizer：zh-CN、MAX_RESULTS=1、onRmsChanged 直通回调、onResults 首选上屏、错误映射中文提示、isAvailable 检测（国产 ROM 缺服务时提示）；声纹 VoiceWavePanel 覆盖整条工具栏（28 根圆头条形，钟形包络×相位正弦×RMS 振幅，底部「正在听写…点击结束」，点击 stopListening）；RMS 走独立 mutableStateOf（Service voiceRmsState）不经 uiState 重组链；RECORD_AUDIO 权限：Manifest 声明 + IME 无法弹窗 → 无权限时提示并跳设置页授权；收起键盘/销毁服务时 cancel。③设置新增「语音输入」卡：麦克风权限行（rememberLauncherForActivityResult 申请）+ 识别方式 RadioButton（系统可用 / 本地模型占位 / 联网 API 占位，voice_prefs.mode） |
+
+技术记录：
+- 本轮起 AzimeKeyboardScreen 签名带 voiceRms: State&lt;Float&gt;（Service 传 voiceRmsState）；KeyboardUiState 新增 voiceState（idle|listening）
+- ToolbarRow 签名：onOpenCustomize 参数移除（长按改语音），定制工具栏入口仅存 O 菜单
+- 语音扩展位：SpeechInputManager 单实现，后续本地模型/API 替换 start() 内部即可
+- 版本 0.9.6-oime（versionCode 16）
+
+## vc16 构建与装机记录
+- commit e367900（parent 6fa1803）首推 CI 失败：VoiceWavePanel 插入时原 toolbarToolItem 的 @Composable 注解被夹成孤立重复（"This annotation is not repeatable"），toolbarToolItem 失去注解报 Composable 上下文错误。
+- commit b3cc8eb（注解重排修复）run 34171999643 ✅ success。
+- APK 已取回：app-debug.apk 26.5MB（artifact），工作区副本 oime-0.9.6-vc16.apk。
+- 手机 b72e0041 装机 Success，dumpsys 确认 versionName=0.9.6-oime。
+- 按用户指令：记录上传后停止工作，等待下一步指令。
+
+## 反馈轮 16（0.9.7-oime vc17）：5 条
+
+| # | 需求 | 实现 |
+|---|------|------|
+| 1 | 输入方案页重构：方案组/导入方案/语音输入为父级菜单；选中组后挂「方案管理」子级（第一次启用必须进入）；父级下只显示已选方案；部署提到标题文本后 | TopAppBar title Row：标题旁「部署」文字按钮（schemas 页显示，部署中灰显，移除原独立部署卡）；showManage 子页状态（BackHandler/返回键/标题切「方案管理」）；SchemaList 选中组行后挂「方案管理」入口行（Tune 图标+已启用数+chevron）；「已选方案（点击切换）」只列启用集（enabledIds==null 引导先进方案管理；空集红色提示）；新 SchemaManagePage 全屏子页（Checkbox 列表+全选/清空+Button 应用，setGroupEnabled+switchSchemaGroup）；导入方案/语音输入卡各加父级标题 |
+| 2 | 键盘设计器显示模式切换（横向一排/多行，三个按钮） | GridEditorScreen 加 FilterChip 三模式：0 多行（默认，宽度权重还原）/ 1 横向一排（全部按键拼一行 horizontalScroll，EditorKeyCell 固定 64×52dp）/ 2 紧凑（行高 52→30dp、字号 12sp 纵览）；选择持久化 kb_editor_prefs.display_mode |
+| 3 | 启动界面加语音权限开启 | SettingsActivity onCreate 检查 RECORD_AUDIO 未授权即弹系统权限框（micPermissionLauncher），与语音输入卡手动入口并存 |
+| 4 | O 菜单切方案组失败（修复） | **根因**：startMaintenance 是异步的，切组时旧会话在维护结束前仍存活 → ensureSession() 第 221 行「有会话且有方案」短路直接 return true，会话仍挂在上一组方案上（部署换了、会话没换）。修复 switchSchemaGroup：startMaintenance 后轮询 isMaintaining()（≤180s）等维护真正结束 → ensureSessionNow → **显式 switchSchema(组内首选)**（新增 groupPreferredSchemaId：上次使用∈启用集 → 启用集第一个 → 内置兜底，与 schema_list 置首规则同源） |
+| 5 | 键盘设计器入口加到键盘 | KeyAction.OpenKeyboardEditor（data object）+ O 菜单「键盘编辑」（Icons.Default.Edit，第 9 项）+ AZimeService startActivity(KeyboardEditorActivity, NEW_TASK) |
+
+技术记录：
+- 实机排查（adb b72e0041）：**该 ROM 无任何系统语音识别服务**（cmd package query-services android.speech.RecognitionService = No services found；RECOGNIZE_SPEECH activity 亦无）→ isRecognitionAvailable=false，长按 ○ 的声纹动画从不出现（voiceState 停留 idle），属系统层缺失非代码 bug；本轮起 handleVoiceToggle 无服务时改 Toast 醒目告知（本地模型/联网 API 后续接入）
+- O 键长按/拖动后松手误弹菜单修复：awaitEachGesture 抬起事件在 oLongFired 时 consume()，不再传给后面的 clickable
+- 混输方案（虎单整 tiger_danzheng）现场：schema_1788533984946 组内主码=tiger.extended（custom patch）、副=lua_translator@tiger_danzheng_sentence；当前设备 active 组=AZ，虎单整文件未同步进 shared（属预期，等切组修复后实测）
+- 版本 0.9.7-oime（versionCode 17）

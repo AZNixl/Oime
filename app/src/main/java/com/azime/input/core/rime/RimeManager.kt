@@ -6,9 +6,13 @@ import com.kingzcheung.xime.rime.RimeCandidate
 import com.kingzcheung.xime.rime.RimeEngine
 import com.kingzcheung.xime.rime.RimeProcessResult
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.TreeMap
+
+/** 方案 schema.yaml 的 switches 开关项（name + states 两态文案）。 */
+data class SchemaSwitch(val name: String, val states: List<String>)
 
 /**
  * RIME 引擎封装：负责资产部署（assets/rime -> sharedDataDir）与面向键盘的简化 API。
@@ -43,8 +47,9 @@ object RimeManager {
 
         try {
             val changed = syncAssets(context, sharedDir)
-            deployPendingImport(sharedDir)
-            assetsChanged = changed
+            // 轮13：启动时只加载「当前方案组」（参考 trime2 方案组-方案两级模型）
+            val groupChanged = syncGroup(context, sharedDir, currentGroupId(context))
+            assetsChanged = changed || groupChanged
         } catch (e: Exception) {
             Log.e(TAG, "Failed to sync rime assets", e)
             return@withContext false
@@ -118,6 +123,80 @@ object RimeManager {
 
     fun isMaintaining(): Boolean = RimeEngine.getInstance().isMaintaining()
 
+    // ── 方案 switches 开关（○ 菜单「方案开关」） ──────────────
+
+    fun getOption(name: String): Boolean = RimeEngine.getInstance().getOption(name)
+
+    fun setOption(name: String, value: Boolean) = RimeEngine.getInstance().setOption(name, value)
+
+    /** 解析方案 .schema.yaml 的 switches 段（name + states，跳过 options 型无名条目）。 */
+    fun schemaSwitches(schemaId: String): List<SchemaSwitch> {
+        if (schemaId.isBlank()) return emptyList()
+        val f = File(
+            com.azime.input.AZimeApplication.instance.filesDir,
+            "rime/shared/$schemaId.schema.yaml",
+        )
+        if (!f.exists()) return emptyList()
+        val result = mutableListOf<SchemaSwitch>()
+        var curName: String? = null
+        var curStates = mutableListOf<String>()
+        var inStatesBlock = false
+        var inSwitches = false
+        fun flush() {
+            val n = curName
+            if (n != null) result.add(SchemaSwitch(n, curStates.toList()))
+            curName = null
+            curStates = mutableListOf()
+            inStatesBlock = false
+        }
+        runCatching {
+            f.useLines { raw ->
+                for (rawLine in raw) {
+                    // 剥离行内注释（" #" 之后）：如 "switches: # 0 默认关" / "states: [ 中文, 西文 ]  #中英文"
+                    val noComment = run {
+                        val i = rawLine.indexOf(" #")
+                        if (i >= 0) rawLine.substring(0, i) else rawLine
+                    }
+                    val line = noComment.trimEnd()
+                    val t = line.trim()
+                    if (t.isEmpty() || t.startsWith("#")) continue
+                    if (!inSwitches) {
+                        // 允许 "switches:" 后带行内注释（虎单整即此格式）
+                        if (t.startsWith("switches:")) inSwitches = true
+                        continue
+                    }
+                    // switches 段结束：遇到顶格非注释键
+                    if (!line.startsWith(" ") && !t.startsWith("-")) { flush(); inSwitches = false; continue }
+                    val entry = t.removePrefix("- ")
+                    when {
+                        entry.startsWith("name:") -> {
+                            flush()
+                            curName = entry.removePrefix("name:").trim().trim('\'', '"')
+                        }
+                        entry.startsWith("states:") -> {
+                            val inline = entry.removePrefix("states:").trim()
+                            if (inline.startsWith("[")) {
+                                curStates = inline.trim('[', ']')
+                                    .split(',')
+                                    .map { it.trim().trim('\'', '"') }
+                                    .filter { it.isNotEmpty() }
+                                    .toMutableList()
+                            } else {
+                                inStatesBlock = true
+                            }
+                        }
+                        // options 型（无 name，不可切换）：丢弃
+                        entry.startsWith("options:") || entry.startsWith("abort:") -> flush()
+                        inStatesBlock && t.startsWith("- ") && curName != null ->
+                            curStates.add(entry.trim().trim('\'', '"'))
+                    }
+                }
+            }
+        }
+        flush()
+        return result
+    }
+
     /** 方案显示名：优先读 shared 目录下 schema.yaml 的 name 字段，退回 id。 */
     fun schemaDisplayName(schemaId: String): String {
         if (schemaId.isBlank()) return "○输入法"
@@ -136,12 +215,262 @@ object RimeManager {
         return schemaId
     }
 
-    /** 立即部署导入目录中的方案（导入完成后由设置页调用）。 */
+    // ── 方案组管理（参考 trime2：方案组 → 方案 两级，单次只加载一个组） ──
+
+    /** 内置方案组 id（assets 内置的拼音方案）。 */
+    const val BUILTIN_GROUP_ID = "__builtin__"
+    private const val BUILTIN_SCHEMA_ID = "pinyin_simp"
+    private const val GROUP_PREFS = "schema_group_prefs"
+    private const val KEY_CURRENT_GROUP = "current_group"
+    private const val KEY_GROUP_SCHEMA = "group_schema_"
+    private const val KEY_GROUP_ENABLED = "group_enabled_"
+
+    /** 方案组：一次只能加载一个组；组内可包含多个方案。 */
+    data class SchemaGroup(
+        val id: String,
+        val name: String,
+        val builtin: Boolean,
+        val schemaIds: List<String>,
+    )
+
+    private fun groupPrefs(context: Context) =
+        context.getSharedPreferences(GROUP_PREFS, Context.MODE_PRIVATE)
+
+    /** 当前已加载的方案组 id（默认内置组）。 */
+    fun currentGroupId(context: Context): String =
+        groupPrefs(context).getString(KEY_CURRENT_GROUP, BUILTIN_GROUP_ID) ?: BUILTIN_GROUP_ID
+
+    fun setCurrentGroup(context: Context, groupId: String) {
+        groupPrefs(context).edit().putString(KEY_CURRENT_GROUP, groupId).apply()
+    }
+
+    /** 记录组内上次使用的方案：重写 schema_list 时置首，librime 部署后回落 schema_list[0] 即回到它。 */
+    fun recordGroupSchema(context: Context, schemaId: String) {
+        val gid = currentGroupId(context)
+        groupPrefs(context).edit().putString(KEY_GROUP_SCHEMA + gid, schemaId).apply()
+    }
+
+    private fun groupPreferredSchema(context: Context, groupId: String): String? =
+        groupPrefs(context).getString(KEY_GROUP_SCHEMA + groupId, null)
+
+    // ── 方案选择层（轮15，参考 trime2/同文：组 → 启用集 → 运行时切换） ──
+    // 组内可能含几十个 schema（聚合包全量识别），用户实际只用其中几个；
+    // 启用集决定 schema_list（部署范围）与「输入方案」列表。未设置 = 全部启用（兼容迁移）。
+
+    /** 当前组启用的方案 id 集合；null = 从未选择过（视为全部启用）。 */
+    fun groupEnabledIds(context: Context, groupId: String): Set<String>? {
+        val raw = groupPrefs(context).getString(KEY_GROUP_ENABLED + groupId, null) ?: return null
+        return raw.split(',').map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+    }
+
+    /** 保存启用集（空列表 = 清除选择，恢复全部启用）。调用方负责重新部署。 */
+    fun setGroupEnabled(context: Context, groupId: String, ids: List<String>) {
+        val key = KEY_GROUP_ENABLED + groupId
+        val editor = groupPrefs(context).edit()
+        if (ids.isEmpty()) editor.remove(key) else editor.putString(key, ids.joinToString(","))
+        editor.apply()
+    }
+
+    /** 从 *.schema.yaml 逐行解析 schema_id（读到即返回，避免整读大词典文件）。 */
+    private fun schemaIdOf(f: File): String? {
+        if (!f.name.endsWith(".schema.yaml")) return null
+        return runCatching {
+            f.useLines { lines ->
+                for (line in lines) {
+                    val m = Regex("""^\s*schema_id:\s*(\S+)""").find(line)
+                    if (m != null) return@useLines m.groupValues[1]
+                }
+                null
+            }
+        }.getOrNull()
+    }
+
+    /** 枚举全部方案组：内置组 + 方案目录下每个子目录（目录名即组名，组内扫 *.schema.yaml）。 */
+    fun schemaGroups(context: Context): List<SchemaGroup> {
+        val groups = mutableListOf(
+            SchemaGroup(BUILTIN_GROUP_ID, "内置方案", true, listOf(BUILTIN_SCHEMA_ID)),
+        )
+        val root = try {
+            com.azime.input.core.storage.StorageManager.schemaDir
+        } catch (e: Exception) {
+            null
+        }
+        if (root != null && root.isDirectory) {
+            root.listFiles { f -> f.isDirectory && !f.name.startsWith(".") }
+                ?.sortedBy { it.name.lowercase() }
+                ?.forEach { dir ->
+                    val ids = dir.walkTopDown()
+                        .filter { it.isFile && !it.name.startsWith(".") }
+                        .mapNotNull { schemaIdOf(it) }
+                        .filter { it.isNotBlank() }
+                        .distinct()
+                        .toList()
+                    if (ids.isNotEmpty()) groups.add(SchemaGroup(dir.name, dir.name, false, ids))
+                }
+        }
+        return groups
+    }
+
+    /**
+     * 把指定方案组的文件同步进 sharedDir 并重写 default.custom.yaml（启动/切组共用）。
+     * 1) 删除上一组遗留文件（.imported 清单），与内置资产同名的从 assets 恢复；
+     * 2) 拷入新组全部文件（组文件覆盖同名内置 —— 组是覆盖层）；
+     * 3) schema_list 只写组内方案，组内上次使用的方案置首。
+     * 修复「方案自己变动」：此前 default.custom.yaml 全量平铺所有导入方案，
+     * 每次部署后 librime 回落 schema_list[0]，把用户切过的方案跳回拼音。
+     * 返回是否发生了变化（需要重新部署）。
+     */
+    private fun syncGroup(context: Context, sharedDir: File, groupId: String): Boolean {
+        val groupRoot: File? = if (groupId == BUILTIN_GROUP_ID) null
+        else File(com.azime.input.core.storage.StorageManager.schemaDir, groupId)
+            .takeIf { it.isDirectory }
+
+        // 轮14 修复：librime 只在 shared 根目录解析 <id>.schema.yaml / *.dict.yaml 等配置与词典，
+        // 聚合组（组内嵌套方案包子目录）此前保留结构拷贝导致嵌套包的方案全部无法部署（「方案未识别」）。
+        // 新规则：yaml/txt 一律拍平到 shared 根（同名后者覆盖）；lua/opencc/models/build 等资源保留子目录结构；
+        // 组内自带 default.custom.yaml 跳过（schema_list 由本函数生成，见 defaultText）。
+        val newFiles: List<Pair<String, File>> = groupRoot
+            ?.walkTopDown()
+            ?.filter { it.isFile && !it.name.startsWith(".") && it.name != "default.custom.yaml" }
+            ?.map { src ->
+                val rel = src.relativeTo(groupRoot).invariantSeparatorsPath
+                val flat = src.extension == "yaml" || src.extension == "txt"
+                (if (flat) src.name else rel) to src
+            }
+            ?.toList()
+            ?: emptyList()
+
+        val manifest = TreeMap<String, Long>()
+        newFiles.forEach { (target, f) -> manifest[target] = f.length() }
+        val manifestText = manifest.entries.joinToString("\n") { "${it.key}:${it.value}" }
+        val marker = File(sharedDir, ".imported")
+        val oldManifest = if (marker.exists()) marker.readText() else ""
+
+        val ids = newFiles.mapNotNull { (target, f) ->
+            if (target.endsWith(".schema.yaml")) schemaIdOf(f) else null
+        }.filter { it.isNotBlank() }.distinct()
+        // 轮15：只部署「启用集」内的方案（未选择过 = 全部启用）；schema_list 同源，
+        // O 菜单「输入方案」列表（availableSchemas）即启用集。
+        // 轮16修复：确保当前选中方案一定在 schema_list 内，即使不在启用集（避免无方案可用）
+        val enabledSet = groupEnabledIds(context, groupId)
+        val preferred = groupPreferredSchema(context, groupId)
+        val enabledIds = when {
+            enabledSet == null -> ids  // 从未配置启用集 = 全部启用
+            enabledSet.isEmpty() -> ids  // 空启用集异常 = 回退全部启用
+            preferred != null && preferred in ids && preferred !in enabledSet -> 
+                // 当前方案不在启用集但在组内 → 强制加入（避免切组后无方案）
+                (enabledSet + preferred).filter { it in ids }
+            else -> ids.filter { it in enabledSet }
+        }
+        val preferredInList = preferred?.takeIf { it in enabledIds }
+            ?: enabledIds.firstOrNull() ?: BUILTIN_SCHEMA_ID
+        val ordered = (listOf(preferredInList) + enabledIds.filter { it != preferredInList })
+
+        val groupName = if (groupId == BUILTIN_GROUP_ID) "内置" else groupId
+        val defaultText = buildString {
+            append("# 由 Oime 自动生成：当前方案组 [")
+            append(groupName)
+            appendLine("]")
+            appendLine("patch:")
+            appendLine("  schema_list:")
+            if (ordered.isEmpty()) appendLine("    - schema: $BUILTIN_SCHEMA_ID")
+            ordered.forEach { appendLine("    - schema: $it") }
+        }
+
+        val defaultCustom = File(sharedDir, "default.custom.yaml")
+        val unchanged = marker.exists() && oldManifest == manifestText &&
+            manifest.keys.all { File(sharedDir, it).exists() } &&
+            defaultCustom.exists() && defaultCustom.readText() == defaultText
+        if (unchanged) return false
+
+        // 1) 删除上一组遗留文件；与内置资产同名的从 assets 恢复
+        oldManifest.split('\n')
+            .map { it.substringBeforeLast(':') }
+            .filter { it.isNotBlank() && it !in manifest.keys }
+            .forEach { rel ->
+                val f = File(sharedDir, rel)
+                if (f.exists()) f.delete()
+                runCatching {
+                    context.assets.open("$ASSETS_ROOT/$rel").use { input ->
+                        f.outputStream().use { output -> input.copyTo(output) }
+                    }
+                } // 不在内置资产中会抛 FileNotFoundException，忽略即可
+            }
+        // 2) 拷入新组文件（覆盖同名内置：组定制优先）
+        newFiles.forEach { (rel, src) ->
+            val dst = File(sharedDir, rel)
+            dst.parentFile?.mkdirs()
+            src.copyTo(dst, overwrite = true)
+        }
+        marker.writeText(manifestText)
+        // 3) 重写 default.custom.yaml（schema_list 仅含当前组，preferred 置首）
+        defaultCustom.writeText(defaultText)
+        Log.i(TAG, "Synced schema group [$groupId]: ${newFiles.size} files, schema_list=$ordered")
+        return true
+    }
+
+    /** 切换方案组：记录当前组 → 同步组文件 → 全量维护（回落组内 preferred）→ 重建会话。 */
+    suspend fun switchSchemaGroup(context: Context, groupId: String): Boolean =
+        withContext(Dispatchers.IO) {
+            setCurrentGroup(context, groupId)
+            val sharedDir = File(context.filesDir, "rime/shared")
+            sharedDir.mkdirs()
+            val changed = runCatching { syncGroup(context, sharedDir, groupId) }
+                .onFailure { Log.e(TAG, "switchSchemaGroup failed", it) }
+                .getOrDefault(false)
+            // 切组必须重新部署：部署完成后 librime 回落 schema_list[0]（组内上次使用的方案）
+            if (runCatching { RimeEngine.getInstance().startMaintenance(true) }.getOrDefault(false)) {
+                // 反馈轮16 修复「O 菜单切组失败」：startMaintenance 是异步的，而旧会话在维护
+                // 结束前仍存活 → ensureSession() 被「有会话且有方案」短路直接返回，会话仍挂在
+                // 上一组的方案上。改为：先等维护真正结束，再把会话显式切到新组首选方案。
+                var waited = 0L
+                while (RimeEngine.getInstance().isMaintaining() && waited < 180_000L) {
+                    delay(100)
+                    waited += 100
+                }
+                ensureSessionNow()
+                val preferred = groupPreferredSchemaId(context, groupId)
+                runCatching { switchSchema(preferred) }
+                    .onFailure { Log.e(TAG, "switchSchema($preferred) after group switch failed", it) }
+            }
+            changed
+        }
+
+    /**
+     * 组内首选方案 id：上次使用的（且在启用集内）→ 启用集第一个 → 内置兜底。
+     * 与 syncGroup 生成 schema_list 时的置首规则一致（维护后新会话回落的首选）。
+     * 轮16修复：当前方案不在启用集时也返回（避免无方案可切）。
+     */
+    fun groupPreferredSchemaId(context: Context, groupId: String): String {
+        if (groupId == BUILTIN_GROUP_ID) return BUILTIN_SCHEMA_ID
+        val ids = schemaGroups(context).firstOrNull { it.id == groupId }?.schemaIds ?: emptyList()
+        val enabledSet = groupEnabledIds(context, groupId)
+        val preferred = groupPreferredSchema(context, groupId)
+        val enabledIds = when {
+            enabledSet == null -> ids
+            enabledSet.isEmpty() -> ids
+            preferred != null && preferred in ids && preferred !in enabledSet ->
+                (enabledSet + preferred).filter { it in ids }
+            else -> ids.filter { it in enabledSet }
+        }
+        return preferred?.takeIf { it in enabledIds }
+            ?: enabledIds.firstOrNull()
+            ?: BUILTIN_SCHEMA_ID
+    }
+
+    /** 立即重新部署当前方案组（导入/重命名/部署键由设置页调用）。 */
     suspend fun deployImportedSchemas(context: Context) = withContext(Dispatchers.IO) {
         val sharedDir = File(context.filesDir, "rime/shared")
         sharedDir.mkdirs()
-        runCatching { deployPendingImport(sharedDir) }
+        val changed = runCatching { syncGroup(context, sharedDir, currentGroupId(context)) }
             .onFailure { Log.e(TAG, "deployImportedSchemas failed", it) }
+            .getOrDefault(false)
+        // 部署键必须真正触发引擎重新部署（导入无变化时也要全量维护，
+        // 让 Lua 环境 / opencc / 模型等在本次部署中重新加载）并重建会话
+        if (runCatching { RimeEngine.getInstance().startMaintenance(true) }.getOrDefault(false)) {
+            ensureSessionNow()
+        }
+        changed
     }
 
     // ── 资产同步 ──────────────────────────────────────────────
@@ -186,52 +515,6 @@ object RimeManager {
             }
         }
         return true
-    }
-
-    /**
-     * 把导入目录中新增/变更的 yaml 同步进 sharedDir 并触发重新部署。
-     * 判定依据：sharedDir/.imported marker 记录上次已部署的「文件名:长度」清单。
-     */
-    private fun deployPendingImport(sharedDir: File) {
-        val importRoot = try {
-            com.azime.input.core.storage.StorageManager.schemaDir
-        } catch (e: Exception) {
-            return // Application 未初始化（少见），跳过
-        }
-        if (!importRoot.isDirectory) return
-        val yamls = importRoot.walkTopDown()
-            .filter { it.isFile && (it.extension == "yaml" || it.extension == "txt") }
-            .toList()
-        if (yamls.isEmpty()) return
-
-        val manifest = TreeMap<String, Long>()
-        yamls.forEach { manifest[it.name] = it.length() }
-        val manifestText = manifest.entries.joinToString("\n") { "${it.key}:${it.value}" }
-        val marker = File(sharedDir, ".imported")
-        if (marker.exists() && marker.readText() == manifestText &&
-            manifest.keys.all { File(sharedDir, it).exists() }
-        ) return
-
-        yamls.forEach { src ->
-            val dst = File(sharedDir, src.name)
-            src.copyTo(dst, overwrite = true)
-        }
-        marker.writeText(manifestText)
-        Log.i(TAG, "Deployed ${yamls.size} imported schema files")
-
-        // 把导入方案的 schema_id 追加进 schema_list（librime 只部署清单里的方案）
-        val importedIds = yamls.mapNotNull { f ->
-            val text = try { f.readText() } catch (e: Exception) { return@mapNotNull null }
-            Regex("""schema_id:\s*(\S+)""").find(text)?.groupValues?.get(1)
-        }.filter { it.isNotBlank() }.distinct()
-        if (importedIds.isNotEmpty()) {
-            val sb = StringBuilder()
-            sb.append("# 由 AZime 自动生成：内置拼音 + 已导入方案\n")
-            sb.append("patch:\n  schema_list:\n    - schema: pinyin_simp\n")
-            importedIds.forEach { sb.append("    - schema: $it\n") }
-            File(sharedDir, "default.custom.yaml").writeText(sb.toString())
-        }
-        runCatching { RimeEngine.getInstance().startMaintenance(true) }
     }
 
     /** 递归枚举 assets/rime 下所有文件（assets 的 list() 不递归）。 */

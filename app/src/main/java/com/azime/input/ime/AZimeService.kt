@@ -22,6 +22,8 @@ import com.azime.input.core.rime.RimeManager.KEY_BACKSPACE
 import com.azime.input.core.rime.RimeManager.KEY_RETURN
 import com.azime.input.core.rime.RimeManager.KEY_SPACE
 import com.azime.input.core.rime.toCandidate
+import com.azime.input.core.speech.SpeechInputManager
+import com.azime.input.ui.editor.KeyboardEditorActivity
 import com.azime.input.ui.keyboard.AzimeKeyboardScreen
 import com.azime.input.ui.keyboard.KeyAction
 import com.azime.input.ui.keyboard.KeyboardUiState
@@ -41,6 +43,9 @@ class AZimeService : InputMethodService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val uiState = MutableStateFlow(KeyboardUiState())
 
+    /** 语音输入 RMS（dB）：高频回调独立 State，只供声纹 Canvas 读取，不走 uiState 重组链。 */
+    private val voiceRmsState = androidx.compose.runtime.mutableStateOf(0f)
+
     /** 撤回栈：记录最近上屏的文本（DirectCommit / 候选上屏 / 字母直出）。 */
     private val undoStack = ArrayDeque<String>()
 
@@ -50,6 +55,12 @@ class AZimeService : InputMethodService() {
 
     /** 摇杆「快捷指针」选区锚点（-1 表示未开始）。 */
     private var joystickAnchor = -1
+
+    // ── 剪贴板历史 / 收藏（jqb.lua 风格，持久化 clipboard.json / phrase.json） ──
+    private val clipHistory = mutableListOf<String>()
+    private val phraseItems = mutableListOf<String>()
+    private val clipHistoryFile by lazy { File(filesDir, "clipboard.json") }
+    private val phraseFile by lazy { File(filesDir, "phrase.json") }
 
     /** 键盘尺寸签名：变化时在 onStartInputView 重建视图（高度滑杆热生效）。 */
     private var lastSizeSignature: String = ""
@@ -65,8 +76,19 @@ class AZimeService : InputMethodService() {
     override fun onCreate() {
         super.onCreate()
         lifecycleOwner.onCreate()
+        // 沉浸式圆角：IME 窗口透明，键盘顶部圆角下透出应用内容；
+        // 底部导航条增高区涂键盘背景色（随深浅色主题），实现底部沉浸
+        runCatching {
+            window.window?.let { w ->
+                w.setBackgroundDrawableResource(android.R.color.transparent)
+                w.navigationBarColor = navBarColorInt()
+                w.isNavigationBarContrastEnforced = false
+            }
+        }
         KeyboardManager.initialize(applicationContext)
         LuaScriptManager.loadScript()
+        clipHistory.addAll(loadJsonList(clipHistoryFile))
+        phraseItems.addAll(loadJsonList(phraseFile))
         clipboardManager.addPrimaryClipChangedListener(clipboardListener)
         scope.launch {
             val ok = RimeManager.ensureReady(applicationContext)
@@ -114,7 +136,7 @@ class AZimeService : InputMethodService() {
                     composeView.setContent {
                         MaterialTheme(colorScheme = lightColorScheme()) {
                             val state by uiState.collectAsState()
-                            AzimeKeyboardScreen(state = state, onAction = ::onKeyAction)
+                            AzimeKeyboardScreen(state = state, onAction = ::onKeyAction, voiceRms = voiceRmsState)
                         }
                     }
                 }
@@ -128,6 +150,9 @@ class AZimeService : InputMethodService() {
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
         lifecycleOwner.resume()
+        currentEditorInfo = info
+        // 主题深浅色可能已切换：每次弹键刷新导航条增高区颜色
+        runCatching { window.window?.navigationBarColor = navBarColorInt() }
         selectAnchor = -1
         selectCursor = -1
         joystickAnchor = -1
@@ -143,6 +168,12 @@ class AZimeService : InputMethodService() {
 
     override fun onFinishInputView(finishingInput: Boolean) {
         lifecycleOwner.pause()
+        // 键盘收起时若在听写中，取消识别
+        if (uiState.value.voiceState == "listening") {
+            SpeechInputManager.cancel()
+            voiceRmsState.value = 0f
+            uiState.update { it.copy(voiceState = "idle") }
+        }
         super.onFinishInputView(finishingInput)
     }
 
@@ -154,12 +185,71 @@ class AZimeService : InputMethodService() {
 
     override fun onDestroy() {
         runCatching { clipboardManager.removePrimaryClipChangedListener(clipboardListener) }
+        SpeechInputManager.cancel()
         scope.cancel()
         lifecycleOwner.destroy()
         super.onDestroy()
     }
 
+    // ── 语音输入（轮15：O 键长按触发，系统 SpeechRecognizer 接口） ──
+
+    private fun handleVoiceToggle() {
+        if (uiState.value.voiceState == "listening") {
+            // 点击结束：停止录音，结果在 onResults 回调里上屏
+            SpeechInputManager.stop()
+            return
+        }
+        if (androidx.core.content.ContextCompat.checkSelfPermission(
+                this, android.Manifest.permission.RECORD_AUDIO,
+            ) != android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            // IME 无法弹权限对话框：跳设置页授权（语音输入大项里有申请按钮）
+            uiState.update { it.copy(statusMessage = "语音输入需要麦克风权限，请在设置中开启") }
+            onKeyAction(KeyAction.OpenSettings)
+            return
+        }
+        if (!SpeechInputManager.isAvailable(this)) {
+            // 反馈轮16：本机无系统语音识别服务（实测 ColorOS 该 ROM 无 RecognitionService）——
+            // statusMessage 在工具栏不易察觉，改用 Toast 醒目告知；本地模型/联网 API 后续版本接入
+            android.widget.Toast.makeText(
+                this, "本机无系统语音识别服务，暂无法听写（本地模型后续版本接入）",
+                android.widget.Toast.LENGTH_LONG,
+            ).show()
+            uiState.update { it.copy(statusMessage = "此设备缺少系统语音识别服务") }
+            return
+        }
+        uiState.update { it.copy(voiceState = "listening", statusMessage = "") }
+        SpeechInputManager.start(
+            context = this,
+            onRms = { db -> voiceRmsState.value = db },
+            onResult = { text ->
+                voiceRmsState.value = 0f
+                uiState.update { it.copy(voiceState = "idle") }
+                if (text.isNotBlank()) {
+                    currentInputConnection?.commitText(text, 1)
+                    pushUndo(text)
+                }
+            },
+            onError = { msg ->
+                voiceRmsState.value = 0f
+                uiState.update { it.copy(voiceState = "idle", statusMessage = msg) }
+            },
+        )
+    }
+
     // ── 剪贴板 ───────────────────────────────────────────────
+
+    /** 最近一次从剪贴板条/面板上屏的文本：再次读到同文本时不再显示（xime 式消亡）。 */
+    @Volatile private var lastCommittedClip: String? = null
+
+    /** 导航条增高区颜色 = 键盘背景色（深浅色感知，与 buildKeyboardColors 的 bg 保持一致）。 */
+    private fun navBarColorInt(): Int {
+        val nightMask = resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK
+        val dark = com.azime.input.core.theme.KeyboardTheme.isDark(
+            nightMask == android.content.res.Configuration.UI_MODE_NIGHT_YES,
+        )
+        return if (dark) 0xFF1B1D1F.toInt() else 0xFFE9EBEE.toInt()
+    }
 
     private fun readClipboard() {
         val clip = runCatching { clipboardManager.primaryClip }.getOrNull() ?: return
@@ -176,7 +266,7 @@ class AZimeService : InputMethodService() {
                         target.outputStream().use { output -> input.copyTo(output) }
                     }
                     if (target.length() > 0) {
-                        uiState.update { it.copy(clipText = "🖼 [图片 ${target.length() / 1024}KB]") }
+                        uiState.update { it.copy(clipText = "🖼 [图片 ${target.length() / 1024}KB]", clipAtMs = System.currentTimeMillis()) }
                     }
                 }
             }
@@ -184,25 +274,69 @@ class AZimeService : InputMethodService() {
         }
         val text = item.coerceToText(this)?.toString().orEmpty()
         if (text.isNotBlank()) {
+            // 已上屏过的同一段文本不再弹条（复制新内容才会重新出现）
+            if (text.take(80) == lastCommittedClip) return
             uiState.update { it.copy(clipText = text.take(80), clipAtMs = System.currentTimeMillis()) }
+            recordClip(text)
         }
+    }
+
+    /** 新复制文本入历史：去重后插到最前，上限 100 条（jqb 同款策略）。 */
+    private fun recordClip(text: String) {
+        clipHistory.remove(text)
+        clipHistory.add(0, text)
+        while (clipHistory.size > 100) clipHistory.removeAt(clipHistory.size - 1)
+        saveJsonList(clipHistoryFile, clipHistory)
+        uiState.update { it.copy(clipHistory = clipHistory.toList()) }
+    }
+
+    private fun loadJsonList(file: File): MutableList<String> = runCatching {
+        val arr = org.json.JSONArray(file.readText())
+        (0 until arr.length()).map { arr.optString(it) }.filter { it.isNotEmpty() }.toMutableList()
+    }.getOrDefault(mutableListOf())
+
+    private fun saveJsonList(file: File, list: List<String>) {
+        runCatching { file.writeText(org.json.JSONArray(list).toString()) }
     }
 
     // ── 按键处理 ─────────────────────────────────────────────
 
     private fun onKeyAction(action: KeyAction) {
         scope.launch {
+            // 反馈轮12：打字不再清除工具栏复制条（仅上屏使用 CommitClipboard / 新复制覆盖时才更新）
             when (action) {
                 is KeyAction.CharKey -> handleChar(action.c)
                 is KeyAction.DirectCommit -> {
-                    currentInputConnection?.commitText(action.text, 1)
-                    pushUndo(action.text)
+                    // 中文模式下的单字符先送 Rime（识别反查引导符，如 ` 笔画反查），
+                    // 引擎未消费再直出（对齐 xime.az ImeKeyRouter 的符号键盘处理）
+                    val text = action.text
+                    if (!uiState.value.asciiMode && text.length == 1 && text[0].code < 0x80) {
+                        val result = RimeManager.processKey(text[0].code)
+                        if (result.processed) {
+                            applyResult(result)
+                            return@launch
+                        }
+                    }
+                    currentInputConnection?.commitText(text, 1)
+                    pushUndo(text)
                     uiState.update { it.copy(shiftOn = false) }
                     refreshState()
                 }
                 KeyAction.Shift -> uiState.update { it.copy(shiftOn = !it.shiftOn, capsOn = false) }
                 KeyAction.Backspace -> handleBackspace()
-                KeyAction.Space -> applyResult(RimeManager.processKey(KEY_SPACE))
+                KeyAction.Space -> {
+                    // 抄 xime.az ImeKeyRouter "space"：以引擎实时组词状态（inputText）
+                    // 为准，非组词状态一律直出空格。不依赖 UI state（残留态曾吞空格）：
+                    // 组词中 → 选首选/顶屏；非组词 → commitText(" ")
+                    val composing = RimeManager.getProcessResult().inputText.isNotEmpty()
+                    if (!composing) {
+                        currentInputConnection?.commitText(" ", 1)
+                        pushUndo(" ")
+                        refreshState()
+                    } else {
+                        applyResult(RimeManager.processKey(KEY_SPACE))
+                    }
+                }
                 KeyAction.Enter -> handleEnter()
                 KeyAction.ToggleSymbols -> {
                     val target = if (uiState.value.page == "main") KeyboardManager.preferredPage() else "main"
@@ -220,7 +354,40 @@ class AZimeService : InputMethodService() {
                     applyResult(RimeManager.getProcessResult())
                 }
                 is KeyAction.SelectSchema -> {
-                    RimeManager.switchSchema(action.schemaId)
+                    // 部署进行中 switchSchema 会直接返回 false——给出提示而非静默失败
+                    val ok = runCatching { RimeManager.switchSchema(action.schemaId) }.getOrDefault(false)
+                    if (ok) {
+                        // 轮13：记录组内上次使用的方案（重写 schema_list 时置首 → 部署后回落即回到它）
+                        runCatching { RimeManager.recordGroupSchema(applicationContext, action.schemaId) }
+                        uiState.update { it.copy(statusMessage = "") }
+                        refreshState()
+                    } else {
+                        uiState.update { it.copy(statusMessage = "引擎部署中，请稍后重试") }
+                    }
+                }
+                is KeyAction.SelectSchemaGroup -> {
+                    // 轮13：切换方案组——一次只加载一个组，切换=重装组文件+全量部署
+                    // （部署完成后 librime 回落 schema_list[0] = 组内上次使用的方案）
+                    uiState.update { it.copy(statusMessage = "正在切换方案组…") }
+                    runCatching { RimeManager.switchSchemaGroup(applicationContext, action.groupId) }
+                    uiState.update { it.copy(statusMessage = "") }
+                    refreshState()
+                }
+                is KeyAction.ApplySchemaEnable -> {
+                    // 轮15：应用方案启用集（方案管理）——保存后重入当前组重新部署，
+                    // schema_list 与「输入方案」列表都只含启用的方案
+                    uiState.update { it.copy(statusMessage = "正在应用方案选择…") }
+                    runCatching {
+                        val gid = RimeManager.currentGroupId(applicationContext)
+                        RimeManager.setGroupEnabled(applicationContext, gid, action.schemaIds)
+                        RimeManager.switchSchemaGroup(applicationContext, gid)
+                    }
+                    uiState.update { it.copy(statusMessage = "") }
+                    refreshState()
+                }
+                KeyAction.ToggleVoiceInput -> handleVoiceToggle()
+                is KeyAction.ToggleSwitch -> {
+                    RimeManager.setOption(action.name, !RimeManager.getOption(action.name))
                     refreshState()
                 }
                 KeyAction.PageDown -> {
@@ -261,6 +428,34 @@ class AZimeService : InputMethodService() {
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     startActivity(intent)
                 }
+                KeyAction.OpenKeyboardEditor -> {
+                    // 反馈轮16：O 菜单「键盘编辑」直达布局编辑器
+                    val intent = Intent(this@AZimeService, KeyboardEditorActivity::class.java)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    startActivity(intent)
+                }
+                KeyAction.HideKeyboard -> requestHideSelf(0)
+                KeyAction.Deploy -> {
+                    // 重新部署方案（○ 菜单 / 方案设置页）
+                    uiState.update { it.copy(statusMessage = "正在重新部署方案…") }
+                    runCatching { RimeManager.deployImportedSchemas(applicationContext) }
+                    uiState.update { it.copy(statusMessage = "") }
+                    refreshState()
+                }
+                KeyAction.ToggleThemeMode -> {
+                    // 反馈轮12：O 菜单亮暗切换——跟随系统时按当前实际状态取反，
+                    // themeRev++ 强制 uiState 变化 → 键盘立即重组换色
+                    val sysDark = (resources.configuration.uiMode and
+                        android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+                        android.content.res.Configuration.UI_MODE_NIGHT_YES
+                    val next = if (com.azime.input.core.theme.KeyboardTheme.isDark(sysDark)) {
+                        com.azime.input.core.theme.KeyboardTheme.MODE_LIGHT
+                    } else {
+                        com.azime.input.core.theme.KeyboardTheme.MODE_DARK
+                    }
+                    com.azime.input.core.theme.KeyboardTheme.setMode(next)
+                    uiState.update { it.copy(themeRev = it.themeRev + 1) }
+                }
                 KeyAction.ToggleClipboardPanel ->
                     uiState.update { it.copy(showClipboardPanel = !it.showClipboardPanel) }
                 KeyAction.ToggleMenuPanel ->
@@ -268,6 +463,7 @@ class AZimeService : InputMethodService() {
                 is KeyAction.CommitClipboard -> {
                     currentInputConnection?.commitText(action.text, 1)
                     pushUndo(action.text)
+                    lastCommittedClip = action.text
                     // 上屏后条目消失 + 面板收起，不干扰后续输入
                     uiState.update {
                         it.copy(clipText = "", clipAtMs = 0L, showClipboardPanel = false, showMenuPanel = false)
@@ -276,6 +472,65 @@ class AZimeService : InputMethodService() {
                 is KeyAction.SetToolbarItems -> {
                     KeyboardManager.setToolbarItems(action.ids)
                     uiState.update { it.copy(toolbarRev = it.toolbarRev + 1) }
+                }
+                KeyAction.ToggleCandidatePanel ->
+                    uiState.update { it.copy(showCandidatePanel = !it.showCandidatePanel) }
+                KeyAction.PageUp -> {
+                    RimeManager.processKey(0xFF54) // Prior/PageUp keysym
+                    applyResult(RimeManager.getProcessResult())
+                }
+
+                // ── 剪贴板面板（jqb 风格：历史/收藏 + ︙菜单） ──
+                is KeyAction.SetClipTab -> uiState.update {
+                    it.copy(clipTab = if (action.tab == "phrase") "phrase" else "clipboard")
+                }
+                is KeyAction.CommitClipText -> {
+                    currentInputConnection?.commitText(action.text, 1)
+                    pushUndo(action.text)
+                }
+                is KeyAction.ClipFav -> {
+                    if (!phraseItems.contains(action.text)) phraseItems.add(0, action.text)
+                    saveJsonList(phraseFile, phraseItems)
+                    uiState.update { it.copy(phraseItems = phraseItems.toList()) }
+                }
+                is KeyAction.ClipDelete -> {
+                    if (action.list == "phrase") {
+                        if (action.index in phraseItems.indices) {
+                            phraseItems.removeAt(action.index)
+                            saveJsonList(phraseFile, phraseItems)
+                            uiState.update { it.copy(phraseItems = phraseItems.toList()) }
+                        }
+                    } else {
+                        if (action.index in clipHistory.indices) {
+                            clipHistory.removeAt(action.index)
+                            saveJsonList(clipHistoryFile, clipHistory)
+                            uiState.update { it.copy(clipHistory = clipHistory.toList()) }
+                        }
+                    }
+                }
+                is KeyAction.ClipTop -> {
+                    if (action.list == "phrase" && action.index in phraseItems.indices) {
+                        val item = phraseItems.removeAt(action.index)
+                        phraseItems.add(0, item)
+                        saveJsonList(phraseFile, phraseItems)
+                        uiState.update { it.copy(phraseItems = phraseItems.toList()) }
+                    } else if (action.list != "phrase" && action.index in clipHistory.indices) {
+                        val item = clipHistory.removeAt(action.index)
+                        clipHistory.add(0, item)
+                        saveJsonList(clipHistoryFile, clipHistory)
+                        uiState.update { it.copy(clipHistory = clipHistory.toList()) }
+                    }
+                }
+                is KeyAction.ClipClear -> {
+                    if (action.list == "phrase") {
+                        phraseItems.clear()
+                        saveJsonList(phraseFile, phraseItems)
+                        uiState.update { it.copy(phraseItems = emptyList()) }
+                    } else {
+                        clipHistory.clear()
+                        saveJsonList(clipHistoryFile, clipHistory)
+                        uiState.update { it.copy(clipHistory = emptyList()) }
+                    }
                 }
             }
         }
@@ -462,6 +717,9 @@ class AZimeService : InputMethodService() {
         refreshState()
     }
 
+    /** 当前输入框的 EditorInfo（回车键行为判断用）。 */
+    private var currentEditorInfo: EditorInfo? = null
+
     private suspend fun handleEnter() {
         val result = RimeManager.processKey(KEY_RETURN)
         if (result.processed && result.committedText.isNotEmpty()) {
@@ -469,9 +727,33 @@ class AZimeService : InputMethodService() {
             applyResult(result)
             return
         }
-        // 无编码时回车 = 换行
-        currentInputConnection?.commitText("\n", 1)
-        pushUndo("\n")
+        if (result.processed) {
+            // 引擎消化了回车（如清空编码），只同步状态
+            applyResult(result)
+            return
+        }
+        // 无编码时回车：输入框声明了编辑动作（发送/搜索/完成/前往）则触发动作（对齐 xime.az，
+        // 微信等聊天应用可用回车直接发送）；多行文本框（NO_ENTER_ACTION）或未声明动作时
+        // 发系统回车键（与 xime.az 一致，由应用自行处理换行）。
+        val ic = currentInputConnection
+        val info = currentEditorInfo
+        if (ic != null && info != null) {
+            val action = info.imeOptions and EditorInfo.IME_MASK_ACTION
+            val noEnterAction = (info.imeOptions and EditorInfo.IME_FLAG_NO_ENTER_ACTION) != 0
+            if (action == EditorInfo.IME_ACTION_GO ||
+                action == EditorInfo.IME_ACTION_SEARCH ||
+                action == EditorInfo.IME_ACTION_SEND ||
+                action == EditorInfo.IME_ACTION_NEXT ||
+                action == EditorInfo.IME_ACTION_DONE
+            ) {
+                if (!noEnterAction) {
+                    ic.performEditorAction(action)
+                    refreshState()
+                    return
+                }
+            }
+        }
+        sendDownUpKeyEvents(android.view.KeyEvent.KEYCODE_ENTER)
         refreshState()
     }
 
@@ -492,6 +774,9 @@ class AZimeService : InputMethodService() {
                 asciiMode = result.isAsciiMode,
                 hasNextPage = result.hasNextPage,
                 hasPrevPage = result.hasPrevPage,
+                // 编码清空（候选消失）时自动收起更多候选面板
+                showCandidatePanel = it.showCandidatePanel && result.candidates.isNotEmpty(),
+                // 反馈轮12：组词不再清空工具栏复制条（打字不能消亡复制内容）
             )
         }
     }

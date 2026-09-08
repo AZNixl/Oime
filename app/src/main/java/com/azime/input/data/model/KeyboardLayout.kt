@@ -12,7 +12,9 @@ package com.azime.input.data.model
  */
 data class KeyboardLayout(
     val name: String,
-    val rows: List<KeyboardRow>
+    val rows: List<KeyboardRow>,
+    /** 布局版本：内置布局升级结构后递增；旧版本的自定义同名布局自动失效（防旧 JSON 遮蔽新内置）。 */
+    val rev: Int = 1
 )
 
 data class KeyboardRow(
@@ -24,6 +26,8 @@ data class Key(
     val code: String,
     val width: Float = 1.0f,
     val type: KeyType = KeyType.CHARACTER,
+    /** 高度系数（1.0 = 标准键高），编辑器可调，渲染行高按行内最大值取。 */
+    val height: Float = 1.0f,
     /** 长按动作（同 trime2 long_click）。 */
     val longClick: String? = null,
     val swipeUp: String? = null,

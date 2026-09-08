@@ -6,6 +6,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -22,6 +23,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -155,12 +157,18 @@ private fun LayoutListScreen(
                     modifier = Modifier.padding(top = 8.dp))
             }
             items(builtins, key = { "builtin:$it" }) { name ->
+                // symbols/numpad/emoji 为专用页布局（专用渲染），不可激活为主键盘
+                val assignable = name !in KeyboardManager.ReservedPageNames
                 LayoutCard(
                     name = name,
-                    subtitle = if (active == name) "使用中" else "内置 · 可复制副本编辑",
+                    subtitle = when {
+                        active == name -> "使用中"
+                        !assignable -> "内置 · 专用页布局（✏ 编辑）"
+                        else -> "内置 · 可复制副本编辑"
+                    },
                     active = active == name,
                     custom = false,
-                    onActivate = { activate(name) },
+                    onActivate = { if (assignable) activate(name) },
                     onEdit = { onEdit(name) },
                     onDelete = null,
                 )
@@ -172,12 +180,18 @@ private fun LayoutListScreen(
                         modifier = Modifier.padding(top = 8.dp))
                 }
                 items(customs, key = { "custom:$it" }) { name ->
+                    // 与专用页同名的自定义副本（如 numpad）不可激活为主键盘
+                    val assignable = name !in KeyboardManager.ReservedPageNames
                     LayoutCard(
                         name = name,
-                        subtitle = if (active == name) "使用中" else "自定义",
+                        subtitle = when {
+                            active == name -> "使用中"
+                            !assignable -> "专用页副本 · 不参与主键盘"
+                            else -> "自定义"
+                        },
                         active = active == name,
                         custom = true,
-                        onActivate = { activate(name) },
+                        onActivate = { if (assignable) activate(name) },
                         onEdit = { onEdit(name) },
                         onDelete = { onDelete(name) },
                     )
@@ -236,9 +250,22 @@ private fun LayoutCard(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun GridEditorScreen(initial: KeyboardLayout, onDone: (KeyboardLayout?) -> Unit) {
+    val context = LocalContext.current
     var name by remember { mutableStateOf(initial.name) }
     var rows by remember { mutableStateOf(initial.rows.map { it.keys }) }
     var editing by remember { mutableStateOf<Pair<Int, Int>?>(null) } // row, col
+    // 反馈轮16：显示模式切换（三个按钮）—— 0=多行（默认） 1=横向一排 2=紧凑多行
+    var displayMode by remember {
+        mutableStateOf(
+            context.getSharedPreferences("kb_editor_prefs", android.content.Context.MODE_PRIVATE)
+                .getInt("display_mode", 0)
+        )
+    }
+    fun setDisplayMode(m: Int) {
+        displayMode = m
+        context.getSharedPreferences("kb_editor_prefs", android.content.Context.MODE_PRIVATE)
+            .edit().putInt("display_mode", m).apply()
+    }
 
     Scaffold(
         topBar = {
@@ -272,67 +299,132 @@ private fun GridEditorScreen(initial: KeyboardLayout, onDone: (KeyboardLayout?) 
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
             )
+            // 九宫格专用：滑键符号带自定义（空格分隔；留空 = 内置默认）
+            if (initial.name == "numpad") {
+                var sliderRaw by remember { mutableStateOf(
+                    com.azime.input.core.keyboard.KeyboardManager.sliderSymbolsRaw()
+                ) }
+                OutlinedTextField(
+                    value = sliderRaw,
+                    onValueChange = {
+                        sliderRaw = it
+                        com.azime.input.core.keyboard.KeyboardManager.setSliderSymbols(it)
+                    },
+                    label = { Text("滑键符号（空格分隔）") },
+                    placeholder = { Text("例：！ @ 。 、 ？") },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text(
+                    "左列三行高滑键的符号带；留空 = 内置默认符号。滑动选择-松手上屏。",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             Text(
                 "点击按键编辑属性（长按 / 四向滑动 / 右上角提示）；动作值兼容 trime2 preset_keys。",
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
-            rows.forEachIndexed { r, keys ->
+            // 反馈轮16：显示模式切换（三个按钮，选择持久化到 kb_editor_prefs）
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                listOf(0 to "多行", 1 to "横向一排", 2 to "紧凑").forEach { (m, label) ->
+                    FilterChip(
+                        selected = displayMode == m,
+                        onClick = { setDisplayMode(m) },
+                        label = { Text(label) },
+                    )
+                }
+            }
+            Text(
+                when (displayMode) {
+                    1 -> "横向一排：所有按键拼成一行横向滚动，点按编辑"
+                    2 -> "紧凑：压低行高，一屏纵览更多行"
+                    else -> "多行：按宽度权重还原键盘排布"
+                },
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            if (displayMode == 1) {
+                // 横向一排：全部按键按行序拼成一行，横向滚动查看与编辑
+                val flat = rows.flatMapIndexed { r, keys ->
+                    keys.mapIndexed { c, k -> Triple(r, c, k) }
+                }
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(52.dp),
+                        .horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    keys.forEachIndexed { col, key ->
-                        Box(
-                            modifier = Modifier
-                                .weight(key.width)
-                                .fillMaxSize()
-                                .background(
-                                    MaterialTheme.colorScheme.surfaceVariant,
-                                    RoundedCornerShape(8.dp),
-                                )
-                                .border(
-                                    1.dp,
-                                    MaterialTheme.colorScheme.outlineVariant,
-                                    RoundedCornerShape(8.dp),
-                                )
-                                .clickable { editing = r to col },
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                key.label,
-                                fontSize = 16.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            if (key.longClick != null || key.swipeUp != null) {
+                    flat.forEach { (r, c, key) ->
+                        EditorKeyCell(key = key, compact = false) { editing = r to c }
+                    }
+                }
+            } else {
+                // 多行（默认）/ 紧凑：按行渲染，宽度权重还原排布
+                val baseH = if (displayMode == 2) 30.dp else 52.dp
+                rows.forEachIndexed { r, keys ->
+                    // 行高 = 基准行高 × 行内最大 height 系数
+                    val rowH = baseH * (keys.maxOfOrNull { it.height.coerceIn(0.5f, 2f) } ?: 1f)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(rowH),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        keys.forEachIndexed { col, key ->
+                            Box(
+                                modifier = Modifier
+                                    .weight(key.width)
+                                    .fillMaxSize()
+                                    .background(
+                                        MaterialTheme.colorScheme.surfaceVariant,
+                                        RoundedCornerShape(8.dp),
+                                    )
+                                    .border(
+                                        1.dp,
+                                        MaterialTheme.colorScheme.outlineVariant,
+                                        RoundedCornerShape(8.dp),
+                                    )
+                                    .clickable { editing = r to col },
+                                contentAlignment = Alignment.Center,
+                            ) {
                                 Text(
-                                    "·",
-                                    fontSize = 10.sp,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier
-                                        .align(Alignment.TopEnd)
-                                        .padding(3.dp),
+                                    key.label,
+                                    fontSize = if (displayMode == 2) 12.sp else 16.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
                                 )
+                                if (key.longClick != null || key.swipeUp != null) {
+                                    Text(
+                                        "·",
+                                        fontSize = 10.sp,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier
+                                            .align(Alignment.TopEnd)
+                                            .padding(3.dp),
+                                    )
+                                }
                             }
                         }
-                    }
-                    // 行尾：加键
-                    Box(
-                        modifier = Modifier
-                            .width(36.dp)
-                            .fillMaxSize()
-                            .clickable {
-                                rows = rows.toMutableList().also { list ->
-                                    list[r] = keys + Key("新键", "x")
-                                }
-                            },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text("+", fontSize = 20.sp, color = MaterialTheme.colorScheme.primary)
+                        // 行尾：加键
+                        Box(
+                            modifier = Modifier
+                                .width(36.dp)
+                                .fillMaxSize()
+                                .clickable {
+                                    rows = rows.toMutableList().also { list ->
+                                        list[r] = keys + Key("新键", "x")
+                                    }
+                                },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text("+", fontSize = 20.sp, color = MaterialTheme.colorScheme.primary)
+                        }
                     }
                 }
             }
@@ -372,6 +464,37 @@ private fun GridEditorScreen(initial: KeyboardLayout, onDone: (KeyboardLayout?) 
     }
 }
 
+/** 横向一排显示模式下的单键格子（固定尺寸，横向滚动）。 */
+@Composable
+private fun EditorKeyCell(key: Key, compact: Boolean, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .width(if (compact) 56.dp else 64.dp)
+            .height(if (compact) 40.dp else 52.dp)
+            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp))
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            key.label,
+            fontSize = if (compact) 12.sp else 16.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (key.longClick != null || key.swipeUp != null) {
+            Text(
+                "·",
+                fontSize = 10.sp,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(3.dp),
+            )
+        }
+    }
+}
+
 @Composable
 private fun KeyEditDialog(
     key: Key,
@@ -382,6 +505,7 @@ private fun KeyEditDialog(
     var label by remember { mutableStateOf(key.label) }
     var code by remember { mutableStateOf(key.code) }
     var widthText by remember { mutableStateOf(key.width.toString()) }
+    var heightText by remember { mutableStateOf(key.height.toString()) }
     var longClick by remember { mutableStateOf(key.longClick ?: "") }
     var swipeUp by remember { mutableStateOf(key.swipeUp ?: "") }
     var swipeDown by remember { mutableStateOf(key.swipeDown ?: "") }
@@ -406,11 +530,18 @@ private fun KeyEditDialog(
                         modifier = Modifier.weight(1f),
                     )
                 }
-                OutlinedTextField(
-                    value = widthText, onValueChange = { widthText = it },
-                    label = { Text("宽度（份数，如 1 / 1.5 / 4）") },
-                    singleLine = true, modifier = Modifier.fillMaxWidth(),
-                )
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    OutlinedTextField(
+                        value = widthText, onValueChange = { widthText = it },
+                        label = { Text("宽度（份数）") },
+                        singleLine = true, modifier = Modifier.weight(1f),
+                    )
+                    OutlinedTextField(
+                        value = heightText, onValueChange = { heightText = it },
+                        label = { Text("高度（系数）") },
+                        singleLine = true, modifier = Modifier.weight(1f),
+                    )
+                }
                 OutlinedTextField(
                     value = longClick, onValueChange = { longClick = it },
                     label = { Text("长按动作") }, singleLine = true,
@@ -455,11 +586,13 @@ private fun KeyEditDialog(
         confirmButton = {
             TextButton(onClick = {
                 val width = widthText.toFloatOrNull()?.coerceIn(0.5f, 10f) ?: key.width
+                val height = heightText.toFloatOrNull()?.coerceIn(0.5f, 2f) ?: key.height
                 onSave(
                     key.copy(
                         label = label.ifBlank { key.label },
                         code = code.ifBlank { key.code },
                         width = width,
+                        height = height,
                         type = key.type,
                         longClick = longClick.ifBlank { null },
                         swipeUp = swipeUp.ifBlank { null },
@@ -472,8 +605,13 @@ private fun KeyEditDialog(
             }) { Text("保存") }
         },
         dismissButton = {
-            TextButton(onClick = onDelete) {
-                Text("删除按键", color = MaterialTheme.colorScheme.error)
+            Row {
+                TextButton(onClick = onDelete) {
+                    Text("删除按键", color = MaterialTheme.colorScheme.error)
+                }
+                TextButton(onClick = onDismiss) {
+                    Text("取消")
+                }
             }
         },
     )
