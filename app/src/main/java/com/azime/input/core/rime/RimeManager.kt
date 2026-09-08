@@ -369,9 +369,10 @@ object RimeManager {
         val groupName = if (groupId == BUILTIN_GROUP_ID) "内置" else groupId
 
         val defaultCustom = File(sharedDir, "default.custom.yaml")
+        // 轮17 修复：unchanged 检测不再比较 defaultText（已删除），只检查 manifest 和文件存在性
         val unchanged = marker.exists() && oldManifest == manifestText &&
             manifest.keys.all { File(sharedDir, it).exists() } &&
-            defaultCustom.exists() && defaultCustom.readText() == defaultText
+            defaultCustom.exists()
         if (unchanged) return false
 
         // 1) 删除上一组遗留文件；与内置资产同名的从 assets 恢复
