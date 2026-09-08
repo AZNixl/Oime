@@ -366,21 +366,11 @@ object RimeManager {
             ?: enabledIds.firstOrNull() ?: BUILTIN_SCHEMA_ID
         val ordered = (listOf(preferredInList) + enabledIds.filter { it != preferredInList })
 
-        val groupName = if (groupId == BUILTIN_GROUP_ID) "内置" else groupId
-        val defaultText = buildString {
-            append("# 由 Oime 自动生成：当前方案组 [")
-            append(groupName)
-            appendLine("]")
-            appendLine("patch:")
-            appendLine("  schema_list:")
-            if (ordered.isEmpty()) appendLine("    - schema: $BUILTIN_SCHEMA_ID")
-            ordered.forEach { appendLine("    - schema: $it") }
-        }
-
         val defaultCustom = File(sharedDir, "default.custom.yaml")
+        // 变更检测：manifest 变化 或 文件缺失 或 default.custom.yaml 不存在时重新同步
         val unchanged = marker.exists() && oldManifest == manifestText &&
             manifest.keys.all { File(sharedDir, it).exists() } &&
-            defaultCustom.exists() && defaultCustom.readText() == defaultText
+            defaultCustom.exists()
         if (unchanged) return false
 
         // 1) 删除上一组遗留文件；与内置资产同名的从 assets 恢复
@@ -403,9 +393,11 @@ object RimeManager {
             src.copyTo(dst, overwrite = true)
         }
         marker.writeText(manifestText)
-        // 3) 重写 default.custom.yaml（schema_list 仅含当前组，preferred 置首）
-        defaultCustom.writeText(defaultText)
-        Log.i(TAG, "Synced schema group [$groupId]: ${newFiles.size} files, schema_list=$ordered")
+        // 3) 安全更新 default.custom.yaml：只修改 patch.schema_list，保留用户的其他 patch
+        //    （trime 正确做法：通过 JNI selectRimeSchemas() 设置，不碰 yaml；
+        //     xime RimeEngine 缺该 API，暂时通过 YamlPatcher 实现，避免覆盖用户配置）
+        val schemaListChanged = YamlPatcher.patchSchemaList(defaultCustom, ordered)
+        Log.i(TAG, "Synced schema group [$groupId]: ${newFiles.size} files, schema_list=$ordered, yaml_patched=$schemaListChanged")
         return true
     }
 
