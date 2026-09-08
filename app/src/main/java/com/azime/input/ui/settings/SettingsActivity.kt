@@ -475,7 +475,7 @@ fun SettingsScreen(
                             KsuItem(
                                 icon = Icons.Default.Info,
                                 title = "版本",
-                                subtitle = "0.9.8-oime · 包名 com.oime.input · 平台 RIME",
+                                subtitle = "0.9.9-oime · 包名 com.oime.input · 平台 RIME",
                                 onClick = {},
                                 showChevron = false,
                             )
@@ -565,7 +565,7 @@ fun SettingsScreen(
                                     Spacer(Modifier.width(4.dp))
                                     Text("版本", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
                                 }
-                                Text("0.9.8-oime", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                Text("0.9.9-oime", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                             }
                         }
                         Card(
@@ -781,7 +781,11 @@ private fun SchemaList(onOpenManage: () -> Unit) {
             runCatching { RimeManager.switchSchemaGroup(context.applicationContext, groupId) }
             switchingGroup = false
             groups = RimeManager.schemaGroups(context)
-            schemas = RimeManager.availableSchemas()
+            // 紧急修复轮16.2：切组后读当前组的 schemaIds，而非 librime 缓存的 availableSchemas
+            // （librime 维护未完成时 availableSchemas 返回旧组方案，导致显示错误）
+            schemas = groups.firstOrNull { it.id == groupId }?.schemaIds?.map {
+                RimeManager.SchemaInfo(it, RimeManager.schemaDisplayName(it))
+            }?.toTypedArray() ?: emptyArray()
             current = RimeManager.currentSchema()
         }
     }
@@ -1007,16 +1011,17 @@ private fun SchemaManagePage() {
                 if (applyingManage) return@Button
                 applyingManage = true
                 groupScope.launch {
-                    runCatching {
+                    val success = runCatching {
                         RimeManager.setGroupEnabled(context.applicationContext, currentGroup, enabledSet.toList())
                         RimeManager.switchSchemaGroup(context.applicationContext, currentGroup)
-                    }
+                    }.getOrDefault(false)
                     applyingManage = false
-                    Toast.makeText(
-                        context,
-                        "已应用方案选择（${enabledSet.size} 个）",
-                        Toast.LENGTH_SHORT,
-                    ).show()
+                    val message = if (success) {
+                        "已应用方案选择（${enabledSet.size} 个）并完成部署"
+                    } else {
+                        "方案选择已保存，但部署失败或超时，请手动点击「部署」"
+                    }
+                    Toast.makeText(context, message, Toast.LENGTH_LONG).show()
                 }
             },
             enabled = !applyingManage && manageSchemas.isNotEmpty(),

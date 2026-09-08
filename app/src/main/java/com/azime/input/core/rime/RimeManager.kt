@@ -419,7 +419,8 @@ object RimeManager {
                 .onFailure { Log.e(TAG, "switchSchemaGroup failed", it) }
                 .getOrDefault(false)
             // 切组必须重新部署：部署完成后 librime 回落 schema_list[0]（组内上次使用的方案）
-            if (runCatching { RimeEngine.getInstance().startMaintenance(true) }.getOrDefault(false)) {
+            val maintenanceStarted = runCatching { RimeEngine.getInstance().startMaintenance(true) }.getOrDefault(false)
+            if (maintenanceStarted) {
                 // 反馈轮16 修复「O 菜单切组失败」：startMaintenance 是异步的，而旧会话在维护
                 // 结束前仍存活 → ensureSession() 被「有会话且有方案」短路直接返回，会话仍挂在
                 // 上一组的方案上。改为：先等维护真正结束，再把会话显式切到新组首选方案。
@@ -428,12 +429,21 @@ object RimeManager {
                     delay(100)
                     waited += 100
                 }
+                val timedOut = RimeEngine.getInstance().isMaintaining()
+                if (timedOut) {
+                    Log.e(TAG, "switchSchemaGroup: maintenance timeout after ${waited}ms")
+                } else {
+                    Log.i(TAG, "switchSchemaGroup: maintenance completed in ${waited}ms")
+                }
                 ensureSessionNow()
                 val preferred = groupPreferredSchemaId(context, groupId)
                 runCatching { switchSchema(preferred) }
                     .onFailure { Log.e(TAG, "switchSchema($preferred) after group switch failed", it) }
+                return@withContext !timedOut
+            } else {
+                Log.e(TAG, "switchSchemaGroup: startMaintenance returned false")
+                return@withContext false
             }
-            changed
         }
 
     /**
