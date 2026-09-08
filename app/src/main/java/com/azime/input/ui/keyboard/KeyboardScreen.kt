@@ -854,8 +854,6 @@ private fun ToolbarRow(
     }
 }
 
-/** 工具栏单个工具项（剪贴板/方案/数字/emoji/符号/设置；反馈轮12：细线自绘图标）。 */
-@Composable
 /**
  * 语音输入声纹面板（轮15）：覆盖工具栏区域。
  * RMS 驱动波形振幅（SpeechRecognizer onRmsChanged），叠加时间相位正弦波让波形自然流动；
@@ -915,6 +913,8 @@ private fun VoiceWavePanel(
     }
 }
 
+/** 工具栏单个工具项（剪贴板/方案/数字/emoji/符号/设置；反馈轮12：细线自绘图标）。 */
+@Composable
 private fun RowScope.toolbarToolItem(id: String, state: KeyboardUiState, onAction: (KeyAction) -> Unit, c: KeyboardColors, onSchema: () -> Unit) {
     // 工具 id 来自 availableToolbarTools 白名单，直接取图标
     val icon = toolbarToolIcon(id)
