@@ -211,10 +211,14 @@ class AZimeService : InputMethodService() {
         if (!SpeechInputManager.isAvailable(this)) {
             // 反馈轮16：本机无系统语音识别服务（实测 ColorOS 该 ROM 无 RecognitionService）——
             // statusMessage 在工具栏不易察觉，改用 Toast 醒目告知；本地模型/联网 API 后续版本接入
-            android.widget.Toast.makeText(
-                this, "本机无系统语音识别服务，暂无法听写（本地模型后续版本接入）",
-                android.widget.Toast.LENGTH_LONG,
-            ).show()
+            // 轮18.2 修复：本方法在 IO 协程调用，直接 Toast 会抛
+            // "Can't toast on a thread that has not called Looper.prepare()" 闪退，切主线程。
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                android.widget.Toast.makeText(
+                    this, "本机无系统语音识别服务，暂无法听写（本地模型后续版本接入）",
+                    android.widget.Toast.LENGTH_LONG,
+                ).show()
+            }
             uiState.update { it.copy(statusMessage = "此设备缺少系统语音识别服务") }
             return
         }
@@ -366,9 +370,20 @@ class AZimeService : InputMethodService() {
                     }
                 }
                 is KeyAction.SelectSchemaGroup -> {
-                    // 轮18（trime2 架构）：切换方案组 = 记录组 id + 重启进程
-                    // （librime JNI 无 finalize，user 目录无法在线更换；重启后按新组目录初始化）
-                    runCatching { RimeManager.switchSchemaGroup(applicationContext, action.groupId) }
+                    // 轮18.2（trime2 架构）：在线切组——destroy 引擎 → 新组目录重 init → 部署。
+                    // 不再杀进程（旧实现 apply()+exit(0) 落盘竞态 = 切组失败 + 闪退感）。
+                    uiState.update { it.copy(statusMessage = "正在切换方案组，部署中…") }
+                    RimeManager.switchSchemaGroupOnline(applicationContext, action.groupId) { ok ->
+                        uiState.update {
+                            it.copy(
+                                statusMessage = if (ok) "" else "切换失败，请重试",
+                                ready = ok,
+                                schemaName = if (ok) RimeManager.currentSchema() else it.schemaName,
+                                schemas = if (ok) RimeManager.availableSchemas() else it.schemas,
+                            )
+                        }
+                        if (ok) scope.launch { refreshState() }
+                    }
                 }
                 KeyAction.ToggleVoiceInput -> handleVoiceToggle()
                 is KeyAction.ToggleSwitch -> {

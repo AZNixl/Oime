@@ -617,8 +617,9 @@ private fun ToolbarRow(
             if (state.preedit.isNotEmpty()) {
                 Text(
                     text = state.preedit,
-                    fontSize = 11.sp,
-                    lineHeight = 13.sp,
+                    // 轮18.2：输入码小字随候选字号缩放
+                    fontSize = (KeyboardManager.fontSizeBar() * 0.7f).sp,
+                    lineHeight = (KeyboardManager.fontSizeBar() * 0.82f).sp,
                     color = c.subText,
                     maxLines = 1,
                     modifier = Modifier.padding(start = 2.dp),
@@ -638,12 +639,13 @@ private fun ToolbarRow(
                             .padding(horizontal = 8.dp, vertical = 1.dp),
                     ) {
                         if (index < 9) {
-                            Text("${index + 1} ", fontSize = 10.sp, color = c.subText)
+                            Text("${index + 1} ", fontSize = (KeyboardManager.fontSizeBar() * 0.62f).sp, color = c.subText)
                         }
-                        Text(candidate.text, fontSize = 16.sp, maxLines = 1, color = c.text)
+                        // 轮18.2：候选字号接入设置（fontSizeBar，默认 16）
+                        Text(candidate.text, fontSize = KeyboardManager.fontSizeBar().sp, maxLines = 1, color = c.text)
                         if (candidate.comment.isNotBlank()) {
                             Spacer(Modifier.width(3.dp))
-                            Text(candidate.comment, fontSize = 10.sp, maxLines = 1, color = c.subText)
+                            Text(candidate.comment, fontSize = (KeyboardManager.fontSizeBar() * 0.62f).sp, maxLines = 1, color = c.subText)
                         }
                     }
                 }
@@ -1620,11 +1622,12 @@ private fun CandidatePanel(state: KeyboardUiState, onAction: (KeyAction) -> Unit
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     if (idx < 9) {
-                                        Text("${idx + 1} ", fontSize = 11.sp, color = c.subText)
+                                        Text("${idx + 1} ", fontSize = (KeyboardManager.fontSizeBar() * 0.65f).sp, color = c.subText)
                                     }
                                     Text(
                                         candidate.text,
-                                        fontSize = 18.sp,
+                                        // 轮18.2：更多候选字号 = 工具栏候选字号 + 2（面板空间更大）
+                                        fontSize = (KeyboardManager.fontSizeBar() + 2).sp,
                                         maxLines = 1,
                                         color = c.text,
                                     )

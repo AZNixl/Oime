@@ -5,8 +5,10 @@ import android.util.Log
 import com.kingzcheung.xime.rime.RimeCandidate
 import com.kingzcheung.xime.rime.RimeEngine
 import com.kingzcheung.xime.rime.RimeProcessResult
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.TreeMap
@@ -153,14 +155,33 @@ object RimeManager {
 
     fun setOption(name: String, value: Boolean) = RimeEngine.getInstance().setOption(name, value)
 
+    /**
+     * 查找方案的 .schema.yaml 源文件：
+     * 轮18.2：先查当前组目录（导入组方案在 Documents/Oime/schema/<组>/），
+     * 再回落 shared（内置公共方案）。目录内允许子目录（walkTopDown）。
+     */
+    private fun schemaYamlFile(schemaId: String): File? {
+        if (schemaId.isBlank()) return null
+        val name = "$schemaId.schema.yaml"
+        val app = com.azime.input.AZimeApplication.instance
+        // 1. 当前组目录（含子目录，一次浅层遍历）
+        runCatching {
+            val groupDir = userDirForGroup(app, currentGroupId(app))
+            groupDir.walkTopDown()
+                .maxDepth(3)
+                .filter { it.isFile && it.name == name }
+                .firstOrNull()?.let { return it }
+        }
+        // 2. shared 公共目录（顶层）
+        val shared = File(app.filesDir, "rime/shared/$name")
+        if (shared.isFile) return shared
+        return null
+    }
+
     /** 解析方案 .schema.yaml 的 switches 段（name + states，跳过 options 型无名条目）。 */
     fun schemaSwitches(schemaId: String): List<SchemaSwitch> {
         if (schemaId.isBlank()) return emptyList()
-        val f = File(
-            com.azime.input.AZimeApplication.instance.filesDir,
-            "rime/shared/$schemaId.schema.yaml",
-        )
-        if (!f.exists()) return emptyList()
+        val f = schemaYamlFile(schemaId) ?: return emptyList()
         val result = mutableListOf<SchemaSwitch>()
         var curName: String? = null
         var curStates = mutableListOf<String>()
@@ -221,18 +242,15 @@ object RimeManager {
         return result
     }
 
-    /** 方案显示名：优先读 shared 目录下 schema.yaml 的 name 字段，退回 id。 */
+    /** 方案显示名：优先读 schema.yaml 的 name 字段（轮18.2：组目录优先，回落 shared），退回 id。 */
     fun schemaDisplayName(schemaId: String): String {
         if (schemaId.isBlank()) return "○输入法"
-        val f = File(
-            com.azime.input.AZimeApplication.instance.filesDir,
-            "rime/shared/$schemaId.schema.yaml",
-        )
-        if (f.exists()) runCatching {
+        val f = schemaYamlFile(schemaId)
+        if (f != null) runCatching {
             f.useLines { lines ->
                 for (line in lines) {
                     val m = Regex("""^\s*name:\s*(.+)$""").find(line)
-                    if (m != null) return m.groupValues[1].trim()
+                    if (m != null) return m.groupValues[1].trim().trim('\'', '"')
                 }
             }
         }
@@ -313,20 +331,151 @@ object RimeManager {
     }
 
     /**
-     * 切换方案组（trime2 模式）：记录组 id → 重启进程。
-     * librime JNI 无 finalize 接口，user_data_dir 在 setup 时固定，无法在线切换；
-     * 进程重启后系统自动重建 IME 服务，onCreate 按新组目录初始化引擎。
+     * 切换方案组（trime2 模式）：在线切换，不杀进程。
+     * 轮18.2：旧实现 apply() 异步写 pref + 600ms 后 Runtime.exit(0)——落盘竞态导致
+     * 重启后读回旧组（切组失败），且硬杀进程被用户感知为「闪退」。
+     * 新实现：commit() 同步落盘 → destroy 引擎 → 按新组目录重新 initialize →
+     * 触发部署 → 建会话。全程在 IO 线程，完成后回调主线程刷新 UI。
      */
-    fun switchSchemaGroup(context: Context, groupId: String) {
-        if (groupId == currentGroupId(context)) return
-        setCurrentGroup(context, groupId)
-        Log.i(TAG, "switchSchemaGroup: [$groupId] scheduled, restarting process")
-        Runtime.getRuntime().exit(0)
+    fun switchSchemaGroupOnline(
+        context: Context,
+        groupId: String,
+        onSwitched: (Boolean) -> Unit = {},
+    ) {
+        if (groupId == currentGroupId(context)) {
+            onSwitched(true)
+            return
+        }
+        // commit() 同步写盘，杜绝落盘竞态
+        groupPrefs(context).edit().putString(KEY_CURRENT_GROUP, groupId).commit()
+        Log.i(TAG, "switchSchemaGroupOnline: [$groupId] switching in place")
+        kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
+            val ok = runCatching {
+                // 销毁旧引擎（nativeDestroy 释放 librime 全部会话与词典资源）
+                RimeEngine.getInstance().destroy()
+                sessionReady = false
+                // 按新组目录重新初始化 + 部署 + 建会话
+                val ready = ensureReady(context)
+                ready && ensureSessionAfterMaintenance()
+            }.getOrDefault(false)
+            Log.i(TAG, "switchSchemaGroupOnline: [$groupId] result=$ok")
+            android.os.Handler(android.os.Looper.getMainLooper()).post { onSwitched(ok) }
+        }
     }
 
     /** 组内首选方案：组内最后使用的；无记录时返回 null（librime 回落 schema_list[0]）。 */
     fun groupPreferredSchemaId(context: Context, groupId: String): String? =
         groupPrefs(context).getString(KEY_GROUP_SCHEMA + groupId, null)
+
+    /**
+     * 读取组目录 default.custom.yaml 中 patch/schema_list 已启用的方案 id 列表。
+     * 解析「- schema: xxx」与「- {schema: xxx}」两种写法；无文件/无 schema_list 时返回空。
+     */
+    fun groupEnabledSchemas(context: Context, groupId: String): List<String> {
+        val f = File(userDirForGroup(context, groupId), "default.custom.yaml")
+        if (!f.isFile) return emptyList()
+        val result = mutableListOf<String>()
+        var inList = false
+        runCatching {
+            f.useLines { lines ->
+                for (raw in lines) {
+                    val t = raw.trim()
+                    if (t.startsWith("schema_list:")) { inList = true; continue }
+                    if (inList) {
+                        if (t.startsWith("-")) {
+                            val entry = t.removePrefix("-").trim()
+                            val id = when {
+                                entry.startsWith("schema:") ->
+                                    entry.removePrefix("schema:").trim().trim('\'', '"')
+                                entry.startsWith("{schema:") ->
+                                    entry.removePrefix("{schema:").trim('}', ' ', '\'', '"')
+                                else -> null
+                            }
+                            if (!id.isNullOrBlank()) result.add(id)
+                        } else if (t.isNotEmpty() && !t.startsWith("#")) {
+                            inList = false // 离开 schema_list 块
+                        }
+                    }
+                }
+            }
+        }
+        return result
+    }
+
+    /**
+     * 勾选/取消勾选方案（轮18.2）：重写组目录 default.custom.yaml 的
+     * patch/schema_list 段（保留文件其余 patch 内容），然后在线重部署。
+     * enabledIds 顺序即部署顺序；首项为部署后回落的首选方案。
+     */
+    fun setGroupEnabledSchemas(
+        context: Context,
+        groupId: String,
+        enabledIds: List<String>,
+        onDone: (Boolean) -> Unit = {},
+    ) {
+        val dir = userDirForGroup(context, groupId)
+        val f = File(dir, "default.custom.yaml")
+        CoroutineScope(Dispatchers.IO).launch {
+            val ok = runCatching {
+                if (f.isFile) {
+                    val sb = StringBuilder()
+                    var inList = false
+                    var listWritten = false
+                    f.useLines { lines ->
+                        for (raw in lines) {
+                            val t = raw.trim()
+                            if (t.startsWith("schema_list:")) {
+                                // 用启用集重写 schema_list 块（块式写法，兼容 librime）
+                                if (!listWritten && enabledIds.isNotEmpty()) {
+                                    sb.append("  schema_list:\n")
+                                    enabledIds.forEach { sb.append("    - schema: $it\n") }
+                                    listWritten = true
+                                }
+                                inList = true
+                                continue
+                            }
+                            if (inList) {
+                                if (t.startsWith("-")) continue // 旧列表项丢弃
+                                if (t.isEmpty() || t.startsWith("#")) {
+                                    // 保留 schema_list 尾部的注释/空行（近似处理）
+                                    continue
+                                }
+                                inList = false
+                                // 落到下方通用分支写出该行
+                            }
+                            if (inList) continue
+                            sb.append(raw).append('\n')
+                        }
+                    }
+                    if (!listWritten && enabledIds.isNotEmpty()) {
+                        // 原 patch 无 schema_list：附加到 patch 段末尾（简化：追加到文件尾）
+                        sb.append("  schema_list:\n")
+                        enabledIds.forEach { sb.append("    - schema: $it\n") }
+                    }
+                    f.writeText(sb.toString())
+                } else {
+                    // 无 custom.yaml：新建最小结构
+                    f.writeText(buildString {
+                        append("patch:\n")
+                        append("  schema_list:\n")
+                        enabledIds.forEach { append("    - schema: $it\n") }
+                    })
+                }
+                Log.i(TAG, "setGroupEnabledSchemas: [$groupId] -> $enabledIds")
+                true
+            }.getOrDefault(false)
+            if (ok) {
+                // 在线重部署：destroy → 重新 init → 维护 → 会话
+                RimeEngine.getInstance().destroy()
+                sessionReady = false
+                val ready = runCatching { ensureReady(context) }.getOrDefault(false)
+                val sessionOk = ready && ensureSessionAfterMaintenance()
+                android.os.Handler(android.os.Looper.getMainLooper()).post { onDone(sessionOk) }
+            } else {
+                android.os.Handler(android.os.Looper.getMainLooper()).post { onDone(false) }
+            }
+        }
+    }
 
     /** 立即重新部署当前组（导入/部署键由设置页调用）：触发全量维护并重建会话。 */
     suspend fun deployImportedSchemas(context: Context) = withContext(Dispatchers.IO) {

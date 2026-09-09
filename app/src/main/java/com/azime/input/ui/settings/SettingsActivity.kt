@@ -755,11 +755,11 @@ private fun SchemaList(onOpenManage: () -> Unit) {
 
     fun switchGroup(groupId: String) {
         if (groupId == currentGroup || switchingGroup) return
-        currentGroup = groupId
         switchingGroup = true
-        groupScope.launch {
-            runCatching { RimeManager.switchSchemaGroup(context.applicationContext, groupId) }
+        // 轮18.2：在线切组（destroy → 新组 init → 部署），完成后回主线程刷新
+        RimeManager.switchSchemaGroupOnline(context.applicationContext, groupId) {
             switchingGroup = false
+            currentGroup = RimeManager.currentGroupId(context)
             groups = RimeManager.schemaGroups(context)
             schemas = RimeManager.availableSchemas()
             current = RimeManager.currentSchema()
@@ -898,11 +898,15 @@ private fun SchemaList(onOpenManage: () -> Unit) {
 @Composable
 private fun SchemaManagePage() {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     var groups by remember { mutableStateOf(RimeManager.schemaGroups(context)) }
     var currentGroup by remember { mutableStateOf(RimeManager.currentGroupId(context)) }
     var available by remember { mutableStateOf(RimeManager.availableSchemas()) }
     var current by remember { mutableStateOf(RimeManager.currentSchema()) }
+    // 轮18.2：勾选启用集 = 组目录 default.custom.yaml 的 schema_list
+    var enabledIds by remember(currentGroup) {
+        mutableStateOf(RimeManager.groupEnabledSchemas(context, currentGroup))
+    }
+    var switching by remember { mutableStateOf(false) }
     var refreshed by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
@@ -911,12 +915,39 @@ private fun SchemaManagePage() {
             kotlinx.coroutines.delay(1500) // 给部署留出窗口
             available = RimeManager.availableSchemas()
             current = RimeManager.currentSchema()
+            enabledIds = RimeManager.groupEnabledSchemas(context, currentGroup)
+        }
+    }
+
+    fun switchGroup(groupId: String) {
+        if (groupId == currentGroup || switching) return
+        switching = true
+        RimeManager.switchSchemaGroupOnline(context.applicationContext, groupId) {
+            switching = false
+            currentGroup = RimeManager.currentGroupId(context)
+            groups = RimeManager.schemaGroups(context)
+            available = RimeManager.availableSchemas()
+            current = RimeManager.currentSchema()
+            enabledIds = RimeManager.groupEnabledSchemas(context, currentGroup)
+        }
+    }
+
+    fun applyEnabled(ids: List<String>) {
+        if (ids.isEmpty()) return // 至少保留一个方案
+        switching = true
+        enabledIds = ids
+        RimeManager.setGroupEnabledSchemas(context.applicationContext, currentGroup, ids) { ok ->
+            switching = false
+            if (ok) {
+                available = RimeManager.availableSchemas()
+                current = RimeManager.currentSchema()
+            }
         }
     }
 
     Column(Modifier.fillMaxSize()) {
         Text(
-            "方案组（点击切换，切换后输入法将自动重启）",
+            "方案组（点击切换）",
             style = MaterialTheme.typography.titleSmall,
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
         )
@@ -925,26 +956,11 @@ private fun SchemaManagePage() {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable {
-                        if (!selected) {
-                            currentGroup = g.id
-                            scope.launch {
-                                // trime2 模式切组：记录组 id + 重启进程（重启后指向新组目录）
-                                runCatching { RimeManager.switchSchemaGroup(context.applicationContext, g.id) }
-                            }
-                        }
-                    }
+                    .clickable { switchGroup(g.id) }
                     .padding(horizontal = 20.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                RadioButton(selected = selected, onClick = {
-                    if (!selected) {
-                        currentGroup = g.id
-                        scope.launch {
-                            runCatching { RimeManager.switchSchemaGroup(context.applicationContext, g.id) }
-                        }
-                    }
-                })
+                RadioButton(selected = selected, onClick = { switchGroup(g.id) })
                 Spacer(Modifier.width(8.dp))
                 Text(g.name, style = MaterialTheme.typography.bodyLarge)
                 Spacer(Modifier.weight(1f))
@@ -956,41 +972,72 @@ private fun SchemaManagePage() {
             }
         }
         HorizontalDivider(modifier = Modifier.padding(horizontal = 20.dp), thickness = 0.5.dp)
-        Text(
-            "当前组已识别方案（点击切换）",
-            style = MaterialTheme.typography.titleSmall,
+        Row(
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-        )
-        if (available.isEmpty()) {
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Text(
-                "暂无已识别方案 —— 等待引擎部署完成",
+                "组内方案（勾选启用 · 点选使用）",
+                style = MaterialTheme.typography.titleSmall,
+                modifier = Modifier.weight(1f),
+            )
+            if (switching) {
+                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+            }
+        }
+        val group = groups.firstOrNull { it.id == currentGroup }
+        val allIds = group?.schemaIds ?: emptyList()
+        if (allIds.isEmpty()) {
+            Text(
+                "暂无方案 —— 等待引擎部署完成，或在该组目录中放入 .schema.yaml",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
             )
         } else {
-            available.forEach { id ->
-                val selected = id == current
+            allIds.forEach { id ->
+                val inList = id in enabledIds
+                val inUse = id == current
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable {
-                            current = id
-                            RimeManager.switchSchema(id)
-                            runCatching { RimeManager.recordGroupSchema(context.applicationContext, id) }
+                            if (id in available) {
+                                current = id
+                                RimeManager.switchSchema(id)
+                                runCatching { RimeManager.recordGroupSchema(context.applicationContext, id) }
+                            }
                         }
-                        .padding(horizontal = 20.dp, vertical = 10.dp),
+                        .padding(horizontal = 20.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    RadioButton(selected = selected, onClick = {
-                        current = id
-                        RimeManager.switchSchema(id)
-                        runCatching { RimeManager.recordGroupSchema(context.applicationContext, id) }
-                    })
-                    Spacer(Modifier.width(8.dp))
-                    Text(RimeManager.schemaDisplayName(id), style = MaterialTheme.typography.bodyLarge)
-                    if (selected) {
-                        Spacer(Modifier.weight(1f))
+                    Checkbox(
+                        checked = inList,
+                        onCheckedChange = { on ->
+                            val next = if (on) enabledIds + id else enabledIds - id
+                            if (next.isNotEmpty()) applyEnabled(next)
+                        },
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Column(Modifier.weight(1f)) {
+                        // 轮18.2：显示 schema.yaml 的 name 字段，不再显示文件名
+                        Text(
+                            RimeManager.schemaDisplayName(id),
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                        Text(
+                            id,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    if (inUse) {
+                        Text(
+                            "使用中",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        Spacer(Modifier.width(8.dp))
                         Icon(Icons.Default.Check, contentDescription = null,
                             tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
                     }
