@@ -366,9 +366,12 @@ class AZimeService : InputMethodService() {
                     }
                 }
                 is KeyAction.SelectSchemaGroup -> {
-                    // 轮18（trime2 架构）：切换方案组 = 记录组 id + 重启进程
-                    // （librime JNI 无 finalize，user 目录无法在线更换；重启后按新组目录初始化）
-                    runCatching { RimeManager.switchSchemaGroup(applicationContext, action.groupId) }
+                    val ok = runCatching { RimeManager.switchSchemaGroup(applicationContext, action.groupId) }
+                        .getOrDefault(false)
+                    if (!ok) {
+                        uiState.update { it.copy(statusMessage = "方案组切换失败") }
+                    }
+                    refreshState()
                 }
                 KeyAction.ToggleVoiceInput -> handleVoiceToggle()
                 is KeyAction.ToggleSwitch -> {

@@ -153,6 +153,8 @@ class RimeEngine {
     private val initLock = Any()
     @Volatile
     private var userDataDir: String = ""
+    @Volatile
+    private var sharedDataDir: String = ""
 
     /**
      * 管理路径（初始化/部署/会话创建/方案切换等）：阻塞等待锁。
@@ -191,6 +193,7 @@ class RimeEngine {
                 if (!isInitialized) {
                     try {
                         this.userDataDir = userDataDir
+                        this.sharedDataDir = sharedDataDir
                         notifyDeploymentStatus(true, "正在加载输入法引擎...")
                         nativeInitialize(userDataDir, sharedDataDir)
                         isInitialized = true
@@ -585,6 +588,11 @@ class RimeEngine {
                 isInitialized = false
             }
         }
+    }
+
+    fun restart(userDataDir: String, sharedDataDir: String) {
+        destroy()
+        initialize(userDataDir, sharedDataDir)
     }
 
     // ═══════════════════════════════════════════════════════════

@@ -640,7 +640,7 @@ private fun ToolbarRow(
                         if (index < 9) {
                             Text("${index + 1} ", fontSize = 10.sp, color = c.subText)
                         }
-                        Text(candidate.text, fontSize = 16.sp, maxLines = 1, color = c.text)
+                        Text(candidate.text, fontSize = KeyboardManager.fontSizeBar().sp, maxLines = 1, color = c.text)
                         if (candidate.comment.isNotBlank()) {
                             Spacer(Modifier.width(3.dp))
                             Text(candidate.comment, fontSize = 10.sp, maxLines = 1, color = c.subText)
@@ -683,7 +683,7 @@ private fun ToolbarRow(
         // ── 剪贴板条：复制内容覆盖整条工具栏，点击直接上屏 ──
         clipFresh -> Text(
             text = state.clipText.replace("\n", " "),
-            fontSize = 14.sp,
+            fontSize = KeyboardManager.fontSizeBar().sp,
             color = c.text,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -838,13 +838,13 @@ private fun ToolbarRow(
                     .padding(vertical = 4.dp),
             ) {
                 if (state.schemas.isEmpty()) {
-                    Text("引擎部署中…", fontSize = 14.sp, color = c.subText,
+                    Text("引擎部署中…", fontSize = KeyboardManager.fontSizeBar().sp, color = c.subText,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp))
                 }
                 state.schemas.forEach { schemaId ->
                     Text(
                         text = RimeManager.schemaDisplayName(schemaId),
-                        fontSize = 15.sp,
+                        fontSize = KeyboardManager.fontSizeBar().sp,
                         color = if (schemaId == state.schemaName) c.accentActive else c.text,
                         fontWeight = if (schemaId == state.schemaName) FontWeight.Bold else FontWeight.Normal,
                         modifier = Modifier
@@ -1202,7 +1202,7 @@ private fun MenuPanel(
                 if (state.schemas.isEmpty()) {
                     Text(
                         "引擎部署中…",
-                        fontSize = 14.sp,
+                        fontSize = KeyboardManager.fontSizeBar().sp,
                         color = c.subText,
                         modifier = Modifier.padding(horizontal = 4.dp, vertical = 9.dp),
                     )
@@ -1228,7 +1228,7 @@ private fun MenuPanel(
                                 Text(
                                     // 反馈轮11：读方案 yaml 的 name 字段（方案名），不再只显示文件名
                                     text = RimeManager.schemaDisplayName(schemaId),
-                                    fontSize = 11.sp,
+                                    fontSize = (KeyboardManager.fontSizeBar() * 0.65f).sp,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                     color = if (selected) c.accentActive else c.text,
@@ -1244,7 +1244,10 @@ private fun MenuPanel(
             "switches" -> {
                 // 大项「方案开关」：只保留当前方案的功能开关
                 // （反馈轮10：去掉方案选择列表与当前方案显示，切换方案走「输入方案」）
-                val switches = remember(state.schemaName) { RimeManager.schemaSwitches(state.schemaName) }
+                val app = com.azime.input.AZimeApplication.instance
+                val switches = remember(state.schemaName, RimeManager.currentGroupId(app)) {
+                    RimeManager.schemaSwitches(state.schemaName)
+                }
                 MenuSubPanel(
                     c = c, title = "方案开关", totalHeight = totalHeight,
                     onBack = { subPage = null }, onClose = { close() },

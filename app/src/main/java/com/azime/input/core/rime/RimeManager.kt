@@ -156,10 +156,7 @@ object RimeManager {
     /** 解析方案 .schema.yaml 的 switches 段（name + states，跳过 options 型无名条目）。 */
     fun schemaSwitches(schemaId: String): List<SchemaSwitch> {
         if (schemaId.isBlank()) return emptyList()
-        val f = File(
-            com.azime.input.AZimeApplication.instance.filesDir,
-            "rime/shared/$schemaId.schema.yaml",
-        )
+        val f = schemaFile(schemaId)
         if (!f.exists()) return emptyList()
         val result = mutableListOf<SchemaSwitch>()
         var curName: String? = null
@@ -221,13 +218,18 @@ object RimeManager {
         return result
     }
 
-    /** 方案显示名：优先读 shared 目录下 schema.yaml 的 name 字段，退回 id。 */
+    /** 当前方案组内 schema.yaml；导入方案在组目录，内置方案在 shared 目录。 */
+    private fun schemaFile(schemaId: String): File {
+        val context = com.azime.input.AZimeApplication.instance
+        val userFile = File(userDirForGroup(context, currentGroupId(context)), "$schemaId.schema.yaml")
+        if (userFile.exists()) return userFile
+        return File(context.filesDir, "rime/shared/$schemaId.schema.yaml")
+    }
+
+    /** 方案显示名：优先读当前组 schema.yaml 的 name 字段，退回 id。 */
     fun schemaDisplayName(schemaId: String): String {
         if (schemaId.isBlank()) return "○输入法"
-        val f = File(
-            com.azime.input.AZimeApplication.instance.filesDir,
-            "rime/shared/$schemaId.schema.yaml",
-        )
+        val f = schemaFile(schemaId)
         if (f.exists()) runCatching {
             f.useLines { lines ->
                 for (line in lines) {
@@ -317,11 +319,16 @@ object RimeManager {
      * librime JNI 无 finalize 接口，user_data_dir 在 setup 时固定，无法在线切换；
      * 进程重启后系统自动重建 IME 服务，onCreate 按新组目录初始化引擎。
      */
-    fun switchSchemaGroup(context: Context, groupId: String) {
-        if (groupId == currentGroupId(context)) return
+    suspend fun switchSchemaGroup(context: Context, groupId: String): Boolean = withContext(Dispatchers.IO) {
+        if (groupId == currentGroupId(context)) return@withContext true
         setCurrentGroup(context, groupId)
-        Log.i(TAG, "switchSchemaGroup: [$groupId] scheduled, restarting process")
-        Runtime.getRuntime().exit(0)
+        Log.i(TAG, "switchSchemaGroup: [$groupId] restarting engine")
+        val userDir = userDirForGroup(context, groupId)
+        userDir.mkdirs()
+        RimeEngine.getInstance().restart(userDir.absolutePath, sharedDirOf(context).absolutePath)
+        val kicked = RimeEngine.getInstance().startMaintenance(true)
+        if (kicked) ensureSessionAfterMaintenance()
+        RimeEngine.isInitialized() && RimeEngine.getInstance().getAvailableSchemas().isNotEmpty()
     }
 
     /** 组内首选方案：组内最后使用的；无记录时返回 null（librime 回落 schema_list[0]）。 */
@@ -336,6 +343,19 @@ object RimeManager {
         if (kicked) ensureSessionAfterMaintenance()
         kicked
     }
+
+    /** 将当前组内勾选方案写入组 default.custom.yaml，并触发重新部署。 */
+    suspend fun setEnabledSchemas(context: Context, schemaIds: List<String>): Boolean =
+        withContext(Dispatchers.IO) {
+            if (schemaIds.isEmpty()) return@withContext false
+            val groupDir = userDirForGroup(context, currentGroupId(context))
+            val patched = runCatching {
+                YamlPatcher.patchSchemaList(File(groupDir, "default.custom.yaml"), schemaIds)
+            }.getOrDefault(false)
+            val kicked = RimeEngine.getInstance().startMaintenance(true)
+            if (kicked) ensureSessionAfterMaintenance()
+            patched || kicked
+        }
 
     // ── 资产同步 ──────────────────────────────────────────────
 

@@ -16,6 +16,7 @@ local.properties
 
 # Gradle
 .gradle/
+.gradle-home/
 build/
 
 # Local configuration
@@ -26,3 +27,9 @@ local.properties
 
 # Android Profiling
 *.hprof
+
+# Local debug signing only
+debug.keystore
+
+# Offline build caches
+app/libs/

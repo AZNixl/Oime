@@ -628,3 +628,35 @@ sharedDataDir  = files/rime/shared（固定，assets 同步 default.yaml/opencc/
 
 - https://github.com/nirenr/trime2（及用户 fork 方圆：Documents/rime/schemas 实测结构）
 - https://github.com/rime/weasel
+# 轮19（0.9.13-oime vc23）：修复方案组切换、方案勾选、显示名、开关与候选字号
+
+## 问题与修复
+
+### 1. 设置页切换方案组误认为闪退
+
+- 原实现切换方案组后直接 `Runtime.exit(0)`，用户感知为闪退。
+- 本轮改为引擎级热切换：写入当前组 ID → 销毁并重建 RimeEngine → 以新组目录触发全量部署 → 等待维护完成并重建会话。
+- 设置页切换后立即刷新组、可用方案和当前方案；失败时给出错误状态，不再退出进程。
+
+### 2. 方案管理只能点选，不能勾选
+
+- `SchemaManagePage` 每个方案增加 Checkbox。
+- 新增 `RimeManager.setEnabledSchemas()`：把勾选结果安全写入当前组 `default.custom.yaml` 的 `patch.schema_list`，保留用户其他 patch。
+- 全量部署后返回引擎实际可用方案。
+
+### 3. 导入组方案显示名与开关读取失败
+
+- 原显示名和开关解析固定读取 `files/rime/shared`，导致导入组只显示文件名或开关空白。
+- 新增按当前组优先查找 `<组目录>/<schema>.schema.yaml`，找不到再回落 shared。
+- O 菜单“方案开关”现在按当前方案组解析 `switches`，可显示 `schema.yaml` 中的开关名和状态文案。
+
+### 4. 工具栏/候选字号设置无效
+
+- 候选文本、剪贴板条、部署提示和 O 菜单方案列表改为读取 `KeyboardManager.fontSizeBar()`。
+- `sizeSignature()` 已包含该值，设置变化后键盘视图会重建。
+
+## 构建与签名
+
+- 本地离线构建 `assembleDebug` 成功。
+- 调试签名改为项目内 `debug.keystore`，避免沙盒环境写入 SDK 目录失败。
+- GitHub Actions 会继续生成标准 debug APK；CI 会从远端解析完整依赖。

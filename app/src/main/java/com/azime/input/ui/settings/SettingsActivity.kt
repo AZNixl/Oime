@@ -903,6 +903,7 @@ private fun SchemaManagePage() {
     var currentGroup by remember { mutableStateOf(RimeManager.currentGroupId(context)) }
     var available by remember { mutableStateOf(RimeManager.availableSchemas()) }
     var current by remember { mutableStateOf(RimeManager.currentSchema()) }
+    var selectedSchemas by remember { mutableStateOf(RimeManager.schemaGroups(context).firstOrNull { it.id == currentGroup }?.schemaIds?.toSet() ?: emptySet()) }
     var refreshed by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
@@ -916,7 +917,7 @@ private fun SchemaManagePage() {
 
     Column(Modifier.fillMaxSize()) {
         Text(
-            "方案组（点击切换，切换后输入法将自动重启）",
+            "方案组（点击切换）",
             style = MaterialTheme.typography.titleSmall,
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
         )
@@ -929,8 +930,11 @@ private fun SchemaManagePage() {
                         if (!selected) {
                             currentGroup = g.id
                             scope.launch {
-                                // trime2 模式切组：记录组 id + 重启进程（重启后指向新组目录）
+                                // 切组热重载：重建 Rime 引擎后按新组目录全量部署
                                 runCatching { RimeManager.switchSchemaGroup(context.applicationContext, g.id) }
+                                groups = RimeManager.schemaGroups(context)
+                                available = RimeManager.availableSchemas()
+                                current = RimeManager.currentSchema()
                             }
                         }
                     }
@@ -939,9 +943,11 @@ private fun SchemaManagePage() {
             ) {
                 RadioButton(selected = selected, onClick = {
                     if (!selected) {
-                        currentGroup = g.id
                         scope.launch {
                             runCatching { RimeManager.switchSchemaGroup(context.applicationContext, g.id) }
+                            groups = RimeManager.schemaGroups(context)
+                            available = RimeManager.availableSchemas()
+                            current = RimeManager.currentSchema()
                         }
                     }
                 })
@@ -971,6 +977,7 @@ private fun SchemaManagePage() {
         } else {
             available.forEach { id ->
                 val selected = id == current
+                val enabled = id in selectedSchemas
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -989,8 +996,21 @@ private fun SchemaManagePage() {
                     })
                     Spacer(Modifier.width(8.dp))
                     Text(RimeManager.schemaDisplayName(id), style = MaterialTheme.typography.bodyLarge)
+                    Spacer(Modifier.weight(1f))
+                    Checkbox(
+                        checked = enabled,
+                        onCheckedChange = { checked ->
+                            val next = if (checked) selectedSchemas + id else selectedSchemas - id
+                            selectedSchemas = next
+                            scope.launch {
+                                val ok = runCatching {
+                                    RimeManager.setEnabledSchemas(context.applicationContext, next.toList())
+                                }.getOrDefault(false)
+                                if (ok) available = RimeManager.availableSchemas()
+                            }
+                        },
+                    )
                     if (selected) {
-                        Spacer(Modifier.weight(1f))
                         Icon(Icons.Default.Check, contentDescription = null,
                             tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
                     }
