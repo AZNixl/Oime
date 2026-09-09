@@ -890,7 +890,6 @@ private fun SchemaList(onOpenManage: () -> Unit) {
  * 勾选当前组内实际使用的方案（启用集），应用后 schema_list（部署范围）与
  * 「已选方案」列表都只含启用方案。原平铺在输入方案页的方案管理区整体迁入此处。
  */
-@Composable
 /**
  * 方案管理页（轮18 trime2 架构）：方案组切换 + 当前组方案列表。
  * 组目录即 librime user 数据目录，组自带 default.custom.yaml 由 librime 自动 patch，
