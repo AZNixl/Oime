@@ -1162,7 +1162,7 @@ private fun MenuPanel(
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                         ) {
                             rowIds.forEach { id ->
-                                val on = id == state.schema
+                                val on = id == state.schemaName
                                 Column(
                                     modifier = Modifier
                                         .weight(1f)
