@@ -130,10 +130,8 @@ sealed interface KeyAction {
     data class Candidate(val index: Int) : KeyAction
     data object PageDown : KeyAction
     data class SelectSchema(val schemaId: String) : KeyAction
-    /** ○ 菜单「方案组」（轮13）：切换方案组（一次只加载一个组，切换=重装组文件+全量部署）。 */
+    /** ○ 菜单「方案组」（轮18 trime2 架构）：切换方案组（记录组 id + 重启进程）。 */
     data class SelectSchemaGroup(val groupId: String) : KeyAction
-    /** ○ 菜单「方案管理」（轮15）：应用当前组的启用方案集（重部署，schema_list=启用集）。 */
-    data class ApplySchemaEnable(val schemaIds: List<String>) : KeyAction
     /** ○ 键长按语音输入（轮15）：空闲→开始识别；识别中→停止并上屏结果。 */
     data object ToggleVoiceInput : KeyAction
     /** ○ 菜单「方案开关」：切换当前方案 schema.yaml 的 switches 开关。 */
@@ -1142,25 +1140,19 @@ private fun MenuPanel(
                 }
             }
             "manage" -> {
-                // 反馈轮15：方案管理 —— 组 → 启用集 → 切换 三层（参考 trime2/同文）。
-                // 组内 N 个 schema 全量识别，用户实际只用其中几个：勾选启用集，
-                // 应用后 schema_list（部署范围）与「输入方案」列表都只含启用方案。
+                // 轮18（trime2 架构）：方案管理 = 当前组方案列表（只读），点击直接切换方案。
+                // 组目录自带 default.custom.yaml 由 librime 自动 patch，App 不碰 yaml、无启用集概念。
                 val app = com.azime.input.AZimeApplication.instance
                 val gid = remember(state.schemas) { RimeManager.currentGroupId(app) }
                 val allSchemas = remember(state.schemas) {
                     RimeManager.schemaGroups(app).firstOrNull { it.id == gid }?.schemaIds ?: emptyList()
-                }
-                val savedSet = remember(state.schemas) { RimeManager.groupEnabledIds(app, gid) }
-                val selected = remember(state.schemas) {
-                    mutableStateListOf<String>().apply { addAll(savedSet ?: allSchemas) }
                 }
                 MenuSubPanel(
                     c = c, title = "方案管理", totalHeight = totalHeight,
                     onBack = { subPage = null }, onClose = { close() },
                 ) {
                     Text(
-                        "组「${gid}」共 ${allSchemas.size} 个方案，勾选实际使用的启用；" +
-                            "全部不选 = 全部启用。应用后重新部署。",
+                        "组「$gid」共 ${allSchemas.size} 个方案，点击切换当前方案",
                         fontSize = 12.sp, color = c.subText,
                         modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
                     )
@@ -1170,13 +1162,14 @@ private fun MenuPanel(
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                         ) {
                             rowIds.forEach { id ->
-                                val on = id in selected
+                                val on = id == state.schema
                                 Column(
                                     modifier = Modifier
                                         .weight(1f)
                                         .background(if (on) c.accentKeyBg else c.keyBg, RoundedCornerShape(12.dp))
                                         .clickable {
-                                            if (on) selected.remove(id) else selected.add(id)
+                                            onAction(KeyAction.SelectSchema(id))
+                                            subPage = null
                                         }
                                         .padding(vertical = 10.dp),
                                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -1190,7 +1183,7 @@ private fun MenuPanel(
                                         fontWeight = if (on) FontWeight.Bold else FontWeight.Normal,
                                     )
                                     Text(
-                                        if (on) "已启用" else "未启用",
+                                        if (on) "当前" else "点击切换",
                                         fontSize = 9.sp,
                                         color = c.subText,
                                     )
@@ -1199,25 +1192,6 @@ private fun MenuPanel(
                             repeat(2 - rowIds.size) { Spacer(Modifier.weight(1f)) }
                         }
                         Spacer(Modifier.height(10.dp))
-                    }
-                    // 应用按钮：保存启用集并重新部署
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(c.accentKeyBg, RoundedCornerShape(12.dp))
-                            .clickable {
-                                onAction(KeyAction.ApplySchemaEnable(selected.toList()))
-                                subPage = null
-                            }
-                            .padding(vertical = 12.dp),
-                        horizontalArrangement = Arrangement.Center,
-                    ) {
-                        Text(
-                            "应用（${selected.size} 个方案）",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = c.accentActive,
-                        )
                     }
                 }
             }

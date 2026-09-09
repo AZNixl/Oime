@@ -567,3 +567,64 @@ trime 正确做法是用 JNI selectRimeSchemas() 设置启用方案，完全不�
 
 - https://github.com/nirenr/trime2
 - https://github.com/osfans/trime
+
+
+---
+
+# 轮18（0.9.12-oime vc22）：彻底转向 trime2 架构 —— 组目录即 librime 数据目录，零拷贝
+
+## 用户最终决策
+
+用户实机对比（weasel PC / trime2 手机均正常，Oime 打不出字）后拍板：
+**清除全部 xime 系方案管理代码，改用 trime2 的方案管理方法。**
+
+## 设备实测发现（trime2 fork 真实架构）
+
+检查手机上 `Documents/rime/schemas/<组>/`（方圆 fork 的方案组目录）：
+- 每个组目录 = **一个完整独立的 rime 环境**（自带 default.custom.yaml、build/、opencc/、lua/、models/、installation.yaml、user.yaml、userdb）
+- 组目录里有 build/、installation.yaml、user.yaml —— 这些是 **librime user 数据目录的特征文件**
+- 结论：**trime2 fork 把组目录直接作为 librime 的 user_data_dir**（方案/dict/lua 从 user 目录优先加载，build 产物生成在组目录 build/ 下）
+- shared 目录只放公共资源（default.yaml/opencc），组目录缺资源时 librime 多目录回落
+
+## Oime 新架构（零拷贝）
+
+```
+userDataDir    = Documents/Oime/schema/<当前组>/   （内置组 → files/rime/user）
+sharedDataDir  = files/rime/shared（固定，assets 同步 default.yaml/opencc/内置方案）
+```
+
+- **不再拷贝组文件**：组目录原样使用，用户可用文件管理器直接编辑（所见即所得，同 trime2）
+- **App 完全不碰 default.custom.yaml**：组自带的 custom.yaml 由 librime 部署时自动 patch（标准行为）
+- **删除「启用集」概念**：方案列表 = librime 部署成功的方案（availableSchemas），与 trime2 一致
+- **切组 = 记录组 id + 进程重启**：librime JNI 无 finalize 接口，user_data_dir 在 setup 时固定无法在线更换；Runtime.exit(0) 后系统自动重建 IME 服务，onCreate 按新组目录初始化
+
+## 清除的 xime 系代码
+
+| 删除项 | 位置 |
+|--------|------|
+| syncGroup（拍平拷贝+YamlPatcher 重写 yaml） | RimeManager |
+| YamlPatcher 工具类（整个文件） | core/rime/YamlPatcher.kt |
+| groupEnabledIds / setGroupEnabled（启用集） | RimeManager + UI |
+| ApplySchemaEnable KeyAction 及处理 | KeyboardScreen + AZimeService |
+| importFromFolder（SAF 文件夹导入） | SchemaImporter |
+| syncGroup unchanged 检测（.imported manifest） | RimeManager |
+
+## 新/改实现
+
+- `userDirForGroup(groupId)`：内置组 → files/rime/user；导入组 → Documents/Oime/schema/<组>/
+- `switchSchemaGroup`：setCurrentGroup + Runtime.exit(0)（进程重启）
+- `schemaGroups`：枚举组目录，schema_id = 文件名去 .schema.yaml 后缀
+- `deployImportedSchemas`：简化为 startMaintenance(true) + 等待完成
+- SchemaList / SchemaManagePage：组切换 + availableSchemas 方案列表（无勾选）
+- KeyboardScreen manage 分支：当前组方案列表，点击直接切换
+
+## 混输方案问题的架构级解释
+
+此前混输方案（tiger_danzheng/tiger_sentence）识别不出来：syncGroup 拍平拷贝时
+组的 lua/、models/、rime.lua 未同步进 shared/（仅拷 yaml/txt 拍平 + 部分资源目录），
+方案编译因缺 lua 组件而失败。trime2 模式下组目录原样加载，依赖天然齐全。
+
+## 参考
+
+- https://github.com/nirenr/trime2（及用户 fork 方圆：Documents/rime/schemas 实测结构）
+- https://github.com/rime/weasel

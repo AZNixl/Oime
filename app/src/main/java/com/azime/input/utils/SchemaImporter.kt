@@ -51,38 +51,4 @@ class SchemaImporter {
         require(count > 0) { "压缩包中没有找到 .yaml 方案文件" }
         schemaName
     }
-
-    /** 从 SAF 目录树导入：把目录下（含子目录）的 yaml/txt 拍平复制到 schema/<名>/。 */
-    fun importFromFolder(context: Context, uri: Uri): Result<String> = runCatching {
-        val tree = DocumentFile.fromTreeUri(context, uri)
-            ?: error("无法访问所选文件夹")
-        val name = queryTreeName(context, uri) ?: "folder_${System.currentTimeMillis()}"
-        val targetDir = File(StorageManager.schemaDir, name)
-        targetDir.mkdirs()
-
-        var count = 0
-        fun copyRecursive(dir: DocumentFile) {
-            for (child in dir.listFiles()) {
-                if (child.isDirectory) {
-                    copyRecursive(child)
-                } else {
-                    val fn = child.name ?: continue
-                    if (fn.substringAfterLast('.', "").lowercase() !in setOf("yaml", "yml", "txt")) continue
-                    val out = File(targetDir, fn)
-                    context.contentResolver.openInputStream(child.uri)?.use { input ->
-                        out.outputStream().use { output -> input.copyTo(output) }
-                    }
-                    count++
-                }
-            }
-        }
-        copyRecursive(tree)
-        require(count > 0) { "文件夹中没有找到 .yaml 方案文件" }
-        name
-    }
-
-    private fun queryTreeName(context: Context, uri: Uri): String? = runCatching {
-        val docId = DocumentsContract.getTreeDocumentId(uri)
-        docId.substringAfter(':').ifBlank { null }
-    }.getOrNull()
 }

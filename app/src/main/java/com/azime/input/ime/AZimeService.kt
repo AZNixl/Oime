@@ -366,24 +366,9 @@ class AZimeService : InputMethodService() {
                     }
                 }
                 is KeyAction.SelectSchemaGroup -> {
-                    // 轮13：切换方案组——一次只加载一个组，切换=重装组文件+全量部署
-                    // （部署完成后 librime 回落 schema_list[0] = 组内上次使用的方案）
-                    uiState.update { it.copy(statusMessage = "正在切换方案组…") }
+                    // 轮18（trime2 架构）：切换方案组 = 记录组 id + 重启进程
+                    // （librime JNI 无 finalize，user 目录无法在线更换；重启后按新组目录初始化）
                     runCatching { RimeManager.switchSchemaGroup(applicationContext, action.groupId) }
-                    uiState.update { it.copy(statusMessage = "") }
-                    refreshState()
-                }
-                is KeyAction.ApplySchemaEnable -> {
-                    // 轮15：应用方案启用集（方案管理）——保存后重入当前组重新部署，
-                    // schema_list 与「输入方案」列表都只含启用的方案
-                    uiState.update { it.copy(statusMessage = "正在应用方案选择…") }
-                    runCatching {
-                        val gid = RimeManager.currentGroupId(applicationContext)
-                        RimeManager.setGroupEnabled(applicationContext, gid, action.schemaIds)
-                        RimeManager.switchSchemaGroup(applicationContext, gid)
-                    }
-                    uiState.update { it.copy(statusMessage = "") }
-                    refreshState()
                 }
                 KeyAction.ToggleVoiceInput -> handleVoiceToggle()
                 is KeyAction.ToggleSwitch -> {
