@@ -2,7 +2,7 @@ name: Android CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main, develop, agent2/round19-ci ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:
