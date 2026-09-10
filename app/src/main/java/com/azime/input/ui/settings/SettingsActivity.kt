@@ -203,6 +203,8 @@ fun SettingsScreen(
     }
     // 反馈轮16：「部署」提到标题文本后面（原独立卡片移除）
     var deploying by remember { mutableStateOf(false) }
+    // 轮19.1：方案页「刷新」——切方案组/方案管理后界面数据重新拉取（原需退出重进）
+    var schemaRefreshRev by remember { mutableStateOf(0) }
 
     Scaffold(
         containerColor = cs.surface,
@@ -235,6 +237,19 @@ fun SettingsScreen(
                                         }
                                     },
                             )
+                            // 轮19.1：刷新键——重新拉取方案组/方案列表（切组或方案管理后同步界面）
+                            Text(
+                                "刷新",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier
+                                    .padding(start = 14.dp)
+                                    .clickable {
+                                        schemaRefreshRev++
+                                        Toast.makeText(context, "已刷新", Toast.LENGTH_SHORT).show()
+                                    },
+                            )
                         }
                     }
                 },
@@ -255,7 +270,7 @@ fun SettingsScreen(
             // 反馈轮16：方案管理子级页（从所选方案组行后的入口进入，勾选启用集）
             if (showManage) {
                 Column(Modifier.fillMaxSize().padding(padding)) {
-                    SchemaManagePage()
+                    SchemaManagePage(refreshRev = schemaRefreshRev)
                 }
                 return@Scaffold
             }
@@ -269,7 +284,7 @@ fun SettingsScreen(
             ) {
                 // 父级菜单①：方案组（组单选 → 选中组后挂「方案管理」入口 → 下方只显示已选方案）
                 item {
-                    Card { Column(Modifier.padding(vertical = 4.dp)) { SchemaList(onOpenManage = { showManage = true }) } }
+                    Card { Column(Modifier.padding(vertical = 4.dp)) { SchemaList(onOpenManage = { showManage = true }, refreshRev = schemaRefreshRev) } }
                 }
                 // 父级菜单②：导入方案
                 item {
@@ -789,7 +804,7 @@ private fun StatusCard(fillWidth: Boolean = false) {
 }
 
 @Composable
-private fun SchemaList(onOpenManage: () -> Unit) {
+private fun SchemaList(onOpenManage: () -> Unit, refreshRev: Int = 0) {
     val context = LocalContext.current
     // 反馈轮13：方案组区 —— 组 → 方案 两级（参考 trime2，一次只加载一个组）
     var groups by remember { mutableStateOf(RimeManager.schemaGroups(context)) }
@@ -800,10 +815,23 @@ private fun SchemaList(onOpenManage: () -> Unit) {
     var current by remember { mutableStateOf(RimeManager.currentSchema()) }
     var refreshed by remember { mutableStateOf(false) }
 
+    // 轮19.1：refreshRev 变化（标题栏「刷新」）时重新拉取全部数据
+    LaunchedEffect(refreshRev) {
+        if (refreshRev > 0) {
+            groups = RimeManager.schemaGroups(context)
+            currentGroup = RimeManager.currentGroupId(context)
+            schemas = RimeManager.availableSchemas()
+            current = RimeManager.currentSchema()
+            return@LaunchedEffect
+        }
+    }
+
     LaunchedEffect(Unit) {
         if (!refreshed) {
             refreshed = true
             kotlinx.coroutines.delay(1500) // 给首次部署留出窗口
+            groups = RimeManager.schemaGroups(context)
+            currentGroup = RimeManager.currentGroupId(context)
             schemas = RimeManager.availableSchemas()
             current = RimeManager.currentSchema()
         }
@@ -952,7 +980,7 @@ private fun SchemaList(onOpenManage: () -> Unit) {
  * App 不碰 yaml、无「启用集」概念。方案列表 = librime 部署成功的方案（availableSchemas）。
  */
 @Composable
-private fun SchemaManagePage() {
+private fun SchemaManagePage(refreshRev: Int = 0) {
     val context = LocalContext.current
     var groups by remember { mutableStateOf(RimeManager.schemaGroups(context)) }
     var currentGroup by remember { mutableStateOf(RimeManager.currentGroupId(context)) }
@@ -964,6 +992,17 @@ private fun SchemaManagePage() {
     }
     var switching by remember { mutableStateOf(false) }
     var refreshed by remember { mutableStateOf(false) }
+
+    // 轮19.1：refreshRev 变化（标题栏「刷新」）时重新拉取组与启用集
+    LaunchedEffect(refreshRev) {
+        if (refreshRev > 0) {
+            groups = RimeManager.schemaGroups(context)
+            currentGroup = RimeManager.currentGroupId(context)
+            available = RimeManager.availableSchemas()
+            current = RimeManager.currentSchema()
+            enabledIds = RimeManager.groupEnabledSchemas(context, currentGroup)
+        }
+    }
 
     LaunchedEffect(Unit) {
         if (!refreshed) {
@@ -1422,19 +1461,11 @@ private fun VibrationSettings() {
         }
         if (custom) {
             Spacer(Modifier.height(4.dp))
-            Text(
-                "自定义时长：${ms.toInt()}ms",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Slider(
-                value = ms,
-                onValueChange = {
-                    ms = it
-                    HapticsManager.setCustomMs(it.toInt())
-                },
-                valueRange = 5f..60f,
-            )
+            // 轮19.1：震动滑杆统一为 XimeSlider（原用原生 Slider，与其它设置项 UI 不一致）
+            XimeSlider("自定义时长", "${ms.toInt()}ms", ms, 5f..60f) {
+                ms = it
+                HapticsManager.setCustomMs(it.toInt())
+            }
         }
     }
 }

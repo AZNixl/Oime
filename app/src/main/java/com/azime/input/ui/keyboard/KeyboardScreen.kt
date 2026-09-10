@@ -185,6 +185,8 @@ sealed interface KeyAction {
     data class ClipTop(val list: String, val index: Int) : KeyAction
     /** 清空列表。 */
     data class ClipClear(val list: String) : KeyAction
+    /** 轮19.1：分词——把条目按标点/空白切分成词条，逐条加入剪贴板历史，便于逐词上屏。 */
+    data class ClipSplit(val text: String) : KeyAction
 }
 
 /** 键盘 UI 状态，由 AZimeService 持有并驱动。 */
@@ -559,6 +561,11 @@ private fun ClipCard(index: Int, text: String, tab: String, onAction: (KeyAction
                         onClick = { menuOpen = false; onAction(KeyAction.ClipFav(text)) },
                     )
                 }
+                // 轮19.1：分词（拆成词条入历史，便于逐词取用）
+                DropdownMenuItem(
+                    text = { Text("分词") },
+                    onClick = { menuOpen = false; onAction(KeyAction.ClipSplit(text)) },
+                )
                 DropdownMenuItem(
                     text = { Text("置顶") },
                     onClick = { menuOpen = false; onAction(KeyAction.ClipTop(tab, index)) },
@@ -566,6 +573,11 @@ private fun ClipCard(index: Int, text: String, tab: String, onAction: (KeyAction
                 DropdownMenuItem(
                     text = { Text("删除") },
                     onClick = { menuOpen = false; onAction(KeyAction.ClipDelete(tab, index)) },
+                )
+                // 轮19.1：全清（清空当前列表：剪贴板历史 / 收藏短语）
+                DropdownMenuItem(
+                    text = { Text(if (tab == "clipboard") "全清（历史）" else "全清（收藏）") },
+                    onClick = { menuOpen = false; onAction(KeyAction.ClipClear(tab)) },
                 )
             }
         }
@@ -2035,6 +2047,9 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
     val swipePreviewAbove = KeyboardManager.swipePreviewAbove()
     // 滑动手势触发距离（设置内可调，反馈轮10）
     val swipeThreshold = with(density) { KeyboardManager.swipeThresholdDp().dp.toPx() }
+    // 轮19.1：退格（行为键）上下滑用更短门槛——30dp 默认值对退格太高，
+    // 实测「退格下滑撤回」要拖很久才触发，用户感知为失效；18dp 仍属刻意移动。
+    val deleteSwipeThreshold = minOf(swipeThreshold, with(density) { 18.dp.toPx() })
     // 长按气泡滑动选择步长（每个符号占 40dp）
     val longStepPx = with(density) { 40.dp.toPx() }
 
@@ -2162,7 +2177,9 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
                                 }
                             } else {
                                 val dist = abs(dx) + abs(dy)
-                                if (dist > swipeThreshold) {
+                                // 退格用更短门槛（见 deleteSwipeThreshold 注释）
+                                val threshold = if (isDelete) deleteSwipeThreshold else swipeThreshold
+                                if (dist > threshold) {
                                     val dir = when {
                                         abs(dx) > abs(dy) -> if (dx > 0) Dir.RIGHT else Dir.LEFT
                                         else -> if (dy > 0) Dir.DOWN else Dir.UP
@@ -2283,6 +2300,36 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
                     .align(Alignment.TopEnd)
                     .padding(top = 3.dp, end = 5.dp),
             )
+        }
+        // 轮19.1 修复：四向滑动提示——原实现只控制「滑动过程中的临时预览」，
+        // 开关打开后键面不显示任何提示（用户反馈「打开开关不显示」）。
+        // 现按设置把该方向的滑动符号常驻渲染在键面对应位置（无滑动动作的键不显示）。
+        if (key.type == KeyType.CHARACTER || key.type == KeyType.DELETE) {
+            val dirHintFont = 9.sp
+            key.swipeUp?.let {
+                if (KeyboardManager.hintUp()) Text(
+                    actionPreview(it), fontSize = dirHintFont, color = c.subText,
+                    modifier = Modifier.align(Alignment.TopStart).padding(start = 5.dp, top = 3.dp),
+                )
+            }
+            key.swipeDown?.let {
+                if (KeyboardManager.hintDown()) Text(
+                    actionPreview(it), fontSize = dirHintFont, color = c.subText,
+                    modifier = Modifier.align(Alignment.BottomStart).padding(start = 5.dp, bottom = 3.dp),
+                )
+            }
+            key.swipeLeft?.let {
+                if (KeyboardManager.hintLeft()) Text(
+                    actionPreview(it), fontSize = dirHintFont, color = c.subText,
+                    modifier = Modifier.align(Alignment.CenterStart).padding(start = 5.dp),
+                )
+            }
+            key.swipeRight?.let {
+                if (KeyboardManager.hintRight()) Text(
+                    actionPreview(it), fontSize = dirHintFont, color = c.subText,
+                    modifier = Modifier.align(Alignment.CenterEnd).padding(end = 5.dp),
+                )
+            }
         }
         if (showBubble && longPressSymbols.isNotEmpty()) {
             Popup(

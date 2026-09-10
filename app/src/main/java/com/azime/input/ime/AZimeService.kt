@@ -46,8 +46,14 @@ class AZimeService : InputMethodService() {
     /** 语音输入 RMS（dB）：高频回调独立 State，只供声纹 Canvas 读取，不走 uiState 重组链。 */
     private val voiceRmsState = androidx.compose.runtime.mutableStateOf(0f)
 
-    /** 撤回栈：记录最近上屏的文本（DirectCommit / 候选上屏 / 字母直出）。 */
-    private val undoStack = ArrayDeque<String>()
+    /**
+     * 撤回栈（轮19.1）：记录**操作**而非仅上屏文本——修复退格下滑「撤回」失效：
+     * - INSERT：上屏过文本 → 撤回时删除该段（撤销上屏）
+     * - DELETE：删除过文本 → 撤回时重新插入（恢复删除，这才是「撤回」的预期语义）
+     * 此前只记上屏文本且撤回总是删除，导致「上滑全删 → 下滑撤回」把无关文本又删一遍。
+     */
+    private class UndoOp(val text: String, val isDelete: Boolean)
+    private val undoStack = ArrayDeque<UndoOp>()
 
     /** 退格左滑选择态（trime2 退格脚本锚点模型）：锚点与选区活动端（UTF-16 坐标）。 */
     private var selectAnchor = -1
@@ -89,6 +95,14 @@ class AZimeService : InputMethodService() {
         LuaScriptManager.loadScript()
         clipHistory.addAll(loadJsonList(clipHistoryFile))
         phraseItems.addAll(loadJsonList(phraseFile))
+        // 轮19.1 修复：加载的剪贴板历史必须推给 uiState，否则要等下一次复制（recordClip）
+        // 才会出现在面板里——表现为「更新后要复制一段内容，原有内容才显示」。
+        uiState.update {
+            it.copy(
+                clipHistory = clipHistory.toList(),
+                phraseItems = phraseItems.toList(),
+            )
+        }
         clipboardManager.addPrimaryClipChangedListener(clipboardListener)
         scope.launch {
             val ok = RimeManager.ensureReady(applicationContext)
@@ -553,6 +567,28 @@ class AZimeService : InputMethodService() {
                         uiState.update { it.copy(clipHistory = emptyList()) }
                     }
                 }
+                is KeyAction.ClipSplit -> {
+                    // 轮19.1 分词：按空白/中英标点切分，词条插到历史最前（顺序保持原文）
+                    val parts = action.text
+                        .split(Regex("[\\s，。！？；：、,.!?;:（）()\\[\\]【】「」《》\"'“”‘’·…—]+"))
+                        .map { it.trim() }
+                        .filter { it.isNotEmpty() }
+                        .take(50)
+                    if (parts.isNotEmpty()) {
+                        for (p in parts.asReversed()) {
+                            clipHistory.remove(p)
+                            clipHistory.add(0, p)
+                        }
+                        while (clipHistory.size > 100) clipHistory.removeAt(clipHistory.size - 1)
+                        saveJsonList(clipHistoryFile, clipHistory)
+                        uiState.update {
+                            it.copy(
+                                clipHistory = clipHistory.toList(),
+                                statusMessage = "已分词 ${parts.size} 条",
+                            )
+                        }
+                    }
+                }
             }
         }
     }
@@ -616,16 +652,32 @@ class AZimeService : InputMethodService() {
         }
     }
 
+    /** 记录一次「上屏」操作（撤回时删除该文本）。 */
     private fun pushUndo(text: String) {
         if (text.isEmpty()) return
-        undoStack.addLast(text)
+        undoStack.addLast(UndoOp(text, isDelete = false))
         while (undoStack.size > 50) undoStack.removeFirst()
     }
 
-    /** 撤回：删除最近一次上屏的文本。 */
+    /** 记录一次「删除」操作（撤回时恢复该文本）。 */
+    private fun pushDeleted(text: String) {
+        if (text.isEmpty()) return
+        undoStack.addLast(UndoOp(text, isDelete = true))
+        while (undoStack.size > 50) undoStack.removeFirst()
+    }
+
+    /**
+     * 撤回（退格下滑）：按栈顶操作类型反向执行——
+     * DELETE → 重新插入被删文本（恢复）；INSERT → 删除刚上屏的文本（撤销上屏）。
+     */
     private suspend fun undo() {
-        val last = undoStack.removeLastOrNull() ?: return
-        currentInputConnection?.deleteSurroundingText(last.length, 0)
+        val op = undoStack.removeLastOrNull() ?: return
+        val ic = currentInputConnection ?: return
+        if (op.isDelete) {
+            ic.commitText(op.text, 1)
+        } else {
+            ic.deleteSurroundingText(op.text.length, 0)
+        }
         refreshState()
     }
 
@@ -635,7 +687,7 @@ class AZimeService : InputMethodService() {
         val before = ic.getTextBeforeCursor(MAX_TEXT, 0) ?: ""
         val after = ic.getTextAfterCursor(MAX_TEXT, 0) ?: ""
         if (before.isNotEmpty() || after.isNotEmpty()) {
-            pushUndo(before.toString() + after.toString())
+            pushDeleted(before.toString() + after.toString()) // 全删内容可撤回恢复
             ic.deleteSurroundingText(before.length, after.length)
         }
         RimeManager.clearComposition()
@@ -666,7 +718,7 @@ class AZimeService : InputMethodService() {
         val ic = currentInputConnection ?: return
         val sel = ic.getSelectedText(0)?.toString().orEmpty()
         if (sel.isNotEmpty()) {
-            pushUndo(sel)
+            pushDeleted(sel) // 删除的选区可撤回恢复
             ic.commitText("", 1)
         }
         selectAnchor = -1
@@ -728,10 +780,12 @@ class AZimeService : InputMethodService() {
         }
         val ic = currentInputConnection
         if (ic != null) {
-            val before = ic.getTextBeforeCursor(2, 0) ?: ""
+            val before = (ic.getTextBeforeCursor(2, 0) ?: "").toString()
             if (before.length == 2 && Character.isSurrogatePair(before[0], before[1])) {
+                pushDeleted(before) // 记录删除内容，下滑「撤回」可恢复
                 ic.deleteSurroundingText(2, 0)
             } else {
+                pushDeleted(before.takeLast(1))
                 ic.deleteSurroundingText(1, 0)
             }
         }
