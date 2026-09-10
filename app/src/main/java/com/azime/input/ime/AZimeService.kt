@@ -342,7 +342,20 @@ class AZimeService : InputMethodService() {
 
     private fun onKeyAction(action: KeyAction) {
         scope.launch {
-            // 反馈轮12：打字不再清除工具栏复制条（仅上屏使用 CommitClipboard / 新复制覆盖时才更新）
+            // 轮19.4：任意按键让工具栏「复制条」消亡（原来只有上屏才消亡，条会一直占着工具栏）。
+            // 仅对真正的按键动作生效——剪贴板面板自身的操作（上屏/收藏/删除/切页）不清除。
+            val dismissClip = when (action) {
+                is KeyAction.CharKey, KeyAction.Backspace, KeyAction.Space, KeyAction.Enter,
+                is KeyAction.DirectCommit, is KeyAction.Resolved, is KeyAction.Candidate,
+                KeyAction.Shift, KeyAction.PageUp, KeyAction.PageDown, KeyAction.DeleteAll,
+                KeyAction.Undo, is KeyAction.BackspaceSelectStart, is KeyAction.BackspaceSelectTo,
+                KeyAction.DeleteSelection, KeyAction.ToggleAscii,
+                is KeyAction.Joystick -> true
+                else -> false
+            }
+            if (dismissClip && uiState.value.clipText.isNotBlank()) {
+                uiState.update { it.copy(clipText = "", clipAtMs = 0L) }
+            }
             when (action) {
                 is KeyAction.CharKey -> handleChar(action.c)
                 is KeyAction.DirectCommit -> {

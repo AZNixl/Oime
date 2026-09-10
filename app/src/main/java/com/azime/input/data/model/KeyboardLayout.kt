@@ -36,6 +36,11 @@ data class Key(
     val swipeRight: String? = null,
     /** 键面右上角的小字提示（一般为长按符号）。 */
     val hint: String? = null,
+    /**
+     * 键面图标名（轮19.4）：指向 OimeIcons.byName(name)；非空时键面渲染图标而非文字。
+     * 功能键（换挡/退格/回车/空格/返回等）用；文字标签仍保留（无图标时回落、无障碍描述用）。
+     */
+    val icon: String? = null,
 )
 
 enum class KeyType {

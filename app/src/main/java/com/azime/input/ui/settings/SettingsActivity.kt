@@ -40,6 +40,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.azime.input.ui.icons.OimeIcons
 import androidx.lifecycle.lifecycleScope
 import com.azime.input.core.haptic.HapticsManager
 import com.azime.input.core.rime.RimeManager
@@ -326,7 +327,7 @@ fun SettingsScreen(
                             ActivityResultContracts.RequestPermission()
                         ) { micGranted.value = it }
                         KsuItem(
-                            icon = Icons.Default.Mic,
+                            icon = OimeIcons.mic,
                             title = "麦克风权限",
                             subtitle = if (micGranted.value) "已授权（长按 ○ 键开始听写）" else "语音输入需要录音权限",
                             onClick = { if (!micGranted.value) micLauncher.launch(android.Manifest.permission.RECORD_AUDIO) },
@@ -397,14 +398,14 @@ fun SettingsScreen(
                         }
                         // ── 联网 API 配置入口 ──
                         KsuItem(
-                            icon = Icons.Default.Cloud,
+                            icon = OimeIcons.cloud,
                             title = "联网 API 配置",
                             subtitle = if (apiCfg != null) "${apiCfg.baseUrl} · ${apiCfg.model}" else "OpenAI 兼容 /audio/transcriptions",
                             onClick = { webApiDialogShow = true },
                         )
                         // ── 模型目录说明 + 刷新 ──
                         KsuItem(
-                            icon = Icons.Default.Refresh,
+                            icon = OimeIcons.refresh,
                             title = "刷新模型状态",
                             subtitle = "模型放 Documents/Oime/models/（sense-voice / zipformer）",
                             onClick = { modelCheck++ },
@@ -442,7 +443,7 @@ fun SettingsScreen(
                     Card {
                         Column(Modifier.padding(vertical = 4.dp)) {
                             KsuItem(
-                                icon = Icons.Default.Keyboard,
+                                icon = OimeIcons.keyboard,
                                 title = "键盘布局编辑器",
                                 subtitle = "可视化编辑按键与滑动手势",
                                 onClick = onOpenKeyboardEditor,
@@ -504,7 +505,7 @@ fun SettingsScreen(
                     Card {
                         Column(Modifier.padding(vertical = 4.dp)) {
                             KsuItem(
-                                icon = Icons.Default.FontDownload,
+                                icon = OimeIcons.font,
                                 title = "字体管理",
                                 subtitle = "多选字体回退链（Documents/Oime/fonts）",
                                 onClick = onManageFonts,
@@ -529,14 +530,14 @@ fun SettingsScreen(
                     Card {
                         Column(Modifier.padding(vertical = 4.dp)) {
                             KsuItem(
-                                icon = Icons.Default.Info,
+                                icon = OimeIcons.info,
                                 title = "版本",
                                 subtitle = "${appVersionName(context)} · 包名 com.oime.input · 平台 RIME",
                                 onClick = {},
                                 showChevron = false,
                             )
                             KsuItem(
-                                icon = Icons.Default.Link,
+                                icon = OimeIcons.link,
                                 title = "GitHub",
                                 subtitle = "github.com/AZNixl/Oime",
                                 onClick = {
@@ -666,37 +667,37 @@ fun SettingsScreen(
                 Card {
                     Column(Modifier.padding(vertical = 4.dp)) {
                         KsuItem(
-                            icon = Icons.Default.List,
+                            icon = OimeIcons.schemas,
                             title = "输入方案",
                             subtitle = "切换 / 导入 / 重命名方案",
                             onClick = { subPage = "schemas" },
                         )
                         KsuItem(
-                            icon = Icons.Default.Keyboard,
+                            icon = OimeIcons.keyboard,
                             title = "键盘",
                             subtitle = "布局编辑 · 键高 · 字号 · 按键外观",
                             onClick = { subPage = "keyboard" },
                         )
                         KsuItem(
-                            icon = Icons.Default.PictureInPictureAlt,
+                            icon = OimeIcons.pip,
                             title = "悬浮窗",
                             subtitle = "编码预览悬浮窗 · 默认 / 自定义样式",
                             onClick = { subPage = "float" },
                         )
                         KsuItem(
-                            icon = Icons.Default.Palette,
+                            icon = OimeIcons.palette,
                             title = "主题与配色",
                             subtitle = "主题卡片 · 强调色 · 字体管理",
                             onClick = { subPage = "theme" },
                         )
                         KsuItem(
-                            icon = Icons.Default.Code,
+                            icon = OimeIcons.code,
                             title = "预设置",
                             subtitle = "preset_keys.lua（按键动作预设）",
                             onClick = onEditLuaScript,
                         )
                         KsuItem(
-                            icon = Icons.Default.Info,
+                            icon = OimeIcons.info,
                             title = "关于",
                             subtitle = "版本 / 项目地址",
                             onClick = { subPage = "about" },

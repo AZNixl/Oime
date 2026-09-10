@@ -354,7 +354,8 @@ fun AzimeKeyboardScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = colGap, vertical = rowGap),
+                        // 轮19.4：底部留白 rowGap → 2dp（用户反馈「与最下沿还有距离」）
+                        .padding(start = colGap, end = colGap, top = rowGap, bottom = 2.dp),
                     verticalArrangement = Arrangement.spacedBy(rowGap),
                 ) {
                     for (row in layout.rows) {
@@ -627,12 +628,19 @@ private fun ToolbarRow(
                 .background(c.bg)
                 .padding(horizontal = 6.dp, vertical = 1.dp),
         ) {
+            // 轮19.4：工具栏高度固定不动，字号按可用高度收敛——原来字号调到 24~28sp 时
+            // 「输入码行 + 候选行」总高超过 barHeight，文字伸出工具栏被窗口裁掉。
+            // 结构：输入码行(0.7×字号×1.2) + 候选行(字号×1.2) ≤ barHeight - 6dp
+            //   ⇒ 字号上限 = (barHeight - 6dp) / 2.04
+            val candCapSp = ((barHeight.value - 6f) / 2.04f).coerceIn(9f, 34f)
+            val candSp = minOf(KeyboardManager.fontSizeBar().toFloat(), candCapSp)
+            val preeditSp = candSp * 0.7f
             if (state.preedit.isNotEmpty()) {
                 Text(
                     text = state.preedit,
-                    // 轮18.2：输入码小字随候选字号缩放
-                    fontSize = (KeyboardManager.fontSizeBar() * 0.7f).sp,
-                    lineHeight = (KeyboardManager.fontSizeBar() * 0.82f).sp,
+                    // 轮18.2：输入码小字随候选字号缩放；轮19.4：随工具栏可用高度收敛
+                    fontSize = preeditSp.sp,
+                    lineHeight = (preeditSp * 1.16f).sp,
                     color = c.subText,
                     maxLines = 1,
                     modifier = Modifier.padding(start = 2.dp),
@@ -652,13 +660,13 @@ private fun ToolbarRow(
                             .padding(horizontal = 8.dp, vertical = 1.dp),
                     ) {
                         if (index < 9) {
-                            Text("${index + 1} ", fontSize = (KeyboardManager.fontSizeBar() * 0.62f).sp, color = c.subText)
+                            Text("${index + 1} ", fontSize = (candSp * 0.62f).sp, color = c.subText)
                         }
-                        // 轮18.2：候选字号接入设置（fontSizeBar，默认 16）
-                        Text(candidate.text, fontSize = KeyboardManager.fontSizeBar().sp, maxLines = 1, color = c.text)
+                        // 轮18.2：候选字号接入设置（fontSizeBar）；轮19.4：受工具栏高度上限收敛
+                        Text(candidate.text, fontSize = candSp.sp, maxLines = 1, color = c.text)
                         if (candidate.comment.isNotBlank()) {
                             Spacer(Modifier.width(3.dp))
-                            Text(candidate.comment, fontSize = (KeyboardManager.fontSizeBar() * 0.62f).sp, maxLines = 1, color = c.subText)
+                            Text(candidate.comment, fontSize = (candSp * 0.62f).sp, maxLines = 1, color = c.subText)
                         }
                     }
                 }
@@ -810,13 +818,21 @@ private fun ToolbarRow(
                 ) {
                     // 圆环（轮15 重构）：静态白色实线圆环 + 呼吸动画（alpha 0.55~1.0 缓变，不刺眼）；
                     // 尺寸缩小 1/5（36→29dp）、描边加粗 1/4（2.5→3.1dp）；
-                    // 按下变强调色、拖动内点跟随手指（行为保留）
+                    // 轮19.4：移动光标时**圆环自身跟着手指平移**（呼啦圈模型：环心的锚点不动、
+                    // 环在绕锚点移动），不再渲染圆环内的蓝色小点。
                     val breath = rememberInfiniteTransition(label = "oBreath").animateFloat(
                         0.55f, 1f,
                         infiniteRepeatable(tween(1600, easing = androidx.compose.animation.core.FastOutSlowInEasing), RepeatMode.Reverse),
                         label = "oBreathAlpha",
                     )
-                    Canvas(Modifier.size(29.dp)) {
+                    Canvas(
+                        Modifier
+                            .size(29.dp)
+                            .graphicsLayer {
+                                translationX = ringKnob.x
+                                translationY = ringKnob.y
+                            },
+                    ) {
                         val strokeW = 3.1.dp.toPx()
                         val ringR = size.minDimension / 2f - strokeW - 1f
                         drawCircle(
@@ -825,10 +841,6 @@ private fun ToolbarRow(
                             radius = ringR,
                             style = Stroke(strokeW),
                         )
-                        val knob = ringKnob
-                        if (knob != Offset.Zero) {
-                            drawCircle(c.accentActive, radius = 3.dp.toPx(), center = center + knob)
-                        }
                     }
                 }
 
@@ -976,15 +988,10 @@ private fun RowScope.toolbarToolItem(id: String, state: KeyboardUiState, onActio
 }
 
 /** 工具栏工具 id → 细线图标（反馈轮12 方案A：1.8px 圆头描边自绘，随 tint 变色）。 */
-private fun toolbarToolIcon(id: String): androidx.compose.ui.graphics.vector.ImageVector = when (id) {
-    "clipboard" -> ToolbarOutlineIcons.clipboard
-    "schema" -> ToolbarOutlineIcons.schemas
-    "numpad" -> ToolbarOutlineIcons.digits
-    "emoji" -> ToolbarOutlineIcons.emoji
-    "symbols" -> ToolbarOutlineIcons.symbols
-    "settings" -> ToolbarOutlineIcons.settings
-    else -> ToolbarOutlineIcons.schemas
-}
+private fun toolbarToolIcon(id: String): androidx.compose.ui.graphics.vector.ImageVector =
+    // 轮19.4：工具栏图标统一走 OimeIcons（方案 J · 长投影立体）
+    com.azime.input.ui.icons.OimeIcons.byName(id)
+        ?: com.azime.input.ui.icons.OimeIcons.schemas
 
 // ── 工具栏细线图标（反馈轮12 方案A 定稿）：24 网格手绘，stroke 1.8 圆头 ──
 
@@ -1798,7 +1805,8 @@ private fun NumpadPane(state: KeyboardUiState, onAction: (KeyAction) -> Unit, ke
             // 轮19.2 高度对齐主键盘：垂直内边距必须用 rowGap（原来用 colGap）——
             // 主键盘 = 4×键高 + 5×行距；九宫格原来 = 4×键高 + 3×行距 + 2×列距，
             // 行列距不同（用户可调）时切页会看到高度跳变。
-            .padding(horizontal = colGap, vertical = rowGap),
+            // 轮19.4：底部同样收敛到 2dp，与主键盘一致。
+            .padding(start = colGap, end = colGap, top = rowGap, bottom = 2.dp),
         verticalArrangement = Arrangement.spacedBy(rowGap),
     ) {
         // 前 3 行：符号滑键（跨 3 行）+ 数字三列 + 功能三键
@@ -1829,9 +1837,9 @@ private fun NumpadPane(state: KeyboardUiState, onAction: (KeyAction) -> Unit, ke
                 verticalArrangement = Arrangement.spacedBy(rowGap),
             ) {
                 listOf(
-                    Key("⌫", code = "backspace", width = 1f, type = KeyType.DELETE),
-                    Key("符号", code = "symgrid", width = 1f, type = KeyType.FUNCTION),
-                    Key("空格", code = "space", width = 1f, type = KeyType.SPACE),
+                    Key("⌫", code = "backspace", width = 1f, type = KeyType.DELETE, icon = "backspace"),
+                    Key("符号", code = "symgrid", width = 1f, type = KeyType.FUNCTION, icon = "symbols"),
+                    Key("空格", code = "space", width = 1f, type = KeyType.SPACE, icon = "space"),
                 ).forEach { k ->
                     Row(Modifier.weight(1f)) { KeyboardKey(key = k, state = state, onAction = onAction) }
                 }
@@ -1847,7 +1855,7 @@ private fun NumpadPane(state: KeyboardUiState, onAction: (KeyAction) -> Unit, ke
             horizontalArrangement = Arrangement.spacedBy(colGap),
         ) {
             KeyboardKey(
-                key = Key("返回", code = "main", width = 1f, type = KeyType.FUNCTION),
+                key = Key("返回", code = "main", width = 1f, type = KeyType.FUNCTION, icon = "back"),
                 state = state, onAction = onAction,
             )
             listOf("00", "0", ".").forEach { ch ->
@@ -1857,7 +1865,7 @@ private fun NumpadPane(state: KeyboardUiState, onAction: (KeyAction) -> Unit, ke
                 )
             }
             KeyboardKey(
-                key = Key("⏎", code = "enter", width = 1f, type = KeyType.ENTER),
+                key = Key("⏎", code = "enter", width = 1f, type = KeyType.ENTER, icon = "enter"),
                 state = state, onAction = onAction,
             )
         }
@@ -2288,16 +2296,31 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
         modifier = baseModifier,
         contentAlignment = Alignment.Center,
     ) {
-        Text(
-            // 反馈轮11：四向预览位置可选——键面中央（默认替换键名）或键上方气泡
-            text = if (swipePreviewAbove) label else (swipePreview ?: label),
-            // 反馈轮9：键面字号可调（键盘/工具栏分开设置）
-            fontSize = if (key.type == KeyType.CHARACTER) KeyboardManager.fontSizeKey().sp
-            else (KeyboardManager.fontSizeKey() * 0.7f).sp,
-            fontWeight = FontWeight.Medium,
-            color = fg,
-            maxLines = 1,
-        )
+        // 轮19.4：功能键优先渲染图标（OimeIcons 方案 J）；无图标 / 滑动预览中回落文字
+        val keyIcon = if (key.icon != null && swipePreview == null) {
+            com.azime.input.ui.icons.OimeIcons.byName(key.icon)
+        } else null
+        if (keyIcon != null) {
+            Icon(
+                keyIcon,
+                contentDescription = key.label,
+                tint = fg,
+                modifier = Modifier.size(
+                    (KeyboardManager.fontSizeKey() * 1.25f).dp.coerceIn(14.dp, 34.dp),
+                ),
+            )
+        } else {
+            Text(
+                // 反馈轮11：四向预览位置可选——键面中央（默认替换键名）或键上方气泡
+                text = if (swipePreviewAbove) label else (swipePreview ?: label),
+                // 反馈轮9：键面字号可调（键盘/工具栏分开设置）
+                fontSize = if (key.type == KeyType.CHARACTER) KeyboardManager.fontSizeKey().sp
+                else (KeyboardManager.fontSizeKey() * 0.7f).sp,
+                fontWeight = FontWeight.Medium,
+                color = fg,
+                maxLines = 1,
+            )
+        }
         // 键上方气泡预览（设置「四向预览位置」选键面上方时生效）
         val pv = swipePreview
         if (swipePreviewAbove && pv != null) {

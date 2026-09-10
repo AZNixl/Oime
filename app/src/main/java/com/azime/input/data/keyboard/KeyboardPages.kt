@@ -78,28 +78,28 @@ object KeyboardPages {
         Key(label = "", code = "spacer", width = width, type = KeyType.FUNCTION)
 
     private fun backspace(width: Float = 1.5f) = Key(
-        label = "⌫", code = "backspace", width = width, type = KeyType.DELETE,
+        label = "⌫", code = "backspace", width = width, type = KeyType.DELETE, icon = "backspace",
         swipeUp = KeyActions.BS_UP, swipeDown = KeyActions.BS_DOWN, swipeLeft = KeyActions.BS_LEFT,
     )
 
     private fun space(width: Float = 4f) = Key(
-        label = "空格", code = "space", width = width, type = KeyType.SPACE,
+        label = "空格", code = "space", width = width, type = KeyType.SPACE, icon = "space",
         longClick = KeyActions.SPACE_LONG,
     )
 
     private fun enter(width: Float = 1.5f) = Key(
-        label = "⏎", code = "enter", width = width, type = KeyType.ENTER,
+        label = "⏎", code = "enter", width = width, type = KeyType.ENTER, icon = "enter",
         longClick = KeyActions.ENTER_LONG,
     )
 
     private fun shift(width: Float = 1.5f) = Key(
-        label = "⇧", code = "shift", width = width, type = KeyType.MODIFIER,
+        label = "⇧", code = "shift", width = width, type = KeyType.MODIFIER, icon = "shift",
         longClick = KeyActions.SHIFT_LONG,
     )
 
     /** 符号/页面切换键：长按呼出「默认键盘」选择气泡（26键 / 九宫格数字 / emoji）。 */
-    private fun pageKey(label: String, target: String = "symbols", width: Float = 1.5f) = Key(
-        label = label, code = target, width = width, type = KeyType.FUNCTION,
+    private fun pageKey(label: String, target: String = "symbols", width: Float = 1.5f, icon: String? = null) = Key(
+        label = label, code = target, width = width, type = KeyType.FUNCTION, icon = icon,
         longClick = KeyActions.SYMBOLS_LONG,
     )
 
@@ -127,7 +127,7 @@ object KeyboardPages {
                 backspace(),
             ),
             row(
-                pageKey("123", width = 1.7f), // 稍宽于 shift(1.5)，紧凑起步
+                pageKey("123", width = 1.7f, icon = "symbols"), // 稍宽于 shift(1.5)，紧凑起步
                 charKey(","),
                 space(width = 4.3f),
                 charKey("."),
@@ -152,14 +152,14 @@ object KeyboardPages {
                 spacerKey(0.5f),
             ),
             row(
-                pageKey("九宫格", "numpad"),
+                pageKey("九宫格", "numpad", icon = "numpad"),
                 charKey("*"), charKey("\""), charKey("'"), charKey(":"),
                 charKey(";"), charKey("!"), charKey("?"),
                 backspace(),
             ),
             row(
                 // 轮19.2：第四行首键改为「返回」（原为切九宫格，九宫格入口已在第三行）
-                pageKey("返回", "main", width = 1.7f),
+                pageKey("返回", "main", width = 1.7f, icon = "back"),
                 charKey(","),
                 space(width = 4.3f),
                 charKey("."),
@@ -197,7 +197,7 @@ object KeyboardPages {
                 space(width = 1f),
             ),
             row(
-                pageKey("返回", target = "main", width = 1f),
+                pageKey("返回", target = "main", width = 1f, icon = "back"),
                 // 轮19.2：原 = 号键改为 00（= 已并入左列滑键符号带）
                 charKey("00"), charKey("0"), charKey("."),
                 enter(width = 1f),
