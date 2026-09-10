@@ -21,6 +21,9 @@ build/
 # Local configuration
 local.properties
 
+# sherpa-onnx AAR（49MB，超 GitHub API blob 限制；CI 构建时下载，见 .github/workflows/android.yml）
+app/libs/*.aar
+
 # Log Files
 *.log
 

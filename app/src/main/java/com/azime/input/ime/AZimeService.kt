@@ -22,7 +22,7 @@ import com.azime.input.core.rime.RimeManager.KEY_BACKSPACE
 import com.azime.input.core.rime.RimeManager.KEY_RETURN
 import com.azime.input.core.rime.RimeManager.KEY_SPACE
 import com.azime.input.core.rime.toCandidate
-import com.azime.input.core.speech.SpeechInputManager
+import com.azime.input.core.speech.SpeechEngineManager
 import com.azime.input.ui.editor.KeyboardEditorActivity
 import com.azime.input.ui.keyboard.AzimeKeyboardScreen
 import com.azime.input.ui.keyboard.KeyAction
@@ -170,7 +170,7 @@ class AZimeService : InputMethodService() {
         lifecycleOwner.pause()
         // 键盘收起时若在听写中，取消识别
         if (uiState.value.voiceState == "listening") {
-            SpeechInputManager.cancel()
+            SpeechEngineManager.cancel()
             voiceRmsState.value = 0f
             uiState.update { it.copy(voiceState = "idle") }
         }
@@ -185,18 +185,24 @@ class AZimeService : InputMethodService() {
 
     override fun onDestroy() {
         runCatching { clipboardManager.removePrimaryClipChangedListener(clipboardListener) }
-        SpeechInputManager.cancel()
+        SpeechEngineManager.cancel()
         scope.cancel()
         lifecycleOwner.destroy()
         super.onDestroy()
     }
 
-    // ── 语音输入（轮15：O 键长按触发，系统 SpeechRecognizer 接口） ──
+    // ── 语音输入（轮19：本地模型 / 联网 API，系统 SpeechRecognizer 已删除） ──
+
+    /** 当前选中引擎（speech_prefs；与设置页共用 key）。 */
+    private fun currentSpeechEngine(): String =
+        getSharedPreferences("speech_prefs", Context.MODE_PRIVATE)
+            .getString("engine", SpeechEngineManager.ENGINE_SENSE_VOICE)
+            ?: SpeechEngineManager.ENGINE_SENSE_VOICE
 
     private fun handleVoiceToggle() {
         if (uiState.value.voiceState == "listening") {
-            // 点击结束：停止录音，结果在 onResults 回调里上屏
-            SpeechInputManager.stop()
+            // 点击结束：停止录音，sense_voice/web_api 在 stop 后解码上屏
+            SpeechEngineManager.stop()
             return
         }
         if (androidx.core.content.ContextCompat.checkSelfPermission(
@@ -208,35 +214,50 @@ class AZimeService : InputMethodService() {
             onKeyAction(KeyAction.OpenSettings)
             return
         }
-        if (!SpeechInputManager.isAvailable(this)) {
-            // 反馈轮16：本机无系统语音识别服务（实测 ColorOS 该 ROM 无 RecognitionService）——
-            // statusMessage 在工具栏不易察觉，改用 Toast 醒目告知；本地模型/联网 API 后续版本接入
-            // 轮18.2 修复：本方法在 IO 协程调用，直接 Toast 会抛
-            // "Can't toast on a thread that has not called Looper.prepare()" 闪退，切主线程。
-            android.os.Handler(android.os.Looper.getMainLooper()).post {
-                android.widget.Toast.makeText(
-                    this, "本机无系统语音识别服务，暂无法听写（本地模型后续版本接入）",
-                    android.widget.Toast.LENGTH_LONG,
-                ).show()
+        val engine = currentSpeechEngine()
+        // 引擎就绪检查（web_api 只查配置完整，网络可达性由请求时反馈）
+        val ready = if (engine == SpeechEngineManager.ENGINE_WEB_API) {
+            SpeechEngineManager.webApiConfig(this) != null
+        } else {
+            SpeechEngineManager.isEngineReady(engine)
+        }
+        if (!ready) {
+            val hint = when (engine) {
+                SpeechEngineManager.ENGINE_SENSE_VOICE ->
+                    "SenseVoice 模型未就绪：将模型文件放入 Documents/Oime/models/sense-voice/"
+                SpeechEngineManager.ENGINE_ZIPFORMER ->
+                    "zipformer 模型未就绪：将模型文件放入 Documents/Oime/models/zipformer/"
+                else -> "联网 API 未配置：设置 → 语音输入 → 联网 API"
             }
-            uiState.update { it.copy(statusMessage = "此设备缺少系统语音识别服务") }
+            uiState.update { it.copy(statusMessage = hint) }
             return
         }
         uiState.update { it.copy(voiceState = "listening", statusMessage = "") }
-        SpeechInputManager.start(
-            context = this,
-            onRms = { db -> voiceRmsState.value = db },
-            onResult = { text ->
-                voiceRmsState.value = 0f
-                uiState.update { it.copy(voiceState = "idle") }
-                if (text.isNotBlank()) {
-                    currentInputConnection?.commitText(text, 1)
-                    pushUndo(text)
+        SpeechEngineManager.start(
+            engine = engine,
+            callbacks = object : SpeechEngineManager.Callbacks {
+                override fun onRms(rmsDb: Float) {
+                    voiceRmsState.value = rmsDb
                 }
-            },
-            onError = { msg ->
-                voiceRmsState.value = 0f
-                uiState.update { it.copy(voiceState = "idle", statusMessage = msg) }
+
+                override fun onResult(text: String) {
+                    voiceRmsState.value = 0f
+                    uiState.update { it.copy(voiceState = "idle") }
+                    if (text.isNotBlank()) {
+                        currentInputConnection?.commitText(text, 1)
+                        pushUndo(text)
+                    }
+                }
+
+                override fun onError(message: String) {
+                    voiceRmsState.value = 0f
+                    uiState.update { it.copy(voiceState = "idle", statusMessage = message) }
+                }
+
+                override fun onPartial(text: String) {
+                    // 流式 zipformer 增量文本：显示在工具栏 statusMessage（不打断输入）
+                    uiState.update { it.copy(statusMessage = text) }
+                }
             },
         )
     }

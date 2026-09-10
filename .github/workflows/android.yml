@@ -24,6 +24,14 @@ jobs:
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
+    # 轮19：sherpa-onnx AAR 不进 repo（49MB 超 API 限制），CI 直连官方 release 下载
+    - name: Download sherpa-onnx AAR
+      run: |
+        mkdir -p app/libs
+        curl -sSL --retry 5 --retry-all-errors -o app/libs/sherpa-onnx-1.13.5.aar \
+          https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.5/sherpa-onnx-1.13.5.aar
+        ls -la app/libs/
+
     - name: Build with Gradle
       run: ./gradlew assembleDebug --stacktrace
 

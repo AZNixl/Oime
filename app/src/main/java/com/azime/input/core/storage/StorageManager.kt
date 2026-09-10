@@ -10,6 +10,7 @@ object StorageManager {
     private const val SCHEMA_DIR = "schema"
     private const val FONTS_DIR = "fonts"
     private const val LUA_DIR = "lua"
+    private const val MODELS_DIR = "models"
 
     lateinit var externalRootDir: File
         private set
@@ -18,6 +19,8 @@ object StorageManager {
     lateinit var fontsDir: File
         private set
     lateinit var luaDir: File
+        private set
+    lateinit var modelsDir: File
         private set
     lateinit var internalDataDir: File
         private set
@@ -31,12 +34,15 @@ object StorageManager {
         schemaDir = File(externalRootDir, SCHEMA_DIR)
         fontsDir = File(externalRootDir, FONTS_DIR)
         luaDir = File(externalRootDir, LUA_DIR)
+        // 轮19：语音本地模型侧载目录（sherpa-onnx 模型不进 APK）
+        modelsDir = File(externalRootDir, MODELS_DIR)
 
         // Create all directories
         externalRootDir.mkdirs()
         schemaDir.mkdirs()
         fontsDir.mkdirs()
         luaDir.mkdirs()
+        modelsDir.mkdirs()
 
         // Internal data directory
         internalDataDir = context.filesDir

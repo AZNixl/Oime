@@ -188,6 +188,8 @@ fun SettingsScreen(
     var subPage by remember { mutableStateOf("main") }
     // 反馈轮16：输入方案页的「方案管理」子级页（勾选启用集）
     var showManage by remember { mutableStateOf(false) }
+    // 轮19：联网 API 配置对话框（语音输入大项）
+    var webApiDialogShow by remember { mutableStateOf(false) }
     val subTitles = mapOf(
         "schemas" to "输入方案",
         "keyboard" to "键盘",
@@ -285,7 +287,7 @@ fun SettingsScreen(
                         )
                     } }
                 }
-                // 父级菜单③：语音输入（轮15：麦克风权限 + 识别方式；本地模型/联网 API 占位）
+                // 父级菜单③：语音输入（轮19：本地模型 + 联网 API 点选；系统接口已删除）
                 item {
                     Card { Column(Modifier.padding(vertical = 4.dp)) {
                         Text(
@@ -309,46 +311,100 @@ fun SettingsScreen(
                             subtitle = if (micGranted.value) "已授权（长按 ○ 键开始听写）" else "语音输入需要录音权限",
                             onClick = { if (!micGranted.value) micLauncher.launch(android.Manifest.permission.RECORD_AUDIO) },
                         )
-                        val voicePrefs = remember { context.getSharedPreferences("voice_prefs", android.content.Context.MODE_PRIVATE) }
-                        var voiceMode by remember { mutableStateOf(voicePrefs.getString("mode", "system") ?: "system") }
+                        // ── 识别引擎（轮19：三选一，speech_prefs.engine 与 Service 共用） ──
+                        val voicePrefs = remember { context.getSharedPreferences("speech_prefs", android.content.Context.MODE_PRIVATE) }
+                        var voiceEngine by remember { mutableStateOf(voicePrefs.getString("engine", "sense_voice") ?: "sense_voice") }
+                        // 模型状态（进入页面时探测；导入模型后手动刷新）
+                        var modelCheck by remember { mutableStateOf(0) }
+                        val senseOk = remember(modelCheck) { com.azime.input.core.speech.SpeechEngineManager.hasSenseVoiceModel() }
+                        val zipOk = remember(modelCheck) { com.azime.input.core.speech.SpeechEngineManager.hasZipformerModel() }
+                        val apiCfg = remember(modelCheck) { com.azime.input.core.speech.SpeechEngineManager.webApiConfig(context) }
                         Text(
-                            "识别方式",
+                            "识别引擎",
                             style = MaterialTheme.typography.titleSmall,
                             modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
                         )
-                        listOf(
-                            "system" to "系统接口（SpeechRecognizer）",
-                            "local" to "本地模型（暂未开放）",
-                            "api" to "联网 API（暂未开放）",
-                        ).forEach { (value, label) ->
-                            val enabled = value == "system"
+                        // (engineId, 标题, 副标题, 就绪)
+                        val engines = listOf(
+                            Triple(
+                                com.azime.input.core.speech.SpeechEngineManager.ENGINE_SENSE_VOICE,
+                                "SenseVoice（本地离线）",
+                                if (senseOk) "模型就绪 · zh/en/ja/ko/yue · 准确率优先（松手出全文）"
+                                else "未检测到模型：放入 Documents/Oime/models/sense-voice/",
+                            ),
+                            Triple(
+                                com.azime.input.core.speech.SpeechEngineManager.ENGINE_ZIPFORMER,
+                                "流式 Zipformer（本地离线）",
+                                if (zipOk) "模型就绪 · zh-en · 边说边出（实时显示）"
+                                else "未检测到模型：放入 Documents/Oime/models/zipformer/",
+                            ),
+                            Triple(
+                                com.azime.input.core.speech.SpeechEngineManager.ENGINE_WEB_API,
+                                "联网 API",
+                                if (apiCfg != null) "已配置（${apiCfg.model}）" else "未配置（点此填写）",
+                            ),
+                        )
+                        engines.forEach { (id, title, subtitle) ->
+                            val selected = voiceEngine == id
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable(enabled = enabled) {
-                                        voiceMode = value
-                                        voicePrefs.edit().putString("mode", value).apply()
+                                    .clickable {
+                                        if (id == com.azime.input.core.speech.SpeechEngineManager.ENGINE_WEB_API && apiCfg == null) {
+                                            // 未配置先弹配置
+                                            webApiDialogShow = true
+                                        } else {
+                                            voiceEngine = id
+                                            voicePrefs.edit().putString("engine", id).apply()
+                                            // 切引擎释放旧模型缓存
+                                            com.azime.input.core.speech.SpeechEngineManager.releaseEngines()
+                                        }
                                     }
                                     .padding(horizontal = 20.dp, vertical = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                RadioButton(selected = voiceMode == value, onClick = {
-                                    if (enabled) {
-                                        voiceMode = value
-                                        voicePrefs.edit().putString("mode", value).apply()
-                                    }
-                                }, enabled = enabled)
+                                RadioButton(selected = selected, onClick = null)
                                 Spacer(Modifier.width(8.dp))
-                                Text(
-                                    label,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = if (enabled) MaterialTheme.colorScheme.onSurface
-                                    else MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
+                                Column(Modifier.weight(1f)) {
+                                    Text(title, style = MaterialTheme.typography.bodyMedium)
+                                    Text(
+                                        subtitle,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
                             }
                         }
+                        // ── 联网 API 配置入口 ──
+                        KsuItem(
+                            icon = Icons.Default.Cloud,
+                            title = "联网 API 配置",
+                            subtitle = if (apiCfg != null) "${apiCfg.baseUrl} · ${apiCfg.model}" else "OpenAI 兼容 /audio/transcriptions",
+                            onClick = { webApiDialogShow = true },
+                        )
+                        // ── 模型目录说明 + 刷新 ──
+                        KsuItem(
+                            icon = Icons.Default.Refresh,
+                            title = "刷新模型状态",
+                            subtitle = "模型放 Documents/Oime/models/（sense-voice / zipformer）",
+                            onClick = { modelCheck++ },
+                        )
+                        Text(
+                            "模型下载（PC 端解压后推入手机）：\n" +
+                                "SenseVoice: github.com/k2-fsa/sherpa-onnx/releases → asr-models →\n" +
+                                "  sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8（model.int8.onnx + tokens.txt）\n" +
+                                "Zipformer: sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20\n" +
+                                "  （encoder*.int8.onnx + decoder*.onnx + joiner*.int8.onnx + tokens.txt）",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
+                        )
                     } }
                 }
+            }
+            // 轮19：联网 API 配置对话框（语音输入大项）
+            if (webApiDialogShow) {
+                WebApiConfigDialog(onDismiss = { webApiDialogShow = false })
             }
             return@Scaffold
         }
@@ -919,19 +975,6 @@ private fun SchemaManagePage() {
         }
     }
 
-    fun switchGroup(groupId: String) {
-        if (groupId == currentGroup || switching) return
-        switching = true
-        RimeManager.switchSchemaGroupOnline(context.applicationContext, groupId) {
-            switching = false
-            currentGroup = RimeManager.currentGroupId(context)
-            groups = RimeManager.schemaGroups(context)
-            available = RimeManager.availableSchemas()
-            current = RimeManager.currentSchema()
-            enabledIds = RimeManager.groupEnabledSchemas(context, currentGroup)
-        }
-    }
-
     fun applyEnabled(ids: List<String>) {
         if (ids.isEmpty()) return // 至少保留一个方案
         switching = true
@@ -945,57 +988,43 @@ private fun SchemaManagePage() {
         }
     }
 
-    Column(Modifier.fillMaxSize()) {
-        Text(
-            "方案组（点击切换）",
-            style = MaterialTheme.typography.titleSmall,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-        )
-        groups.forEach { g ->
-            val selected = g.id == currentGroup
+    // 轮19：去掉页内方案组区块（切组在上一级「输入方案」页），只保留组内方案；
+    // LazyColumn 支持滚动（组内方案可达 20+，原 Column 固定不可滚）。
+    val group = groups.firstOrNull { it.id == currentGroup }
+    val allIds = group?.schemaIds ?: emptyList()
+    LazyColumn(Modifier.fillMaxSize()) {
+        item {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { switchGroup(g.id) }
                     .padding(horizontal = 20.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                RadioButton(selected = selected, onClick = { switchGroup(g.id) })
-                Spacer(Modifier.width(8.dp))
-                Text(g.name, style = MaterialTheme.typography.bodyLarge)
-                Spacer(Modifier.weight(1f))
+                Column(Modifier.weight(1f)) {
+                    Text("组内方案", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        "勾选启用 · 点选使用（当前组：$currentGroup）",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (switching) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                }
+            }
+        }
+        if (allIds.isEmpty()) {
+            item {
                 Text(
-                    "${g.schemaIds.size} 个方案",
+                    "暂无方案 —— 等待引擎部署完成，或在该组目录中放入 .schema.yaml",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
                 )
             }
-        }
-        HorizontalDivider(modifier = Modifier.padding(horizontal = 20.dp), thickness = 0.5.dp)
-        Row(
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                "组内方案（勾选启用 · 点选使用）",
-                style = MaterialTheme.typography.titleSmall,
-                modifier = Modifier.weight(1f),
-            )
-            if (switching) {
-                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-            }
-        }
-        val group = groups.firstOrNull { it.id == currentGroup }
-        val allIds = group?.schemaIds ?: emptyList()
-        if (allIds.isEmpty()) {
-            Text(
-                "暂无方案 —— 等待引擎部署完成，或在该组目录中放入 .schema.yaml",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
-            )
         } else {
-            allIds.forEach { id ->
+            items(allIds.size) { idx ->
+                val id = allIds[idx]
                 val inList = id in enabledIds
                 val inUse = id == current
                 Row(
@@ -1717,6 +1746,79 @@ private fun KsuItem(
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+    }
+}
+
+/** 轮19：联网 API 配置对话框（OpenAI 兼容 /v1/audio/transcriptions）。 */
+@Composable
+private fun WebApiConfigDialog(onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences("speech_prefs", android.content.Context.MODE_PRIVATE) }
+    val cfg = remember { com.azime.input.core.speech.SpeechEngineManager.webApiConfig(context) }
+    var url by remember { mutableStateOf(prefs.getString("web_api_url", "") ?: "") }
+    var key by remember { mutableStateOf(prefs.getString("web_api_key", "") ?: "") }
+    var model by remember { mutableStateOf(prefs.getString("web_api_model", "whisper-1") ?: "whisper-1") }
+
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        androidx.compose.material3.Surface(
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surface,
+        ) {
+            Column(Modifier.padding(20.dp)) {
+                Text("联网 API 配置", style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "OpenAI 兼容接口（POST {baseUrl}/audio/transcriptions）",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = url, onValueChange = { url = it },
+                    label = { Text("Base URL") },
+                    placeholder = { Text("https://api.openai.com/v1") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = key, onValueChange = { key = it },
+                    label = { Text("API Key") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = model, onValueChange = { model = it },
+                    label = { Text("模型") },
+                    placeholder = { Text("whisper-1") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(16.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) {
+                        Text("取消")
+                    }
+                    Button(
+                        onClick = {
+                            prefs.edit()
+                                .putString("web_api_url", url.trim())
+                                .putString("web_api_key", key.trim())
+                                .putString("web_api_model", model.trim().ifEmpty { "whisper-1" })
+                                .apply()
+                            // 配置完成直接切换到联网引擎
+                            prefs.edit().putString("engine", com.azime.input.core.speech.SpeechEngineManager.ENGINE_WEB_API).apply()
+                            onDismiss()
+                        },
+                        modifier = Modifier.weight(1f),
+                        enabled = url.isNotBlank() && key.isNotBlank(),
+                    ) {
+                        Text("保存并启用")
+                    }
+                }
+            }
         }
     }
 }

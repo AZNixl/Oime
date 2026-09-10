@@ -12,8 +12,8 @@ android {
         applicationId = "com.oime.input"
         minSdk = 24
         targetSdk = 34
-        versionCode = 22
-        versionName = "0.9.12-oime"
+        versionCode = 23
+        versionName = "0.9.13-oime"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         
@@ -90,6 +90,10 @@ dependencies {
     // Zip4j for zip handling
     implementation("net.lingala.zip4j:zip4j:2.11.5")
     implementation("androidx.documentfile:documentfile:1.0.1")
+
+    // sherpa-onnx 本地语音识别（轮19：SenseVoice 离线 / zipformer 流式）
+    // 官方 release AAR（含 Kotlin API + 全 ABI so），jitpack 拉取不稳定故提交进 repo
+    implementation(files("libs/sherpa-onnx-1.13.5.aar"))
     
     // Testing
     testImplementation("junit:junit:4.13.2")
