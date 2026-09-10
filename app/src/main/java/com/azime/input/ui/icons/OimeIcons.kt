@@ -9,20 +9,13 @@ import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.unit.dp
 
 /**
- * Oime 自绘图标集「方案 J · 长投影立体」（轮19.4）。
+ * Oime 自绘图标集（轮19.4 起用方案 J，轮19.5 去掉重影层）。
  *
- * 特征：**实心/描边主体 + 右下 1.8 偏移的重影层**（同色 45% 透明度）——产生厚度感。
- * 单色 tint：路径统一用黑色填充，由 Icon(tint=...) 上色；重影靠 fillAlpha/strokeAlpha
- * 实现（不能用另一种灰色，否则无法跟随主题/键面文字色）。
- *
+ * 单色 tint：路径统一用黑色填充/描边，由 Icon(tint=...) 上色，跟随主题与键面文字色。
  * 24×24 网格，stroke 默认 2.0~2.4，圆头圆角。
  * 回车键为**纸飞机**（两片机翼留缝形成折痕，单色下也能看出折线）。
  */
 object OimeIcons {
-
-    private const val GHOST_DX = 1.8f
-    private const val GHOST_DY = 1.8f
-    private const val GHOST_ALPHA = 0.45f
 
     /** (pathData, 是否填充, 描边宽度) */
     private data class P(val d: String, val filled: Boolean = false, val w: Float = 2.2f)
@@ -35,26 +28,7 @@ object OimeIcons {
             viewportWidth = 24f,
             viewportHeight = 24f,
         )
-        // 重影层（Compose 1.6 的 addGroup 无 block 重载，用 addGroup/clearGroup 配对）
-        b.addGroup(
-            name = "ghost",
-            translationX = GHOST_DX,
-            translationY = GHOST_DY,
-        )
-        paths.forEach { p ->
-            b.addPath(
-                pathData = PathParser().parsePathString(p.d).toNodes(),
-                fill = if (p.filled) SolidColor(Color.Black) else null,
-                fillAlpha = GHOST_ALPHA,
-                stroke = if (p.filled) null else SolidColor(Color.Black),
-                strokeAlpha = GHOST_ALPHA,
-                strokeLineWidth = p.w,
-                strokeLineCap = StrokeCap.Round,
-                strokeLineJoin = StrokeJoin.Round,
-            )
-        }
-        b.clearGroup()
-        // 主体层
+        // 轮19.5：去掉重影层（用户反馈「阴影看得眼花」）——现在是纯单层主体。
         paths.forEach { p ->
             b.addPath(
                 pathData = PathParser().parsePathString(p.d).toNodes(),

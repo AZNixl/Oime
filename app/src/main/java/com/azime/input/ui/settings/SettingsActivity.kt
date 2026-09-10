@@ -1142,7 +1142,7 @@ private fun KeyHeightSliders() {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.height(8.dp))
-        // 空格键显示文本：留空 = 显示当前方案名（默认）
+        // 空格键显示文本（轮19.5）：留空 = 显示当前方案「名称」（schema.yaml 的 name 字段）
         var spaceLabel by remember {
             mutableStateOf(com.azime.input.core.keyboard.KeyboardManager.spaceLabel())
         }
@@ -1153,9 +1153,14 @@ private fun KeyHeightSliders() {
                 com.azime.input.core.keyboard.KeyboardManager.setSpaceLabel(it)
             },
             label = { Text("空格键显示文本") },
-            placeholder = { Text("留空显示当前方案名") },
+            placeholder = { Text("留空显示当前方案名称") },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
+        )
+        Text(
+            "有文字 → 空格键显示该文字；只打空格 → 只显示空格图标；留空 → 显示当前方案名称",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Text(
             "提示：中文模式下按 ⇧ 切英文后，空格键可输入空格（反馈轮9已修复无编码时空格被引擎吞掉的问题）",

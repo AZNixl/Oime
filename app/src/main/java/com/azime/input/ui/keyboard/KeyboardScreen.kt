@@ -1968,13 +1968,18 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
         else -> c.text
     }
     val label = when {
-        // 空格键显示：自定义文本 > 当前方案名（短名） > 默认「空格」（轮11：isNotEmpty，纯空格标签也生效）
+        // 空格键显示（轮19.5 修正优先级）：
+        //   1) 自定义文本有可见字符  → 显示自定义文本
+        //   2) 自定义是纯空格（isNotEmpty 但全空白）→ 返回空串 = 只显示图标
+        //   3) 未自定义            → 显示**方案名称**（schema.yaml 的 name，不是文件名）
         key.code == "space" && state.page == "main" -> {
             val custom = KeyboardManager.spaceLabel()
             when {
-                custom.isNotEmpty() -> custom
-                state.schemaName.isNotBlank() -> state.schemaName.substringAfterLast('.')
-                else -> key.label
+                custom.isNotBlank() -> custom.trim()
+                custom.isNotEmpty() -> ""   // 只打了空格 → 走图标
+                state.schemaName.isNotBlank() ->
+                    com.azime.input.core.rime.RimeManager.schemaDisplayName(state.schemaName)
+                else -> ""                  // 无方案 → 走图标
             }
         }
         key.type != KeyType.CHARACTER -> key.label
@@ -2296,11 +2301,13 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
         modifier = baseModifier,
         contentAlignment = Alignment.Center,
     ) {
-        // 轮19.4：功能键优先渲染图标（OimeIcons 方案 J）；无图标 / 滑动预览中回落文字
+        // 轮19.4：功能键优先渲染图标（OimeIcons）；无图标 / 滑动预览中回落文字。
+        // 轮19.5：空格键例外——有文本（自定义文本或方案名称）时优先文本，文本为空才显示图标。
         val keyIcon = if (key.icon != null && swipePreview == null) {
             com.azime.input.ui.icons.OimeIcons.byName(key.icon)
         } else null
-        if (keyIcon != null) {
+        val preferText = key.code == "space" && label.isNotBlank()
+        if (keyIcon != null && !preferText) {
             Icon(
                 keyIcon,
                 contentDescription = key.label,
