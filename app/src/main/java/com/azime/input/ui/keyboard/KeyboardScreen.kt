@@ -778,10 +778,14 @@ private fun ToolbarRow(
                                     val dx = ch.position.x - a.x
                                     val dy = ch.position.y - a.y
                                     if (dy > downPx && abs(dy) > abs(dx)) {
-                                        // 下滑：收起键盘（反馈轮10：取代工具栏 ⌄ 关闭键）
-                                        swipedDown = true
-                                        oLongFired = true
-                                        break
+                                        // 轮19.3：只标记「下滑意图」，**不 break**——原实现一越过阈值
+                                        // 就退出循环并立即 HideKeyboard，手指还没松键盘就没了。
+                                        // 现在循环继续跟踪直到抬起，松手才收起。
+                                        if (!swipedDown) {
+                                            swipedDown = true
+                                            oLongFired = true
+                                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        }
                                     }
                                     if (abs(dx) > stepPx) {
                                         onAction(KeyAction.Joystick((dx / stepPx).roundToInt()))
@@ -887,11 +891,11 @@ private fun VoiceWavePanel(
     barHeight: androidx.compose.ui.unit.Dp,
 ) {
     val c = keyboardColors()
-    // 时间相位：让波形在 RMS 平稳时也有自然起伏
-    val phase = rememberInfiniteTransition(label = "wave").animateFloat(
-        0f, (2f * Math.PI).toFloat(),
-        infiniteRepeatable(tween(1200, easing = androidx.compose.animation.core.LinearEasing)),
-        label = "wavePhase",
+    // 时间相位：让波纹在 RMS 平稳时也持续扩散
+    val phase = rememberInfiniteTransition(label = "ripple").animateFloat(
+        0f, 1f,
+        infiniteRepeatable(tween(1600, easing = androidx.compose.animation.core.LinearEasing)),
+        label = "ripplePhase",
     )
     Box(
         modifier = Modifier
@@ -899,37 +903,45 @@ private fun VoiceWavePanel(
             .height(barHeight + 4.dp)
             .background(c.bg)
             .clickable { onStop() },
+        contentAlignment = Alignment.Center,
     ) {
-        Canvas(Modifier.fillMaxSize()) {
-            val level = (rms.value / 10f).coerceIn(0f, 1f) // RMS dB（-2~10 常见）归一化
-            val bars = 28
-            val gap = 3.dp.toPx()
-            val barW = (size.width - gap * (bars + 1)) / bars
-            val midY = size.height * 0.55f
-            val maxAmp = size.height * 0.32f
+        // 轮19.3：语音动画改为**中央波纹**——原实现是铺满整条工具栏的 28 根音量条
+        // （用户反馈「太长、占满工具栏」）。现在只占中央 120dp，同心圆扩散 + 中心点随音量。
+        Canvas(
+            Modifier
+                .width(120.dp)
+                .height(barHeight - 6.dp),
+        ) {
+            val level = (rms.value / 10f).coerceIn(0f, 1f)
             val accent = keyboardAccentActiveColor(c.barBg.luminance() < 0.5f)
-            for (i in 0 until bars) {
-                // 中间高、两端低的钟形包络 + 相位波 + RMS 驱动
-                val t = i / (bars - 1f)
-                val env = kotlin.math.sin(t * Math.PI).toFloat()
-                val w = kotlin.math.sin(phase.value + i * 0.6f)
-                val amp = maxAmp * env * (0.18f + 0.22f * (w + 1f) / 2f + 0.6f * level * env)
-                val h = (2.dp.toPx() + amp).coerceAtMost(size.height * 0.9f)
-                drawRoundRect(
-                    color = accent.copy(alpha = 0.55f + 0.45f * env * (0.4f + 0.6f * level)),
-                    topLeft = Offset(gap + i * (barW + gap), midY - h / 2f),
-                    size = androidx.compose.ui.geometry.Size(barW, h),
-                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(barW / 2f),
+            val cx = size.width / 2f
+            val cy = size.height / 2f
+            val maxR = minOf(size.width, size.height) / 2f
+            // 3 圈错相扩散波纹，越外越淡；音量越大越亮越远
+            repeat(3) { i ->
+                val p = (phase.value + i / 3f) % 1f
+                val r = maxR * (0.28f + 0.72f * p) * (0.7f + 0.3f * level)
+                drawCircle(
+                    color = accent.copy(alpha = (1f - p) * (0.25f + 0.5f * level)),
+                    radius = r,
+                    center = Offset(cx, cy),
+                    style = Stroke(width = 1.6.dp.toPx()),
                 )
             }
+            // 中心实心点：半径随音量脉动
+            drawCircle(
+                color = accent.copy(alpha = 0.85f),
+                radius = maxR * (0.14f + 0.20f * level),
+                center = Offset(cx, cy),
+            )
         }
         Text(
             "正在听写…点击结束",
             fontSize = 11.sp,
             color = c.subText,
             modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 2.dp),
+                .align(Alignment.CenterEnd)
+                .padding(end = 14.dp),
         )
     }
 }
@@ -1825,7 +1837,9 @@ private fun NumpadPane(state: KeyboardUiState, onAction: (KeyAction) -> Unit, ke
                 }
             }
         }
-        // 第 4 行：返回 + = 0 . + ⏎（反馈轮9：0 左 = 号、右 . 号）
+        // 第 4 行：返回 + 00 0 . + ⏎（反馈轮9：0 左 = 号、右 . 号；轮19.3：= → 00，
+        // 因为 = 已并入左列滑键符号带）。注意：九宫格实际渲染在本函数内，
+        // 改 KeyboardPages.numpad 只影响编辑器预览，不会生效。
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1836,7 +1850,7 @@ private fun NumpadPane(state: KeyboardUiState, onAction: (KeyAction) -> Unit, ke
                 key = Key("返回", code = "main", width = 1f, type = KeyType.FUNCTION),
                 state = state, onAction = onAction,
             )
-            listOf("=", "0", ".").forEach { ch ->
+            listOf("00", "0", ".").forEach { ch ->
                 KeyboardKey(
                     key = Key(ch, code = ch, width = 1f, type = KeyType.CHARACTER),
                     state = state, onAction = onAction,
@@ -1848,8 +1862,9 @@ private fun NumpadPane(state: KeyboardUiState, onAction: (KeyAction) -> Unit, ke
             )
         }
         // 增高行（反馈轮10：九宫格也支持，与主键盘切换时高度一致）
+        // 轮19.3：**不要再加显式 Spacer**——外层 Column 已有 Arrangement.spacedBy(rowGap)，
+        // 显式 Spacer 会多出一个 rowGap，使九宫格比主键盘高 2×rowGap（切页高度跳变根因）。
         if (KeyboardManager.barEnabled()) {
-            Spacer(Modifier.height(rowGap))
             Row(modifier = Modifier.fillMaxWidth().height(KeyboardManager.barHeightDp().dp)) {}
         }
     }

@@ -261,9 +261,17 @@ object KeyboardManager {
     fun sliderSymbols(): List<String> {
         val raw = prefs.getString(PREF_SLIDER_SYMBOLS, "")?.trim() ?: ""
         if (raw.isEmpty()) return com.azime.input.data.keyboard.KeyboardPages.NumpadSliderSymbols
+        // 轮19.3：存的是「旧版默认符号带」（中文标点）时视为未自定义 → 用新默认（+ - * / = ？ ！）
+        if (raw.replace(Regex("\\s+"), "") == LEGACY_DEFAULT_SLIDER_SYMBOLS.replace(Regex("\\s+"), "")) {
+            return com.azime.input.data.keyboard.KeyboardPages.NumpadSliderSymbols
+        }
         val list = raw.split(Regex("\\s+")).filter { it.isNotBlank() }
         return list.ifEmpty { com.azime.input.data.keyboard.KeyboardPages.NumpadSliderSymbols }
     }
+
+    /** 旧版默认符号带（15 项中文标点）；仅用于识别「未自定义」的旧存档。 */
+    private const val LEGACY_DEFAULT_SLIDER_SYMBOLS =
+        "、 。 ， ！ ？ ： ； ～ · … — （ ） 《 》"
 
     fun setSliderSymbols(raw: String) {
         synchronized(lock) { prefs.edit().putString(PREF_SLIDER_SYMBOLS, raw.trim()).apply() }
