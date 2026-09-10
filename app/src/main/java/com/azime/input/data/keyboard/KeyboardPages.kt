@@ -158,7 +158,8 @@ object KeyboardPages {
                 backspace(),
             ),
             row(
-                pageKey("九宫格", "numpad", width = 1.7f),
+                // 轮19.2：第四行首键改为「返回」（原为切九宫格，九宫格入口已在第三行）
+                pageKey("返回", "main", width = 1.7f),
                 charKey(","),
                 space(width = 4.3f),
                 charKey("."),
@@ -197,15 +198,16 @@ object KeyboardPages {
             ),
             row(
                 pageKey("返回", target = "main", width = 1f),
-                charKey("="), charKey("0"), charKey("."),
+                // 轮19.2：原 = 号键改为 00（= 已并入左列滑键符号带）
+                charKey("00"), charKey("0"), charKey("."),
                 enter(width = 1f),
             ),
         ),
-        rev = 3,
+        rev = 4,
     )
 
     /** 九宫格左列滑动选符号键的符号带（上下滑动选择，松手上屏）。 */
     val NumpadSliderSymbols: List<String> = listOf(
-        "、", "。", "，", "！", "？", "：", "；", "～", "·", "…", "—", "（", "）", "《", "》",
+        "+", "-", "*", "/", "=", "？", "！",
     )
 }

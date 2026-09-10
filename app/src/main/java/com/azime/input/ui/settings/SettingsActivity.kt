@@ -172,6 +172,11 @@ class SettingsActivity : AppCompatActivity() {
 
 // ── KSU 风格主页 ─────────────────────────────────────────────
 
+/** 轮19.2：应用版本名动态读取（原来硬编码 "0.9.8-oime"，升级后不跟随）。 */
+private fun appVersionName(context: android.content.Context): String = runCatching {
+    context.packageManager.getPackageInfo(context.packageName, 0).versionName
+}.getOrNull() ?: "unknown"
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
@@ -526,7 +531,7 @@ fun SettingsScreen(
                             KsuItem(
                                 icon = Icons.Default.Info,
                                 title = "版本",
-                                subtitle = "0.9.8-oime · 包名 com.oime.input · 平台 RIME",
+                                subtitle = "${appVersionName(context)} · 包名 com.oime.input · 平台 RIME",
                                 onClick = {},
                                 showChevron = false,
                             )
@@ -616,7 +621,7 @@ fun SettingsScreen(
                                     Spacer(Modifier.width(4.dp))
                                     Text("版本", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
                                 }
-                                Text("0.9.8-oime", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                Text(appVersionName(context), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                             }
                         }
                         Card(
@@ -747,21 +752,7 @@ private fun StatusCard(fillWidth: Boolean = false) {
                 .padding(20.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // ○ logo（未启用时灰色）
-            Box(
-                modifier = Modifier
-                    .size(52.dp)
-                    .background(if (notEnabled) Color(0xFF8A8F94) else cs.primary, CircleShape),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    "○",
-                    color = if (notEnabled) Color(0xFFE3E5E8) else cs.onPrimary,
-                    fontSize = 26.sp,
-                    fontWeight = FontWeight.Bold,
-                )
-            }
-            Spacer(Modifier.width(16.dp))
+            // 轮19.2：大方块去掉 ○ logo 图标，仅保留文字（用户要求）
             Column(Modifier.weight(1f)) {
                 // 反馈轮12：字号调小 + 单行省略，窄方块内不换行
                 Text(

@@ -46,6 +46,7 @@ import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Dialpad
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.EmojiEmotions
+import androidx.compose.material.icons.filled.GridOn
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.List
@@ -1782,7 +1783,10 @@ private fun NumpadPane(state: KeyboardUiState, onAction: (KeyAction) -> Unit, ke
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(colGap),
+            // 轮19.2 高度对齐主键盘：垂直内边距必须用 rowGap（原来用 colGap）——
+            // 主键盘 = 4×键高 + 5×行距；九宫格原来 = 4×键高 + 3×行距 + 2×列距，
+            // 行列距不同（用户可调）时切页会看到高度跳变。
+            .padding(horizontal = colGap, vertical = rowGap),
         verticalArrangement = Arrangement.spacedBy(rowGap),
     ) {
         // 前 3 行：符号滑键（跨 3 行）+ 数字三列 + 功能三键
@@ -2050,8 +2054,11 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
     // 轮19.1：退格（行为键）上下滑用更短门槛——30dp 默认值对退格太高，
     // 实测「退格下滑撤回」要拖很久才触发，用户感知为失效；18dp 仍属刻意移动。
     val deleteSwipeThreshold = minOf(swipeThreshold, with(density) { 18.dp.toPx() })
-    // 长按气泡滑动选择步长（每个符号占 40dp）
-    val longStepPx = with(density) { 40.dp.toPx() }
+    // 长按气泡滑动选择步长（轮19.2：40dp→22dp。原 40dp 时 K 键 6 对括号要滑 200dp
+    // 才能到最后一项，用户反馈「难以滑到第四第五对」）
+    val longStepPx = with(density) { 22.dp.toPx() }
+    // 气泡多行时上滑换行步长（一行 5 项，上滑一行 = 前缀 +5）
+    val longRowStepPx = with(density) { 30.dp.toPx() }
 
     val hasGestures = longPressSymbols.isNotEmpty() || autoRepeat || hasCustomLong || isPageKey ||
         key.swipeUp != null || key.swipeDown != null || key.swipeLeft != null || key.swipeRight != null
@@ -2155,9 +2162,13 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
                             longCancelled = true
                         }
                         if (longFired && longPressSymbols.isNotEmpty()) {
-                            // 长按气泡已弹出：横向滑动选择符号（多符号时），松手上屏（不触发四向手势）
+                            // 长按气泡已弹出：滑动选择符号（多符号时），松手上屏（不触发四向手势）
                             if (longPressSymbols.size > 1) {
-                                val idx = (dx / longStepPx).roundToInt().coerceIn(0, longPressSymbols.size - 1)
+                                // 轮19.2：横向按 22dp/项 选列，上滑换行（气泡每行 5 项）
+                                val colSteps = (dx / longStepPx).roundToInt()
+                                val rowSteps = (-dy / longRowStepPx).toInt().coerceAtLeast(0)
+                                val idx = (rowSteps * 5 + colSteps)
+                                    .coerceIn(0, longPressSymbols.size - 1)
                                 if (idx != longSelIdx) {
                                     longSelIdx = idx
                                     haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -2379,27 +2390,31 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
                 offset = bubbleOffset,
                 onDismissRequest = { showPageBubble = false },
             ) {
-                Column(
+                // 轮19.2：只保留「26键符号键盘 / 九宫格数字键盘」两项，横向排布、图标代替文字
+                Row(
                     modifier = Modifier
                         .background(c.barBg, RoundedCornerShape(10.dp))
-                        .padding(vertical = 4.dp),
+                        .padding(horizontal = 6.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
                     listOf(
-                        "26键符号键盘" to "symbols",
-                        "九宫格数字键盘" to "numpad",
-                        "emoji 键盘" to "emoji",
-                    ).forEach { (name, page) ->
-                        Text(
-                            text = name,
-                            fontSize = 14.sp,
-                            color = if (page == KeyboardManager.preferredPage()) c.accentActive else c.text,
+                        "symbols" to Icons.Default.GridOn,   // 26 键符号键盘
+                        "numpad" to Icons.Default.Dialpad,   // 九宫格数字键盘
+                    ).forEach { (page, icon) ->
+                        val on = page == KeyboardManager.preferredPage()
+                        Icon(
+                            icon,
+                            contentDescription = page,
+                            tint = if (on) c.accentActive else c.text,
                             modifier = Modifier
                                 .clickable {
                                     showPageBubble = false
                                     KeyboardManager.setPreferredPage(page)
                                     onAction(KeyAction.SwitchPage(page))
                                 }
-                                .padding(horizontal = 16.dp, vertical = 9.dp),
+                                .padding(horizontal = 12.dp, vertical = 8.dp)
+                                .size(24.dp),
                         )
                     }
                 }
