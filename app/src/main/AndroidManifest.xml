@@ -11,6 +11,10 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <!-- 语音输入（轮15）：系统 SpeechRecognizer 录音授权 -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- 轮19.6：O 圆环上滑快捷启动应用——需读取已安装应用列表（Android 11+ 必须显式声明） -->
+    <uses-permission
+        android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesPermission" />
 
     <application
         android:name=".AZimeApplication"

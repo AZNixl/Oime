@@ -136,7 +136,7 @@ fun OnboardingScreen(
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val cs = MaterialTheme.colorScheme
-    val pagerState = rememberPagerState(pageCount = { 4 })
+    val pagerState = rememberPagerState(pageCount = { 5 })
     val scope = rememberCoroutineScope()
 
     // 实时状态：回到前台 / 翻页时刷新
@@ -144,6 +144,9 @@ fun OnboardingScreen(
     var enabledOk by remember { mutableStateOf(false) }
     var selectedOk by remember { mutableStateOf(false) }
     var settingsVisited by remember { mutableStateOf(false) }
+    // 轮19.6：O 圆环上滑快捷应用需要读取应用列表（QUERY_ALL_PACKAGES）
+    var appsOk by remember { mutableStateOf(false) }
+    var appCount by remember { mutableStateOf(0) }
 
     fun refreshStatus() {
         storageOk = storageGranted(context)
@@ -162,6 +165,8 @@ fun OnboardingScreen(
             ).orEmpty()
             def.startsWith("${context.packageName}/")
         }.getOrDefault(false)
+        appsOk = com.azime.input.core.apps.AppLauncher.canQueryApps(context)
+        appCount = if (appsOk) com.azime.input.core.apps.AppLauncher.installedApps(context).size else 0
     }
 
     val runtimePermLauncher = rememberLauncherForActivityResult(
@@ -226,7 +231,8 @@ fun OnboardingScreen(
                                 0 -> "📂"
                                 1 -> "⌨"
                                 2 -> "✓"
-                                else -> "⚙"
+                                3 -> "⚙"
+                                else -> "◎"
                             },
                             fontSize = 44.sp,
                         )
@@ -237,7 +243,8 @@ fun OnboardingScreen(
                             0 -> "读取本地文件"
                             1 -> "启用输入法"
                             2 -> "选择输入法"
-                            else -> "进入设置"
+                            3 -> "进入设置"
+                            else -> "O 圆环快捷应用"
                         },
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
@@ -251,7 +258,11 @@ fun OnboardingScreen(
                                 "允许它在你的设备上使用。"
                             2 -> "把当前输入法切换为 ○输入法。" +
                                 "在弹出的选择框中选中它即可。"
-                            else -> "导入方案、编辑键盘布局、调整字体与打字振动，都从这里开始。"
+                            3 -> "导入方案、编辑键盘布局、调整字体与打字振动，都从这里开始。"
+                            else -> "从 ○ 圆环**向上滑**可呼出 5 个应用图标（半圆弧分布），" +
+                                "滑动选择、松手直接打开。需要读取已安装应用列表" +
+                                "（QUERY_ALL_PACKAGES，安装时已声明，无需额外授权）。" +
+                                "在设置 → O 圆环 里排布这 5 个应用。"
                         },
                         style = MaterialTheme.typography.bodyMedium,
                         color = cs.onSurfaceVariant,
@@ -263,10 +274,15 @@ fun OnboardingScreen(
                         0 -> storageOk
                         1 -> enabledOk
                         2 -> selectedOk
-                        else -> settingsVisited
+                        3 -> settingsVisited
+                        else -> appsOk
                     }
                     Text(
-                        if (done) "✓ 已完成" else "未完成",
+                        when {
+                            page == 4 && done -> "✓ 可读 $appCount 个应用"
+                            done -> "✓ 已完成"
+                            else -> "未完成"
+                        },
                         fontSize = 13.sp,
                         color = if (done) Color(0xFF2E9E5B) else cs.onSurfaceVariant,
                         fontWeight = FontWeight.Bold,
@@ -291,6 +307,7 @@ fun OnboardingScreen(
                                 }
                                 1 -> openImeSettings()
                                 2 -> pickIme()
+                                3 -> { settingsVisited = true; finishWizard() }
                                 else -> { settingsVisited = true; finishWizard() }
                             }
                         },
@@ -302,7 +319,8 @@ fun OnboardingScreen(
                                     "授予所有文件访问" else "授予存储权限"
                                 1 -> "去启用"
                                 2 -> "选择输入法"
-                                else -> "进入设置"
+                                3 -> "进入设置"
+                                else -> if (appsOk) "去排布应用（已就绪）" else "去排布应用"
                             }
                         )
                     }
@@ -317,7 +335,7 @@ fun OnboardingScreen(
                     .padding(vertical = 12.dp),
                 horizontalArrangement = Arrangement.Center,
             ) {
-                repeat(4) { i ->
+                repeat(5) { i ->
                     Box(
                         modifier = Modifier
                             .padding(horizontal = 5.dp)
@@ -348,7 +366,7 @@ fun OnboardingScreen(
                 Button(
                     onClick = {
                         scope.launch {
-                            if (pagerState.currentPage < 3) {
+                            if (pagerState.currentPage < 4) {
                                 pagerState.animateScrollToPage(pagerState.currentPage + 1)
                             } else {
                                 finishWizard()

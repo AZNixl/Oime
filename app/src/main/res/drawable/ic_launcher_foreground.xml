@@ -4,21 +4,10 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- 反馈轮12：细线风格 ○ 品牌环（自适应安全区中央 66dp 内） -->
+    <!-- 轮19.6：白色品牌环（黑底白圆环，只留 ○，与键盘 O 圆环视觉一致） -->
     <path
         android:pathData="M54,33.5a20.5,20.5 0 1,0 0.001,0z"
-        android:strokeWidth="3"
+        android:strokeWidth="3.4"
         android:strokeLineCap="round"
-        android:strokeColor="#2C2C2A"/>
-    <!-- 3x3 空心点阵：数字键盘意象 -->
-    <path
-        android:pathData="M46,43.6a2.4,2.4 0 1,0 0.001,0zM54,43.6a2.4,2.4 0 1,0 0.001,0zM62,43.6a2.4,2.4 0 1,0 0.001,0zM46,51.6a2.4,2.4 0 1,0 0.001,0zM54,51.6a2.4,2.4 0 1,0 0.001,0zM62,51.6a2.4,2.4 0 1,0 0.001,0zM46,59.6a2.4,2.4 0 1,0 0.001,0z"
-        android:strokeWidth="1.5"
-        android:strokeColor="#2C2C2A"/>
-    <!-- 点阵底中横线（拨号盘惯例） -->
-    <path
-        android:pathData="M50,62H58"
-        android:strokeWidth="2.5"
-        android:strokeLineCap="round"
-        android:strokeColor="#2C2C2A"/>
+        android:strokeColor="#FFFFFF"/>
 </vector>

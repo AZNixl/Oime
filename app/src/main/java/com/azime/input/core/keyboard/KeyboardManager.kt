@@ -158,6 +158,44 @@ object KeyboardManager {
         synchronized(lock) { prefs.edit().putString(PREF_SPACE_LABEL, v).apply() }
     }
 
+    // ── O 圆环（轮19.6）：形状 + 上滑快捷应用 ──────────────────
+
+    private const val PREF_RING_SHAPE = "o_ring_shape"
+    private const val PREF_RING_APPS = "o_ring_apps"
+
+    const val RING_SHAPE_RING = "ring"      // 圆形环（默认）
+    const val RING_SHAPE_SQUARE = "square"  // 圆角方形环
+    const val RING_SHAPE_EYE = "eye"        // 圆环 + 双眼（会随机眨眼 / 左右看）
+
+    /** 上滑弧固定 5 个槽位。 */
+    const val RING_APP_SLOTS = 5
+
+    /** O 圆环形状：ring | square | eye。 */
+    fun ringShape(): String = prefs.getString(PREF_RING_SHAPE, RING_SHAPE_RING) ?: RING_SHAPE_RING
+
+    fun setRingShape(shape: String) {
+        synchronized(lock) { prefs.edit().putString(PREF_RING_SHAPE, shape).apply() }
+    }
+
+    /** 上滑弧的 5 个应用包名（顺序 = 弧上从左到右；空串 = 该槽未设置）。 */
+    fun ringApps(): List<String> {
+        val raw = prefs.getString(PREF_RING_APPS, "") ?: ""
+        if (raw.isEmpty()) return List(RING_APP_SLOTS) { "" }
+        val parts = raw.split('|')
+        return List(RING_APP_SLOTS) { parts.getOrElse(it) { "" } }
+    }
+
+    fun setRingApps(list: List<String>) {
+        val v = List(RING_APP_SLOTS) { list.getOrElse(it) { "" } }.joinToString("|")
+        synchronized(lock) { prefs.edit().putString(PREF_RING_APPS, v).apply() }
+    }
+
+    fun setRingApp(slot: Int, pkg: String) {
+        val cur = ringApps().toMutableList()
+        if (slot in cur.indices) cur[slot] = pkg
+        setRingApps(cur)
+    }
+
     // ── 字号 / 外观（反馈轮9：键盘与工具栏字号分开；圆角/行距/列距可调） ──
 
     private const val PREF_FONT_SIZE_KEY = "font_size_key"

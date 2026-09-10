@@ -4,8 +4,8 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- 反馈轮12：细线风格底色（暖浅灰） -->
+    <!-- 轮19.6：黑底（用户要求「黑底白圆环」） -->
     <path
-        android:fillColor="#F1EFE8"
+        android:fillColor="#000000"
         android:pathData="M0,0h108v108h-108z"/>
 </vector>

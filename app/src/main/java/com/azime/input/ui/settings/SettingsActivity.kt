@@ -201,6 +201,7 @@ fun SettingsScreen(
         "keyboard" to "键盘",
         "theme" to "主题与配色",
         "float" to "悬浮窗",
+        "oring" to "O 圆环",
         "about" to "关于",
     )
     // 反馈轮10：设置子级页支持系统返回键（原来滑动/返回直接回桌面）
@@ -489,6 +490,11 @@ fun SettingsScreen(
             }
             return@Scaffold
         }
+        // ── 二级页：O 圆环（轮19.6：形状切换 + 上滑快捷启动应用） ──
+        if (subPage == "oring") {
+            OringSettings(padding)
+            return@Scaffold
+        }
         // ── 二级页：主题与配色（参考小企鹅输入法.fx：主题卡片网格 + 自定义色） ──
         if (subPage == "theme") {
             LazyColumn(
@@ -689,6 +695,12 @@ fun SettingsScreen(
                             title = "主题与配色",
                             subtitle = "主题卡片 · 强调色 · 字体管理",
                             onClick = { subPage = "theme" },
+                        )
+                        KsuItem(
+                            icon = OimeIcons.emoji,
+                            title = "O 圆环",
+                            subtitle = "圆环形状 · 上滑快捷启动应用",
+                            onClick = { subPage = "oring" },
                         )
                         KsuItem(
                             icon = OimeIcons.code,
@@ -1844,6 +1856,193 @@ private fun WebApiConfigDialog(onDismiss: () -> Unit) {
                         enabled = url.isNotBlank() && key.isNotBlank(),
                     ) {
                         Text("保存并启用")
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 轮19.6：O 圆环设置页——形状三选一 + 上滑快捷启动的 5 个应用槽位。
+ */
+@Composable
+private fun OringSettings(padding: androidx.compose.foundation.layout.PaddingValues) {
+    val context = LocalContext.current
+    val km = com.azime.input.core.keyboard.KeyboardManager
+    var shape by remember { mutableStateOf(km.ringShape()) }
+    var slots by remember { mutableStateOf(km.ringApps()) }
+    var pickSlot by remember { mutableStateOf(-1) }
+    val apps = remember { com.azime.input.core.apps.AppLauncher.installedApps(context) }
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(padding)
+            .padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = PaddingValues(vertical = 8.dp),
+    ) {
+        item {
+            Card {
+                Column(Modifier.padding(vertical = 4.dp)) {
+                    Text(
+                        "圆环形状",
+                        style = MaterialTheme.typography.titleSmall,
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                    )
+                    listOf(
+                        km.RING_SHAPE_RING to ("圆形环" to "默认，白色呼吸圆环"),
+                        km.RING_SHAPE_SQUARE to ("圆角方形环" to "方形描边，硬朗"),
+                        km.RING_SHAPE_EYE to ("眼睛" to "环内双眼：随机眨眼 · 左右看"),
+                    ).forEach { (value, pair) ->
+                        val (name, desc) = pair
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    shape = value
+                                    km.setRingShape(value)
+                                }
+                                .padding(horizontal = 20.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(selected = shape == value, onClick = {
+                                shape = value
+                                km.setRingShape(value)
+                            })
+                            Spacer(Modifier.width(8.dp))
+                            Column {
+                                Text(name, style = MaterialTheme.typography.bodyMedium)
+                                Text(
+                                    desc,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        item {
+            Card {
+                Column(Modifier.padding(vertical = 4.dp)) {
+                    Text(
+                        "上滑快捷应用（5 个槽位）",
+                        style = MaterialTheme.typography.titleSmall,
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                    )
+                    Text(
+                        "在键盘上从 ○ 圆环向上滑 → 弧上出现 5 个图标 → 滑动选择、松手打开",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp),
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    for (i in 0 until km.RING_APP_SLOTS) {
+                        val pkg = slots.getOrElse(i) { "" }
+                        KsuItem(
+                            icon = OimeIcons.emoji,
+                            title = "槽位 ${i + 1}：" + (
+                                if (pkg.isBlank()) "未设置"
+                                else com.azime.input.core.apps.AppLauncher.label(context, pkg)
+                                ),
+                            subtitle = if (pkg.isBlank()) "点击选择应用（共 ${apps.size} 个可启动应用）" else pkg,
+                            onClick = { pickSlot = i },
+                        )
+                    }
+                }
+            }
+        }
+        item {
+            Text(
+                "提示：读取应用列表需要 QUERY_ALL_PACKAGES 权限（已在首次向导中说明）。" +
+                    "未设置槽位时该位置显示「＋」占位。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+
+    if (pickSlot >= 0) {
+        AppPickerDialog(
+            apps = apps,
+            onPick = { pkg ->
+                km.setRingApp(pickSlot, pkg)
+                slots = km.ringApps()
+                pickSlot = -1
+            },
+            onClear = {
+                km.setRingApp(pickSlot, "")
+                slots = km.ringApps()
+                pickSlot = -1
+            },
+            onDismiss = { pickSlot = -1 },
+        )
+    }
+}
+
+/** 应用选择对话框：图标 + 名称列表（含搜索框 + 清除槽位）。 */
+@Composable
+private fun AppPickerDialog(
+    apps: List<com.azime.input.core.apps.AppLauncher.AppInfo>,
+    onPick: (String) -> Unit,
+    onClear: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var query by remember { mutableStateOf("") }
+    val filtered = remember(query, apps) {
+        if (query.isBlank()) apps
+        else apps.filter { it.label.contains(query, ignoreCase = true) || it.pkg.contains(query, true) }
+    }
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        androidx.compose.material3.Surface(
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surface,
+        ) {
+            Column(Modifier.padding(16.dp)) {
+                Text("选择应用", style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    label = { Text("搜索") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(8.dp))
+                LazyColumn(Modifier.heightIn(max = 360.dp)) {
+                    items(filtered.size) { idx ->
+                        val a = filtered[idx]
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onPick(a.pkg) }
+                                .padding(vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            if (a.icon != null) {
+                                androidx.compose.foundation.Image(
+                                    bitmap = a.icon,
+                                    contentDescription = a.label,
+                                    modifier = Modifier.size(28.dp),
+                                )
+                            } else {
+                                Icon(OimeIcons.emoji, contentDescription = null, modifier = Modifier.size(28.dp))
+                            }
+                            Spacer(Modifier.width(12.dp))
+                            Text(a.label, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
+                        }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = onClear, modifier = Modifier.weight(1f)) {
+                        Text("清除槽位")
+                    }
+                    Button(onClick = onDismiss, modifier = Modifier.weight(1f)) {
+                        Text("取消")
                     }
                 }
             }

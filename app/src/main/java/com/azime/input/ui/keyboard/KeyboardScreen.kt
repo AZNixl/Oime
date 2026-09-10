@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -115,7 +116,9 @@ import com.azime.input.data.model.KeyType
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
+import kotlin.math.cos
 import kotlin.math.roundToInt
+import kotlin.math.sin
 import kotlin.math.sqrt
 
 /** 键盘 → Service 的动作。 */
@@ -307,8 +310,10 @@ fun AzimeKeyboardScreen(
     val keyCorner = KeyboardManager.keyCornerDp().dp
     val rowGap = KeyboardManager.rowGapDp().dp
     val colGap = KeyboardManager.colGapDp().dp
-    // 主键盘区标准总高（4 行 + 间距）；emoji/候选/菜单面板统一与此等高
-    val stdH = keyH * 4 + rowGap * 5
+    // 主键盘区标准总高（4 行 + 3 道行距 + 2dp 底留白，顶留白为 0）；emoji/候选/菜单面板统一与此等高。
+    // 轮19.6：原为 keyH*4 + rowGap*5（对应旧的上下各 rowGap 留白），底部留白改 2dp 后
+    // 面板比键盘高了 rowGap-2dp → emoji/符号页与主键盘不等高。
+    val stdH = keyH * 4 + rowGap * 3 + 2.dp
     val areaH = if (KeyboardManager.barEnabled()) stdH + rowGap + barH else stdH
 
     CompositionLocalProvider(
@@ -323,8 +328,8 @@ fun AzimeKeyboardScreen(
             ToolbarRow(
                 state = state,
                 onAction = onAction,
-                // 反馈轮11：工具栏高度按 ○ 菜单键（36dp）+ 上下 4dp 留白 = 44dp，整体居中
-                barHeight = 44.dp,
+                // 反馈轮11：○ 菜单键 36dp + 上下留白；轮19.6：44→40dp（用户反馈与首行之间空白偏宽）
+                barHeight = 40.dp,
                 voiceRms = voiceRms,
             )
             // 面板优先：更多候选 / ○ 菜单 / 剪贴板 覆盖主键盘区（等高），否则显示键盘
@@ -355,7 +360,8 @@ fun AzimeKeyboardScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         // 轮19.4：底部留白 rowGap → 2dp（用户反馈「与最下沿还有距离」）
-                        .padding(start = colGap, end = colGap, top = rowGap, bottom = 2.dp),
+                        // 轮19.6：顶部留白 rowGap → 0（工具栏图标在「灰色带 + 首行」整体中才居中，且空白更窄）
+                        .padding(start = colGap, end = colGap, top = 0.dp, bottom = 2.dp),
                     verticalArrangement = Arrangement.spacedBy(rowGap),
                 ) {
                     for (row in layout.rows) {
@@ -599,6 +605,8 @@ private fun ToolbarRow(
     var showSchemaMenu by remember { mutableStateOf(false) }
     val density = LocalDensity.current
     val haptics = LocalHapticFeedback.current
+    // 轮19.6：上滑应用弧需要 context 启动应用 / 读应用图标
+    val context = androidx.compose.ui.platform.LocalContext.current
     // ○ 拖动步长：18dp/步（反馈轮10：指针模式已去除）
     val stepPx = with(density) { 18.dp.toPx() }
 
@@ -740,12 +748,45 @@ private fun ToolbarRow(
                     leftItems.forEach { id -> toolbarToolItem(id, state, onAction, c) { showSchemaMenu = true } }
                 }
 
-                // ── ○ 菜单键（居中，圆环造型）：点击开菜单 / 长按定制工具栏 /
-                //    横向拖动移光标（圆环内点跟随手指、限幅环内）/ 下滑收起键盘 ──
+                // ── ○ 菜单键（居中，圆环造型）：点击开菜单 / 长按语音 /
+                //    横向拖动移光标（呼啦圈）/ 下滑收起键盘 / **上滑呼出应用弧**（轮19.6） ──
                 var oPressing by remember { mutableStateOf(false) }
                 var oLongFired by remember { mutableStateOf(false) }
                 // 圆环内点偏移（拖动时跟随手指，限幅在圆环半径内；反馈轮10）
                 var ringKnob by remember { mutableStateOf(Offset.Zero) }
+                // 轮19.6：O 圆环形状（ring / square / eye）+ 眼睛随机动画
+                val ringShape = KeyboardManager.ringShape()
+                var eyeBlink by remember { mutableStateOf(false) }
+                var eyeDx by remember { mutableStateOf(0f) } // -1 左看 / 0 中 / 1 右看
+                // 上滑应用弧：显示中 / 高亮槽位（-1 = 未选）
+                var showAppArc by remember { mutableStateOf(false) }
+                var arcSel by remember { mutableStateOf(-1) }
+                val ringApps = KeyboardManager.ringApps()
+                LaunchedEffect(ringShape) {
+                    if (ringShape != KeyboardManager.RING_SHAPE_EYE) return@LaunchedEffect
+                    // 随机动作 + 随机时间：眨眼（圆点↔长条）/ 左右看
+                    val rnd = java.util.Random()
+                    while (true) {
+                        when (rnd.nextInt(3)) {
+                            0 -> {
+                                eyeBlink = true
+                                kotlinx.coroutines.delay(90L + rnd.nextInt(110))
+                                eyeBlink = false
+                            }
+                            1 -> {
+                                eyeDx = -1f
+                                kotlinx.coroutines.delay(260L + rnd.nextInt(900))
+                                eyeDx = 0f
+                            }
+                            else -> {
+                                eyeDx = 1f
+                                kotlinx.coroutines.delay(260L + rnd.nextInt(900))
+                                eyeDx = 0f
+                            }
+                        }
+                        kotlinx.coroutines.delay(500L + rnd.nextInt(2600))
+                    }
+                }
                 LaunchedEffect(oPressing) {
                     if (oPressing) {
                         kotlinx.coroutines.delay(400)
@@ -766,12 +807,19 @@ private fun ToolbarRow(
                                 oLongFired = false
                                 oPressing = true
                                 ringKnob = Offset.Zero
+                                showAppArc = false
+                                arcSel = -1
                                 val cx = size.width / 2f
                                 val cy = size.height / 2f
                                 val capR = minOf(size.width, size.height) / 2f - 5f
                                 val downPx = with(this@pointerInput) { 40.dp.toPx() }
+                                // 上滑阈值（比下滑略小，弧呼出要跟手）
+                                val upPx = with(this@pointerInput) { 34.dp.toPx() }
+                                // 弧上 5 槽：按横向位移选槽（半径 110dp，步长 ≈ 55dp）
+                                val arcStepPx = with(this@pointerInput) { 55.dp.toPx() }
                                 var anchor: Offset? = null
                                 var swipedDown = false
+                                var swipedUp = false
                                 while (true) {
                                     val ev = awaitPointerEvent()
                                     val ch = ev.changes.firstOrNull() ?: break
@@ -785,7 +833,22 @@ private fun ToolbarRow(
                                     val a = anchor!!
                                     val dx = ch.position.x - a.x
                                     val dy = ch.position.y - a.y
-                                    if (dy > downPx && abs(dy) > abs(dx)) {
+                                    // 上滑：呼出应用弧（松手才启动）
+                                    if (!swipedUp && dy < -upPx && abs(dy) > abs(dx)) {
+                                        swipedUp = true
+                                        oLongFired = true
+                                        showAppArc = true
+                                        arcSel = -1
+                                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    }
+                                    if (swipedUp) {
+                                        val idx = (2f + dx / arcStepPx).roundToInt().coerceIn(0, 4)
+                                        if (idx != arcSel) {
+                                            arcSel = idx
+                                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        }
+                                        ringKnob = Offset.Zero
+                                    } else if (dy > downPx && abs(dy) > abs(dx)) {
                                         // 轮19.3：只标记「下滑意图」，**不 break**——原实现一越过阈值
                                         // 就退出循环并立即 HideKeyboard，手指还没松键盘就没了。
                                         // 现在循环继续跟踪直到抬起，松手才收起。
@@ -794,21 +857,35 @@ private fun ToolbarRow(
                                             oLongFired = true
                                             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                                         }
-                                    }
-                                    if (abs(dx) > stepPx) {
-                                        onAction(KeyAction.Joystick((dx / stepPx).roundToInt()))
-                                        oLongFired = true // 拖动即移光标，抑制长按定制
-                                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                        anchor = ch.position
-                                    }
-                                    // 圆环内点跟随手指，限幅：移动距离不超过圆环中心点（环半径内）
-                                    if (oLongFired) {
-                                        val off = Offset(ch.position.x - cx, ch.position.y - cy)
-                                        val r = sqrt(off.x * off.x + off.y * off.y)
-                                        ringKnob = if (r > capR && r > 0f) off * (capR / r) else off
+                                    } else {
+                                        if (abs(dx) > stepPx) {
+                                            onAction(KeyAction.Joystick((dx / stepPx).roundToInt()))
+                                            oLongFired = true // 拖动即移光标，抑制长按定制
+                                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                            anchor = ch.position
+                                        }
+                                        // 圆环内点跟随手指，限幅：移动距离不超过圆环中心点（环半径内）
+                                        if (oLongFired) {
+                                            val off = Offset(ch.position.x - cx, ch.position.y - cy)
+                                            val r = sqrt(off.x * off.x + off.y * off.y)
+                                            ringKnob = if (r > capR && r > 0f) off * (capR / r) else off
+                                        }
                                     }
                                 }
-                                if (swipedDown) onAction(KeyAction.HideKeyboard)
+                                when {
+                                    // 上滑松手：启动高亮槽位的应用
+                                    swipedUp -> {
+                                        val pkg = ringApps.getOrNull(arcSel).orEmpty()
+                                        if (pkg.isNotBlank()) {
+                                            com.azime.input.core.apps.AppLauncher.launch(
+                                                context.applicationContext, pkg,
+                                            )
+                                        }
+                                    }
+                                    swipedDown -> onAction(KeyAction.HideKeyboard)
+                                }
+                                showAppArc = false
+                                arcSel = -1
                                 oPressing = false
                                 ringKnob = Offset.Zero
                             }
@@ -817,9 +894,8 @@ private fun ToolbarRow(
                     contentAlignment = Alignment.Center,
                 ) {
                     // 圆环（轮15 重构）：静态白色实线圆环 + 呼吸动画（alpha 0.55~1.0 缓变，不刺眼）；
-                    // 尺寸缩小 1/5（36→29dp）、描边加粗 1/4（2.5→3.1dp）；
-                    // 轮19.4：移动光标时**圆环自身跟着手指平移**（呼啦圈模型：环心的锚点不动、
-                    // 环在绕锚点移动），不再渲染圆环内的蓝色小点。
+                    // 轮19.4：移动光标时圆环自身平移（呼啦圈模型，锚点不动）；
+                    // 轮19.6：三种形状——圆环 / 圆角方形环 / 圆环+双眼（随机眨眼、左右看）
                     val breath = rememberInfiniteTransition(label = "oBreath").animateFloat(
                         0.55f, 1f,
                         infiniteRepeatable(tween(1600, easing = androidx.compose.animation.core.FastOutSlowInEasing), RepeatMode.Reverse),
@@ -835,12 +911,99 @@ private fun ToolbarRow(
                     ) {
                         val strokeW = 3.1.dp.toPx()
                         val ringR = size.minDimension / 2f - strokeW - 1f
-                        drawCircle(
-                            color = if (oPressing) c.accentActive
-                            else Color.White.copy(alpha = breath.value),
-                            radius = ringR,
-                            style = Stroke(strokeW),
-                        )
+                        val col = if (oPressing) c.accentActive else Color.White.copy(alpha = breath.value)
+                        when (ringShape) {
+                            KeyboardManager.RING_SHAPE_SQUARE -> {
+                                // 圆角正方形环（边长 = 直径，圆角 ≈ 30%）
+                                val side = ringR * 2f
+                                val half = side / 2f
+                                drawRoundRect(
+                                    color = col,
+                                    topLeft = Offset(center.x - half, center.y - half),
+                                    size = androidx.compose.ui.geometry.Size(side, side),
+                                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(side * 0.30f, side * 0.30f),
+                                    style = Stroke(strokeW),
+                                )
+                            }
+                            KeyboardManager.RING_SHAPE_EYE -> {
+                                drawCircle(color = col, radius = ringR, style = Stroke(strokeW))
+                                // 双眼：圆点（睁眼）↔ 长条（闭眼）；eyeDx 左右看
+                                val eyeR = 2.2.dp.toPx()
+                                val sep = 3.6.dp.toPx()
+                                val dyEye = -0.4.dp.toPx()
+                                val dxEye = eyeDx * 1.4.dp.toPx()
+                                for (sx in listOf(-sep, sep)) {
+                                    val cxE = center.x + sx + dxEye
+                                    val cyE = center.y + dyEye
+                                    if (eyeBlink) {
+                                        drawRoundRect(
+                                            color = col,
+                                            topLeft = Offset(cxE - eyeR, cyE - eyeR * 0.28f),
+                                            size = androidx.compose.ui.geometry.Size(eyeR * 2f, eyeR * 0.56f),
+                                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(eyeR * 0.28f, eyeR * 0.28f),
+                                        )
+                                    } else {
+                                        drawCircle(color = col, radius = eyeR, center = Offset(cxE, cyE))
+                                    }
+                                }
+                            }
+                            else -> drawCircle(color = col, radius = ringR, style = Stroke(strokeW))
+                        }
+                    }
+                    // 上滑应用弧（5 个图标，半圆弧分布；滑动选择-松手打开）
+                    if (showAppArc) {
+                        Popup(
+                            alignment = Alignment.TopCenter,
+                            offset = IntOffset(
+                                with(density) { (-130).dp.roundToPx() },
+                                with(density) { (-150).dp.roundToPx() },
+                            ),
+                            onDismissRequest = { showAppArc = false },
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(260.dp, 150.dp)
+                                    .background(c.barBg.copy(alpha = 0.92f), RoundedCornerShape(18.dp)),
+                            ) {
+                                val r = 110.dp
+                                val angles = listOf(160f, 125f, 90f, 55f, 20f)
+                                for (i in 0 until KeyboardManager.RING_APP_SLOTS) {
+                                    val th = Math.toRadians(angles.getOrElse(i) { 90f }.toDouble())
+                                    val x = 130.dp + r * cos(th).toFloat()
+                                    val y = 150.dp - r * sin(th).toFloat()
+                                    val pkg = ringApps.getOrNull(i).orEmpty()
+                                    val sel = i == arcSel
+                                    Box(
+                                        modifier = Modifier
+                                            .offset(x = x - 26.dp, y = y - 26.dp)
+                                            .size(52.dp)
+                                            .background(
+                                                if (sel) c.accentKeyBg else c.keyBg,
+                                                RoundedCornerShape(14.dp),
+                                            ),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        val icon = if (pkg.isNotBlank()) {
+                                            com.azime.input.core.apps.AppLauncher.icon(context, pkg)
+                                        } else null
+                                        if (icon != null) {
+                                            androidx.compose.foundation.Image(
+                                                bitmap = icon,
+                                                contentDescription = pkg,
+                                                modifier = Modifier.size(if (sel) 34.dp else 30.dp),
+                                            )
+                                        } else {
+                                            Text(
+                                                text = if (pkg.isBlank()) "＋"
+                                                else com.azime.input.core.apps.AppLauncher.label(context, pkg).take(2),
+                                                fontSize = 12.sp,
+                                                color = c.subText,
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -1713,19 +1876,28 @@ private fun CategoryGridPane(
                 .fillMaxSize(),
         ) { page ->
             val items = data.categories.getOrNull(page)?.second ?: emptyList()
+            val chunks = items.chunked(8)
+            // 轮19.6：行高自适应填充——分类条目少（如「全部符号」只有 3 行）时下方大片空白，
+            // 现按可用高度均分行高（下限 = 标准键高，上限 2.6×，底部预留悬浮栏空间）。
+            val barReserve = 56.dp
+            val avail = totalHeight - KeySpacing * 2 - barReserve
+            val rowH = if (chunks.isEmpty()) keyHeight else {
+                val byFill = (avail - KeySpacing * (chunks.size - 1)) / chunks.size
+                maxOf(keyHeight, byFill.coerceAtMost(keyHeight * 2.6f))
+            }
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = KeySpacing)
-                    .padding(top = KeySpacing),
+                    .padding(top = 0.dp),
                 verticalArrangement = Arrangement.spacedBy(KeySpacing),
             ) {
-                items.chunked(8).forEach { chunk ->
+                chunks.forEach { chunk ->
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(keyHeight),
+                            .height(rowH),
                         horizontalArrangement = Arrangement.spacedBy(KeySpacing),
                     ) {
                         chunk.forEach { item ->
@@ -1806,7 +1978,7 @@ private fun NumpadPane(state: KeyboardUiState, onAction: (KeyAction) -> Unit, ke
             // 主键盘 = 4×键高 + 5×行距；九宫格原来 = 4×键高 + 3×行距 + 2×列距，
             // 行列距不同（用户可调）时切页会看到高度跳变。
             // 轮19.4：底部同样收敛到 2dp，与主键盘一致。
-            .padding(start = colGap, end = colGap, top = rowGap, bottom = 2.dp),
+            .padding(start = colGap, end = colGap, top = 0.dp, bottom = 2.dp),
         verticalArrangement = Arrangement.spacedBy(rowGap),
     ) {
         // 前 3 行：符号滑键（跨 3 行）+ 数字三列 + 功能三键
@@ -2306,7 +2478,8 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
         val keyIcon = if (key.icon != null && swipePreview == null) {
             com.azime.input.ui.icons.OimeIcons.byName(key.icon)
         } else null
-        val preferText = key.code == "space" && label.isNotBlank()
+        // 轮19.6：仅主键盘空格优先文本（九宫格/符号页空格永远显示图标）
+        val preferText = key.code == "space" && state.page == "main" && label.isNotBlank()
         if (keyIcon != null && !preferText) {
             Icon(
                 keyIcon,
