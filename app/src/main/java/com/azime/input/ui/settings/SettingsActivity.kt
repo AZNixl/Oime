@@ -139,8 +139,13 @@ class SettingsActivity : AppCompatActivity() {
             val dark = androidx.compose.foundation.isSystemInDarkTheme()
             val scheme = if (dark) androidx.compose.material3.darkColorScheme()
             else androidx.compose.material3.lightColorScheme()
+            // 轮19.15：Card 默认底色（surfaceContainerLow/surfaceContainer）统一成浅灰 →
+            // 所有二级页（键盘 / 主题 / O 圆环 …）里的卡片都跟着变浅灰
+            val plainGray = if (dark) Color(0xFF26262A) else Color(0xFFF1F1F2)
             MaterialTheme(
                 colorScheme = scheme.copy(
+                    surfaceContainerLow = plainGray,
+                    surfaceContainer = plainGray,
                     primary = com.azime.input.ui.keyboard.keyboardAccentActiveColor(dark),
                     primaryContainer = com.azime.input.ui.keyboard.keyboardAccentKeyColor(dark),
                     onPrimaryContainer = if (dark) Color(0xFFD7E3F4) else Color(0xFF202124),
@@ -620,11 +625,13 @@ fun SettingsScreen(
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         Card(
-                            // 轮19.11b：右侧两个小方块跟随「按键色」（原 surfaceVariant 灰）
+                            // 轮19.15：右侧两小方块改**浅白色**底
                             colors = CardDefaults.cardColors(
-                                containerColor = com.azime.input.ui.keyboard.keyboardAccentKeyColor(
-                                    androidx.compose.foundation.isSystemInDarkTheme(),
-                                ),
+                                containerColor = if (androidx.compose.foundation.isSystemInDarkTheme()) {
+                                    Color(0xFF2E2E33)
+                                } else {
+                                    Color(0xFFFCFCFD)
+                                },
                             ),
                             shape = RoundedCornerShape(16.dp),
                             modifier = Modifier.fillMaxWidth().weight(1f),
@@ -646,9 +653,11 @@ fun SettingsScreen(
                         }
                         Card(
                             colors = CardDefaults.cardColors(
-                                containerColor = com.azime.input.ui.keyboard.keyboardAccentKeyColor(
-                                    androidx.compose.foundation.isSystemInDarkTheme(),
-                                ),
+                                containerColor = if (androidx.compose.foundation.isSystemInDarkTheme()) {
+                                    Color(0xFF2E2E33)
+                                } else {
+                                    Color(0xFFFCFCFD)
+                                },
                             ),
                             shape = RoundedCornerShape(16.dp),
                             modifier = Modifier.fillMaxWidth().weight(1f).clickable {
@@ -807,7 +816,7 @@ private fun StatusCard(fillWidth: Boolean = false) {
         ) {
             // 轮19.2：大方块去掉 ○ logo 图标，仅保留文字（用户要求）
             Column(Modifier.weight(1f)) {
-                // 反馈轮12：字号调小 + 单行省略，窄方块内不换行
+                // 轮19.15：三行结构 —— ○输入法 / 运行状态 / 方案
                 Text(
                     "○输入法",
                     fontSize = 17.sp,
@@ -830,16 +839,28 @@ private fun StatusCard(fillWidth: Boolean = false) {
                             )
                     )
                     Spacer(Modifier.width(6.dp))
+                    // 轮19.15：第二行只放**运行状态**（方案挪到第三行）
                     Text(
                         text = when {
                             notEnabled -> "未启用 · 点击去启用"
-                            ready -> "运行正常 · $schema"
+                            ready -> "运行正常"
                             else -> "引擎未就绪 / 首次部署中…"
                         },
                         fontSize = 12.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         color = if (notEnabled) Color(0xFF3C4043) else cs.onPrimaryContainer,
+                    )
+                }
+                // 轮19.15：第三行 = 当前方案
+                if (ready && schema.isNotBlank()) {
+                    Spacer(Modifier.height(3.dp))
+                    Text(
+                        text = "方案 · $schema",
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        color = cs.onPrimaryContainer,
                     )
                 }
             }

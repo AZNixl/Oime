@@ -836,6 +836,8 @@ private fun ToolbarRow(
             color = c.text,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
+            // 轮19.15：复制条内容**居中**显示
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(barHeight)

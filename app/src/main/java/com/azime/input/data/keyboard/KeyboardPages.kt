@@ -144,7 +144,7 @@ object KeyboardPages {
                 enter(width = 2f),
             ),
         ),
-        rev = 6, // 轮19.11b：第 3 行填充键改为内置，⇧/⌫ 边缘与上下行对齐
+        rev = 7, // 轮19.15：横屏第 4 行补回回车键
     )
 
     /**
@@ -179,13 +179,15 @@ object KeyboardPages {
                 charKey("B"), charKey("N"), charKey("M"),
                 spacerKey(2.2f),
             ),
-            // 4：123 ‖ 空格 ｜ 空格 ‖ ⌫（权重和同为 10.9，与上面各列对齐）
+            // 4：123 ‖ 空格 ｜ 空格 ‖ ⌫ ⏎（权重和同为 10.9，与上面各列对齐）
+            // 轮19.15：补回**回车键**（横屏首版漏了 ⏎，用户反馈"横屏没有回车"）
             row(
-                pageKey("123", width = 1.6f, icon = "symbols"),
-                space(width = 3.4f),
+                pageKey("123", width = 1.5f, icon = "symbols"),
+                space(width = 3.5f),
                 spacerKey(0.9f),
-                space(width = 3.4f),
-                backspace(width = 1.6f),
+                space(width = 2.2f),
+                backspace(width = 1.0f),
+                enter(width = 1.8f),
             ),
         ),
         rev = 1,

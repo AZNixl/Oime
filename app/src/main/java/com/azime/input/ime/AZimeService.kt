@@ -443,16 +443,16 @@ class AZimeService : InputMethodService() {
         scope.launch {
             // 轮19.4：任意按键让工具栏「复制条」消亡（原来只有上屏才消亡，条会一直占着工具栏）。
             // 仅对真正的按键动作生效——剪贴板面板自身的操作（上屏/收藏/删除/切页）不清除。
-            val dismissClip = when (action) {
-                is KeyAction.CharKey, KeyAction.Backspace, KeyAction.Space, KeyAction.Enter,
-                is KeyAction.DirectCommit, is KeyAction.Resolved, is KeyAction.Candidate,
-                KeyAction.Shift, KeyAction.PageUp, KeyAction.PageDown, KeyAction.DeleteAll,
-                KeyAction.Undo, is KeyAction.BackspaceSelectStart, is KeyAction.BackspaceSelectTo,
-                KeyAction.DeleteSelection, KeyAction.ToggleAscii,
-                is KeyAction.Joystick -> true
+            // 轮19.15：白名单改**黑名单**——只有「剪贴板面板自身的操作」不清除复制条，
+            // 其余任何按键/手势动作一律消亡（白名单漏掉某个动作就会出现「打字也不消失」）。
+            val keepClip = when (action) {
+                KeyAction.ToggleClipboardPanel,
+                is KeyAction.CommitClipboard, is KeyAction.CommitClipText,
+                is KeyAction.SetClipTab, is KeyAction.ClipFav, is KeyAction.ClipDelete,
+                is KeyAction.ClipTop, is KeyAction.ClipClear, is KeyAction.ClipSplit -> true
                 else -> false
             }
-            if (dismissClip && uiState.value.clipText.isNotBlank()) {
+            if (!keepClip && uiState.value.clipText.isNotBlank()) {
                 uiState.update { it.copy(clipText = "", clipAtMs = 0L) }
             }
             when (action) {
@@ -978,6 +978,7 @@ class AZimeService : InputMethodService() {
     }
 
     private fun updateFromResult(result: com.kingzcheung.xime.rime.RimeProcessResult) {
+        val composingNow = result.preeditText.isNotEmpty() || result.candidates.isNotEmpty()
         uiState.update {
             it.copy(
                 candidates = result.candidates.map { c -> c.toCandidate() },
@@ -987,7 +988,10 @@ class AZimeService : InputMethodService() {
                 hasPrevPage = result.hasPrevPage,
                 // 编码清空（候选消失）时自动收起更多候选面板
                 showCandidatePanel = it.showCandidatePanel && result.candidates.isNotEmpty(),
-                // 反馈轮12：组词不再清空工具栏复制条（打字不能消亡复制内容）
+                // 轮19.15：**打字即消亡**复制条（兜底，覆盖所有按键路径）。
+                // 反馈轮12 曾特意做成「组词不清空」，但用户明确要求「直接打字也要消失」。
+                clipText = if (composingNow) "" else it.clipText,
+                clipAtMs = if (composingNow) 0L else it.clipAtMs,
             )
         }
     }

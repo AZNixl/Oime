@@ -12,8 +12,8 @@ android {
         applicationId = "com.oime.input"
         minSdk = 24
         targetSdk = 34
-        versionCode = 37
-        versionName = "0.9.27-oime"
+        versionCode = 38
+        versionName = "0.9.28-oime"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         
