@@ -23,7 +23,11 @@ object AppLauncher {
     private val iconCache = HashMap<String, ImageBitmap?>()
     private var listCache: List<AppInfo>? = null
 
-    /** 全部带桌面入口的应用（按名称排序）。首次调用后缓存。 */
+    /**
+     * 全部带桌面入口的应用（按名称排序）。首次调用后缓存。
+     * 轮19.7：**不再预解码图标**——原来一次性把上百个应用图标解码成 Bitmap，
+     * 设置页打开就要几十 MB 内存 + 明显的 CPU 峰值。图标改为渲染时按需加载（[icon] 有缓存）。
+     */
     fun installedApps(context: Context, forceReload: Boolean = false): List<AppInfo> {
         listCache?.let { if (!forceReload) return it }
         val pm = context.packageManager
@@ -42,7 +46,7 @@ object AppLauncher {
                 AppInfo(
                     pkg = pkg,
                     label = runCatching { ai.loadLabel(pm).toString() }.getOrDefault(pkg),
-                    icon = icon(context, pkg),
+                    icon = null,
                 )
             }
             .sortedBy { it.label.lowercase() }
@@ -51,9 +55,10 @@ object AppLauncher {
         return list
     }
 
-    /** 应用图标（ImageBitmap），失败返回 null。 */
+    /** 应用图标（ImageBitmap），失败返回 null；带缓存，上限 240 个防泄漏。 */
     fun icon(context: Context, pkg: String): ImageBitmap? {
         iconCache[pkg]?.let { return it }
+        if (iconCache.size > 240) iconCache.clear()
         val bmp: ImageBitmap? = runCatching {
             val d: Drawable = context.packageManager.getApplicationIcon(pkg)
             d.toBitmap(96, 96, Bitmap.Config.ARGB_8888).asImageBitmap()

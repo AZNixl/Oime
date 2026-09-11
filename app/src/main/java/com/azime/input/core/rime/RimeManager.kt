@@ -242,19 +242,33 @@ object RimeManager {
         return result
     }
 
-    /** 方案显示名：优先读 schema.yaml 的 name 字段（轮18.2：组目录优先，回落 shared），退回 id。 */
+    /**
+     * 方案显示名：优先读 schema.yaml 的 name 字段（轮18.2：组目录优先，回落 shared），退回 id。
+     * 轮19.7：**加缓存**——空格键标签在每次重组时都会调用它，原来每次都读磁盘文件
+     * （useLines），键盘可见期间等于每帧一次 IO，是明确的耗电点。切组/部署后调 clearDisplayNameCache()。
+     */
+    private val displayNameCache = HashMap<String, String>()
+
+    fun clearDisplayNameCache() = synchronized(displayNameCache) { displayNameCache.clear() }
+
     fun schemaDisplayName(schemaId: String): String {
         if (schemaId.isBlank()) return "○输入法"
+        synchronized(displayNameCache) { displayNameCache[schemaId]?.let { return it } }
+        var name = schemaId
         val f = schemaYamlFile(schemaId)
         if (f != null) runCatching {
             f.useLines { lines ->
                 for (line in lines) {
                     val m = Regex("""^\s*name:\s*(.+)$""").find(line)
-                    if (m != null) return m.groupValues[1].trim().trim('\'', '"')
+                    if (m != null) {
+                        name = m.groupValues[1].trim().trim('\'', '"')
+                        return@useLines
+                    }
                 }
             }
         }
-        return schemaId
+        synchronized(displayNameCache) { displayNameCache[schemaId] = name }
+        return name
     }
 
     // ── 方案组管理（参考 trime2：方案组 → 方案 两级，单次只加载一个组） ──
@@ -348,6 +362,7 @@ object RimeManager {
         }
         // commit() 同步写盘，杜绝落盘竞态
         groupPrefs(context).edit().putString(KEY_CURRENT_GROUP, groupId).commit()
+        clearDisplayNameCache() // 轮19.7：换组后方案名完全不同，缓存必须失效
         Log.i(TAG, "switchSchemaGroupOnline: [$groupId] switching in place")
         kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
             val ok = runCatching {
@@ -479,6 +494,7 @@ object RimeManager {
 
     /** 立即重新部署当前组（导入/部署键由设置页调用）：触发全量维护并重建会话。 */
     suspend fun deployImportedSchemas(context: Context) = withContext(Dispatchers.IO) {
+        clearDisplayNameCache() // 轮19.7：部署后 schema.yaml 可能被重写，方案名缓存失效
         val kicked = runCatching { RimeEngine.getInstance().startMaintenance(true) }
             .onFailure { Log.e(TAG, "deployImportedSchemas failed", it) }
             .getOrDefault(false)

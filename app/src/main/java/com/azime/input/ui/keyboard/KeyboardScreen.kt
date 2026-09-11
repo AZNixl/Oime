@@ -2150,7 +2150,10 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
                 custom.isNotBlank() -> custom.trim()
                 custom.isNotEmpty() -> ""   // 只打了空格 → 走图标
                 state.schemaName.isNotBlank() ->
-                    com.azime.input.core.rime.RimeManager.schemaDisplayName(state.schemaName)
+                    // 轮19.7：remember 住（RimeManager 内部也有缓存）——原来每次重组都查一次名称
+                    remember(state.schemaName) {
+                        com.azime.input.core.rime.RimeManager.schemaDisplayName(state.schemaName)
+                    }
                 else -> ""                  // 无方案 → 走图标
             }
         }

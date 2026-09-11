@@ -71,6 +71,9 @@ class AZimeService : InputMethodService() {
     /** 键盘尺寸签名：变化时在 onStartInputView 重建视图（高度滑杆热生效）。 */
     private var lastSizeSignature: String = ""
 
+    /** 轮19.7：方案列表是否需要重新拉取（部署/切组/引擎就绪后置 true）。 */
+    @Volatile private var schemasDirty = true
+
     private val clipboardManager by lazy {
         getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     }
@@ -107,6 +110,7 @@ class AZimeService : InputMethodService() {
         scope.launch {
             val ok = RimeManager.ensureReady(applicationContext)
             val sessionOk = ok && RimeManager.ensureSession()
+            schemasDirty = true
             uiState.update {
                 it.copy(
                     ready = sessionOk,
@@ -116,11 +120,17 @@ class AZimeService : InputMethodService() {
             }
             refreshState()
         }
-        // 首次部署可能超过会话等待窗口（大词典编译），由 onKeyAction 按键重试兜底
+        // 首次部署可能超过会话等待窗口（大词典编译），由 onKeyAction 按键重试兜底。
+        // 轮19.7：改为**有上限的退避重试**——原来是无上限 3s 轮询，引擎始终起不来时
+        // 会一直每 3 秒唤醒一次（持续耗电）。现在最多 5×3s + 15×15s ≈ 4 分钟后放弃，
+        // 之后靠按键/弹键盘时的 ensureSessionNow 兜底。
         scope.launch {
-            while (!RimeManager.isSessionReady()) {
-                kotlinx.coroutines.delay(3000)
+            var attempt = 0
+            while (!RimeManager.isSessionReady() && attempt < 20) {
+                kotlinx.coroutines.delay(if (attempt < 5) 3000L else 15_000L)
+                attempt++
                 if (RimeManager.ensureSessionNow()) {
+                    schemasDirty = true
                     refreshState()
                     break
                 }
@@ -411,6 +421,7 @@ class AZimeService : InputMethodService() {
                     if (ok) {
                         // 轮13：记录组内上次使用的方案（重写 schema_list 时置首 → 部署后回落即回到它）
                         runCatching { RimeManager.recordGroupSchema(applicationContext, action.schemaId) }
+                        schemasDirty = true // 轮19.7
                         uiState.update { it.copy(statusMessage = "") }
                         refreshState()
                     } else {
@@ -422,6 +433,9 @@ class AZimeService : InputMethodService() {
                     // 不再杀进程（旧实现 apply()+exit(0) 落盘竞态 = 切组失败 + 闪退感）。
                     uiState.update { it.copy(statusMessage = "正在切换方案组，部署中…") }
                     RimeManager.switchSchemaGroupOnline(applicationContext, action.groupId) { ok ->
+                        // 轮19.7：切组后方案名缓存与列表都要失效重取
+                        RimeManager.clearDisplayNameCache()
+                        schemasDirty = true
                         uiState.update {
                             it.copy(
                                 statusMessage = if (ok) "" else "切换失败，请重试",
@@ -487,6 +501,7 @@ class AZimeService : InputMethodService() {
                     // 重新部署方案（○ 菜单 / 方案设置页）
                     uiState.update { it.copy(statusMessage = "正在重新部署方案…") }
                     runCatching { RimeManager.deployImportedSchemas(applicationContext) }
+                    schemasDirty = true // 轮19.7：方案列表可能变化，下次 refreshState 重拉
                     uiState.update { it.copy(statusMessage = "") }
                     refreshState()
                 }
@@ -872,11 +887,18 @@ class AZimeService : InputMethodService() {
     private suspend fun refreshState() {
         val result = RimeManager.getProcessResult()
         updateFromResult(result)
+        // 轮19.7：方案列表改为**按需刷新**（schemasDirty）——原来每次按键都调
+        // RimeManager.availableSchemas()（JNI + 列表分配），是打字期间的无谓开销。
+        val needSchemas = schemasDirty || uiState.value.schemas.isEmpty()
+        val schemasNow = if (needSchemas && RimeManager.isReady()) {
+            schemasDirty = false
+            RimeManager.availableSchemas()
+        } else null
         uiState.update { state ->
             state.copy(
                 ready = RimeManager.isReady(),
                 schemaName = RimeManager.currentSchema().ifBlank { state.schemaName },
-                schemas = if (RimeManager.isReady()) RimeManager.availableSchemas() else state.schemas,
+                schemas = schemasNow ?: state.schemas,
                 statusMessage = if (RimeManager.isMaintaining()) "正在部署词典，请稍候…" else "",
             )
         }

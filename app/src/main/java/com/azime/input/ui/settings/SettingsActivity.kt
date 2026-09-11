@@ -1991,6 +1991,7 @@ private fun AppPickerDialog(
     onClear: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val context = LocalContext.current
     var query by remember { mutableStateOf("") }
     val filtered = remember(query, apps) {
         if (query.isBlank()) apps
@@ -2022,9 +2023,13 @@ private fun AppPickerDialog(
                                 .padding(vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            if (a.icon != null) {
+                            // 轮19.7：图标按需加载（列表只带包名/名称，避免一次性解码上百个图标）
+                            val ic = remember(a.pkg) {
+                                com.azime.input.core.apps.AppLauncher.icon(context, a.pkg)
+                            }
+                            if (ic != null) {
                                 androidx.compose.foundation.Image(
-                                    bitmap = a.icon,
+                                    bitmap = ic,
                                     contentDescription = a.label,
                                     modifier = Modifier.size(28.dp),
                                 )
