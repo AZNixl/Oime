@@ -198,6 +198,17 @@ class AZimeService : InputMethodService() {
             voiceRmsState.value = 0f
             uiState.update { it.copy(voiceState = "idle") }
         }
+        // 轮19.9（对齐 Xime clearInputState）：收起键盘即关闭残留面板——
+        // 既避免下次弹出时渲染上一次的面板背景，也让面板持有的列表/图标引用可被回收。
+        uiState.update {
+            it.copy(
+                showClipboardPanel = false,
+                showMenuPanel = false,
+                showCandidatePanel = false,
+            )
+        }
+        // 语音 = 最重的可选资源：闲置后卸载（90s 宽限）
+        scheduleSpeechEngineRelease()
         super.onFinishInputView(finishingInput)
     }
 
@@ -210,9 +221,32 @@ class AZimeService : InputMethodService() {
     override fun onDestroy() {
         runCatching { clipboardManager.removePrimaryClipChangedListener(clipboardListener) }
         SpeechEngineManager.cancel()
+        // 轮19.9（省电，对齐 trime2 / Xime 的退出释放）：服务真的被系统销毁时，
+        // 主动释放 librime 引擎与语音 ONNX 会话，避免 native 内存长期驻留。
+        speechReleaseJob?.cancel()
+        runCatching { RimeManager.releaseAll() }
+        runCatching { SpeechEngineManager.releaseEngines() }
         scope.cancel()
         lifecycleOwner.destroy()
         super.onDestroy()
+    }
+
+    /** 轮19.9：语音引擎延迟释放任务（键盘收起后开始计时，期间再次听写会取消）。 */
+    private var speechReleaseJob: kotlinx.coroutines.Job? = null
+
+    /**
+     * 语音引擎「用完即卸」——Xime 是键盘收起立即 release（见其 onFinishInputView），
+     * trime2 是 onWindowHidden 销毁 Speech。这里给 90s 宽限：连续听写不会反复加载模型，
+     * 真正闲置后再卸载，省掉 ONNX 会话常驻的内存与后台开销。
+     */
+    private fun scheduleSpeechEngineRelease(delayMs: Long = 90_000L) {
+        speechReleaseJob?.cancel()
+        speechReleaseJob = scope.launch {
+            kotlinx.coroutines.delay(delayMs)
+            if (uiState.value.voiceState != "listening") {
+                runCatching { SpeechEngineManager.releaseEngines() }
+            }
+        }
     }
 
     // ── 语音输入（轮19：本地模型 / 联网 API，系统 SpeechRecognizer 已删除） ──
@@ -224,6 +258,8 @@ class AZimeService : InputMethodService() {
             ?: SpeechEngineManager.ENGINE_SENSE_VOICE
 
     private fun handleVoiceToggle() {
+        // 轮19.9：本次要用语音，取消「闲置卸载」计时，避免引擎刚加载又被回收
+        speechReleaseJob?.cancel()
         if (uiState.value.voiceState == "listening") {
             // 点击结束：停止录音，sense_voice/web_api 在 stop 后解码上屏
             SpeechEngineManager.stop()

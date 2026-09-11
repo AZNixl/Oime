@@ -75,6 +75,17 @@ object RimeManager {
     }
 
     /** 引擎是否可用（已初始化且有可用方案）。 */
+    /**
+     * 轮19.9：输入法服务销毁时释放引擎（对齐 trime2 `Rime.finalize()` /
+     * Xime `onDestroy` 里的 `rimeEngine.destroy()`）。librime 的 JNI 没有 finalize，
+     * 不主动 destroy 时词典/模型会一直挂在 native 内存里。
+     */
+    fun releaseAll() {
+        runCatching { RimeEngine.getInstance().destroy() }
+        sessionReady = false
+        clearDisplayNameCache()
+    }
+
     fun isReady(): Boolean =
         RimeEngine.isInitialized() && RimeEngine.getInstance().getAvailableSchemas().isNotEmpty()
 

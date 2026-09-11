@@ -804,3 +804,48 @@ popupPos = 父左上 + alignment.align(Zero, 父尺寸) − alignment.align(Zero
 
 **修复**：`offset.x = 0`；同时把面板从 296dp 收窄到 280dp（图标 48dp、间距 6dp、内边距 8dp），
 避免在 308dp 级窄屏上几乎占满整宽。选择映射同步为 54dp/槽、首槽 −108dp。
+
+# 轮19.9（0.9.23-oime vc33）：实测耗电定位 + 三项释放策略 + 呼吸动画降帧
+
+## 实机测量（2026-09-11，vc32 / 0.9.22-oime）
+
+`dumpsys batterystats` + `/proc` 线程级采样：
+
+| 指标 | 数值 | 说明 |
+|---|---|---|
+| 进程累计 CPU | 2339 s（pid 存活 9.7 h） | 平均约 6.7% 单核 |
+| **main 线程** | **1659 s（71%）** | 组合/布局/绘制 + 按键 JNI |
+| **RenderThread** | **496 s（21%）** | UI 渲染 ← 与主线程合计 92% |
+| HeapTaskDaemon | 26 s | 无明显分配风暴 |
+| binder（引擎调用） | 各线程 5~10 s | librime 侧开销很小 |
+| 空闲 30 s（键盘隐藏） | **0 ticks** | 后台彻底静默（轮19.7 轮询优化生效） |
+| AlarmManager | **0 条** | 无闹钟 |
+| App 自持 WakeLock | **无**（仅系统 *vibrator* 2s/102 次） | —— |
+| 会话耗电占比 | 6.06 mAh / 166 mAh（39 min 会话） | 其中 screen 4.63、cpu 1.42 |
+
+**结论：耗电主因不是引擎，而是 UI 渲染**——librime 的 binder/JNI 开销是零头，
+唯一的常驻动画（○ 环呼吸）在每个 vsync 都让 IME 窗口失效重绘。
+
+## 三项释放策略（对齐 trime2 / Xime 的做法）
+
+调研结论：
+
+| 项目 | 做法 |
+|---|---|
+| **trime2** | `Rime.finalize()` 只在 `TrimeService.onDestroy()` 调用（无空闲释放）；`onWindowHidden` 销毁 Speech 对象；`onDestroy` 里 `mHandler.removeCallbacksAndMessages(null)`；引擎跑在专用 dispatcher 线程；`onFinishInputView` 里 `ic.requestCursorUpdates(0)` |
+| **Xime** | `onFinishInputView` **立即 release 手写模型**（"用键盘时加载、键盘收起即卸载"，release 幂等）；`onFinishInput`/`onWindowHidden` → `clearInputState()`（关面板、清剪贴板条状态、重置临时表单，释放引用）；`onWindowShown` 只做**两次资源读取对比**（取色未变则零成本）；`onDestroy` 全量释放（rimeEngine.destroy / clipboard / feedback / Association / ASR / handwriting / Extension / ONNX shared env）；release 构建抑制调试日志 |
+
+Oime 落地（本轮）：
+
+1. **`RimeManager.releaseAll()`**：`RimeEngine.destroy()` + 复位 session + 清显示名缓存；
+   在 `AZimeService.onDestroy()` 调用（原来只 cancel 语音，librime native 资源不释放）
+2. **`onDestroy` 释放语音 ONNX 会话**（`SpeechEngineManager.releaseEngines()`）
+3. **`onFinishInputView`**：关闭残留面板（剪贴板/菜单/候选面板，对齐 Xime `clearInputState`）
+   + **语音引擎 90s 闲置卸载**（Xime 是立即卸；这里给宽限，连续听写不必反复加载模型；
+   再次触发语音时取消计时）
+4. **○ 环呼吸动画降帧**：`rememberInfiniteTransition`（每 vsync 一帧）→ 120ms 步进（≈8fps）
+   的三角波取值，重绘次数降到 1/8~1/15，视觉几乎无差
+
+**待做（下一轮候选）**：键盘整体重组范围过大——`AzimeKeyboardScreen(state = 整个 uiState)`
+导致任一字段变化都重组整棵树；可用 derivedState/分片 state 收敛（这是 main 线程剩余的
+大头，属于结构性改动，需要真机逐项验证）。

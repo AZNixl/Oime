@@ -899,12 +899,24 @@ private fun ToolbarRow(
                 ) {
                     // 圆环（轮15 重构）：静态白色实线圆环 + 呼吸动画（alpha 0.55~1.0 缓变，不刺眼）；
                     // 轮19.4：移动光标时圆环自身平移（呼啦圈模型，锚点不动）；
-                    // 轮19.6：三种形状——圆环 / 圆角方形环 / 圆环+双眼（随机眨眼、左右看）
-                    val breath = rememberInfiniteTransition(label = "oBreath").animateFloat(
-                        0.55f, 1f,
-                        infiniteRepeatable(tween(1600, easing = androidx.compose.animation.core.FastOutSlowInEasing), RepeatMode.Reverse),
-                        label = "oBreathAlpha",
-                    )
+                    // 轮19.6：三种形状——圆环 / 圆角方形环 / 圆环+双眼（随机眨眼、左右看）；
+                    // 轮19.9（省电）：呼吸动画**降帧**——原来用 rememberInfiniteTransition，
+                    // 键盘可见期间每个 vsync（60~120fps）都要让 IME 窗口失效重绘一次。
+                    // 实测该 App 9.7h 内 main(1659s)+RenderThread(496s) 占进程 CPU 的 92%，
+                    // 而这是唯一的常驻动画。改为 120ms 步进（≈8fps）正弦取值，视觉几乎无差。
+                    var breathAlpha by remember { mutableStateOf(1f) }
+                    LaunchedEffect(Unit) {
+                        val periodMs = 1600f
+                        val stepMs = 120L
+                        var t = 0f
+                        while (true) {
+                            val phase = (t % periodMs) / periodMs
+                            val tri = if (phase < 0.5f) phase * 2f else (1f - phase) * 2f
+                            breathAlpha = 0.55f + 0.45f * tri
+                            kotlinx.coroutines.delay(stepMs)
+                            t += stepMs.toFloat()
+                        }
+                    }
                     Canvas(
                         Modifier
                             .size(29.dp)
@@ -915,7 +927,7 @@ private fun ToolbarRow(
                     ) {
                         val strokeW = 3.1.dp.toPx()
                         val ringR = size.minDimension / 2f - strokeW - 1f
-                        val col = if (oPressing) c.accentActive else Color.White.copy(alpha = breath.value)
+                        val col = if (oPressing) c.accentActive else Color.White.copy(alpha = breathAlpha)
                         when (ringShape) {
                             KeyboardManager.RING_SHAPE_SQUARE -> {
                                 // 圆角正方形环（边长 = 直径，圆角 ≈ 30%）
