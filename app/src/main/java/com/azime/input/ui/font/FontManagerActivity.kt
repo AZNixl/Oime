@@ -1,5 +1,6 @@
 package com.azime.input.ui.font
 
+import androidx.activity.enableEdgeToEdge
 import android.graphics.Typeface
 import android.os.Bundle
 import android.widget.Toast
@@ -38,6 +39,8 @@ class FontManagerActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 轮19.10：状态栏沉浸（与设置页一致，edge-to-edge）
+        enableEdgeToEdge()
         setContent {
             MaterialTheme {
                 FontManagerScreen(onBack = { finish() })

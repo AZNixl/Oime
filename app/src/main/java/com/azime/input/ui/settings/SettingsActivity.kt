@@ -669,52 +669,75 @@ fun SettingsScreen(
             }
 
             // 各设置项
+            // 轮19.10：大项**各自独立成卡**（原来 7 个条目共用一块背景，用户反馈要分开）
             item {
                 Card {
-                    Column(Modifier.padding(vertical = 4.dp)) {
-                        KsuItem(
-                            icon = OimeIcons.schemas,
-                            title = "输入方案",
-                            subtitle = "切换 / 导入 / 重命名方案",
-                            onClick = { subPage = "schemas" },
-                        )
-                        KsuItem(
-                            icon = OimeIcons.keyboard,
-                            title = "键盘",
-                            subtitle = "布局编辑 · 键高 · 字号 · 按键外观",
-                            onClick = { subPage = "keyboard" },
-                        )
-                        KsuItem(
-                            icon = OimeIcons.pip,
-                            title = "悬浮窗",
-                            subtitle = "编码预览悬浮窗 · 默认 / 自定义样式",
-                            onClick = { subPage = "float" },
-                        )
-                        KsuItem(
-                            icon = OimeIcons.palette,
-                            title = "主题与配色",
-                            subtitle = "主题卡片 · 强调色 · 字体管理",
-                            onClick = { subPage = "theme" },
-                        )
-                        KsuItem(
-                            icon = OimeIcons.emoji,
-                            title = "O 圆环",
-                            subtitle = "圆环形状 · 上滑快捷启动应用",
-                            onClick = { subPage = "oring" },
-                        )
-                        KsuItem(
-                            icon = OimeIcons.code,
-                            title = "预设置",
-                            subtitle = "preset_keys.lua（按键动作预设）",
-                            onClick = onEditLuaScript,
-                        )
-                        KsuItem(
-                            icon = OimeIcons.info,
-                            title = "关于",
-                            subtitle = "版本 / 项目地址",
-                            onClick = { subPage = "about" },
-                        )
-                    }
+                    KsuItem(
+                        icon = OimeIcons.schemas,
+                        title = "输入方案",
+                        subtitle = "切换 / 导入 / 重命名方案",
+                        onClick = { subPage = "schemas" },
+                    )
+                }
+            }
+            item {
+                Card {
+                    KsuItem(
+                        icon = OimeIcons.keyboard,
+                        title = "键盘",
+                        subtitle = "布局编辑 · 键高 · 字号 · 按键外观",
+                        onClick = { subPage = "keyboard" },
+                    )
+                }
+            }
+            item {
+                Card {
+                    KsuItem(
+                        icon = OimeIcons.pip,
+                        title = "悬浮窗",
+                        subtitle = "编码预览悬浮窗 · 默认 / 自定义样式",
+                        onClick = { subPage = "float" },
+                    )
+                }
+            }
+            item {
+                Card {
+                    KsuItem(
+                        icon = OimeIcons.palette,
+                        title = "主题与配色",
+                        subtitle = "主题卡片 · 强调色 · 字体管理",
+                        onClick = { subPage = "theme" },
+                    )
+                }
+            }
+            item {
+                Card {
+                    KsuItem(
+                        icon = OimeIcons.emoji,
+                        title = "O 圆环",
+                        subtitle = "圆环形状 · 上滑快捷启动应用",
+                        onClick = { subPage = "oring" },
+                    )
+                }
+            }
+            item {
+                Card {
+                    KsuItem(
+                        icon = OimeIcons.code,
+                        title = "预设置",
+                        subtitle = "preset_keys.lua（按键动作预设）",
+                        onClick = onEditLuaScript,
+                    )
+                }
+            }
+            item {
+                Card {
+                    KsuItem(
+                        icon = OimeIcons.info,
+                        title = "关于",
+                        subtitle = "版本 / 项目地址",
+                        onClick = { subPage = "about" },
+                    )
                 }
             }
         }

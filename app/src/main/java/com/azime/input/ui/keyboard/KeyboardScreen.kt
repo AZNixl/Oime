@@ -1628,6 +1628,8 @@ private fun MenuSubPanel(
     totalHeight: androidx.compose.ui.unit.Dp,
     onBack: () -> Unit,
     onClose: () -> Unit,
+    /** 轮19.10：标题右侧的动作槽（如「定制工具栏」的保存按钮）。 */
+    headerTrailing: (@Composable () -> Unit)? = null,
     content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
 ) {
     // 反馈轮14：悬浮栏对齐剪贴板面板——移到底部居中（BottomCenter + alpha 0.8 + R22）
@@ -1667,6 +1669,8 @@ private fun MenuSubPanel(
                     .padding(horizontal = 10.dp, vertical = 2.dp),
             )
             Text(title, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = c.text)
+            // 轮19.10：标题后紧跟的动作按钮（有则显示）
+            headerTrailing?.invoke()
             Text(
                 "↑",
                 fontSize = 16.sp,
@@ -1699,6 +1703,18 @@ private fun ToolbarCustomizePanel(
     MenuSubPanel(
         c = c, title = "定制工具栏", totalHeight = totalHeight,
         onBack = onDismiss, onClose = onDismiss,
+        // 轮19.10：保存按钮移到悬浮栏标题右侧（原来在面板底部）
+        headerTrailing = {
+            Text(
+                "保存",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                color = c.accentActive,
+                modifier = Modifier
+                    .clickable { onSave(selected.toList()) }
+                    .padding(horizontal = 10.dp, vertical = 3.dp),
+            )
+        },
     ) {
         Text(
             "○ 菜单键固定居中（拖动移光标）；点选的工具先左后右排列在 ○ 两侧。",
@@ -1739,13 +1755,8 @@ private fun ToolbarCustomizePanel(
             Spacer(Modifier.height(10.dp))
         }
         Spacer(Modifier.height(6.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Button(onClick = { onSave(selected.toList()) }, modifier = Modifier.weight(1f)) {
-                Text("保存")
-            }
+        // 轮19.10：保存已移到标题右侧，这里只留取消/关闭
+        Row(modifier = Modifier.fillMaxWidth()) {
             OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) {
                 Text("取消")
             }
@@ -2683,7 +2694,10 @@ private fun actionPreview(action: String): String = when (action) {
 
 private fun onKeyAction(key: Key, onAction: (KeyAction) -> Unit) {
     when (key.type) {
-        KeyType.CHARACTER -> onAction(KeyAction.CharKey(key.code.first()))
+        // 轮19.10：多字符 code（如九宫格的 "00"）必须整串上屏——原来取 .first() 只出一个 0
+        KeyType.CHARACTER ->
+            if (key.code.length > 1) onAction(KeyAction.DirectCommit(key.code))
+            else onAction(KeyAction.CharKey(key.code.first()))
         KeyType.SPACE -> onAction(KeyAction.Space)
         KeyType.ENTER -> onAction(KeyAction.Enter)
         KeyType.DELETE -> onAction(KeyAction.Backspace)

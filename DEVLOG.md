@@ -849,3 +849,24 @@ Oime 落地（本轮）：
 **待做（下一轮候选）**：键盘整体重组范围过大——`AzimeKeyboardScreen(state = 整个 uiState)`
 导致任一字段变化都重组整棵树；可用 derivedState/分片 state 收敛（这是 main 线程剩余的
 大头，属于结构性改动，需要真机逐项验证）。
+
+# 轮19.10（0.9.24-oime vc34）：六项交互/界面修正
+
+1. **定制工具栏的「保存」移到悬浮栏标题右侧**：`MenuSubPanel` 新增 `headerTrailing` 槽位，
+   渲染在「← 返回 + 标题」之后、「↑ 关闭」之前；面板底部只留「取消」
+2. **九宫格「00」只出一个 0**：`KeyType.CHARACTER` 的分发原来写 `CharKey(key.code.first())`，
+   多字符 code 被截成首字符 → 现在 `key.code.length > 1` 走 `DirectCommit(key.code)` 整串上屏
+3. **主键盘第 2/3 行不对齐**（S..K 与 Z..M）：
+   - 根因：第 2 行 11 个子元素（10 道行距），第 3 行 9 个（8 道行距）；两行等宽的前提下
+     单位键宽 U=(W−n·G)/Σw 不等（差 0.2×rowGap），累到行尾偏出近一个键位
+   - 修复：第 3 行改为 `[spacer 0.5][⇧ 1.0][Z..M][⌫ 1.0][spacer 0.5]`——与第 2 行同为
+     11 子元素、权重和同为 10 ⇒ U 完全一致，且 Z..M 精确落在 S..K 正下方
+   - qwerty `rev` 3→4（触发淘汰设备上的旧自定义副本）
+4. **设置主页大项拆卡**：原来 7 个条目共用一个 Card 背景，现各自独立成卡
+5. **预设置（Lua 编辑器）状态栏不沉浸**：`LuaEditorActivity` 缺 `enableEdgeToEdge()`
+   （只有 SettingsActivity 有）。同时给 `KeyboardEditorActivity` / `FontManagerActivity` 一并加上，
+   避免同族页面表现不一致
+   - 坑：`enableEdgeToEdge` 是 **ComponentActivity 的扩展函数**，不能用全限定名
+     `androidx.activity.enableEdgeToEdge()` 调用（Kotlin 扩展函数不支持这种写法），
+     必须 `import androidx.activity.enableEdgeToEdge` 后直接调用
+6. 推送并构建（用户已授权）

@@ -1,5 +1,6 @@
 package com.azime.input.ui.lua
 
+import androidx.activity.enableEdgeToEdge
 import android.os.Bundle
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -33,6 +34,8 @@ class LuaEditorActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 轮19.10：状态栏沉浸（与设置页一致，edge-to-edge）
+        enableEdgeToEdge()
         setContentView(
             ComposeView(this).apply {
                 setContent {

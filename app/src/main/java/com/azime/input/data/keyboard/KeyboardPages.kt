@@ -120,11 +120,17 @@ object KeyboardPages {
                 charKey("H"), charKey("J"), charKey("K"), charKey("L"),
                 spacerKey(0.5f),
             ),
+            // 轮19.10 对齐修复：第 3 行改为与第 2 行**同为 11 个子元素、权重和同为 10**，
+            // 这样两行的单位键宽完全一致、Z..M 恰好落在 S..K 正下方。
+            // 原来第 3 行是 [shift 1.5][7 字母][backspace 1.5]（9 个元素、8 道行距），
+            // 行距数不同 → 单位键宽比第 2 行大 0.2×rowGap，累到行尾偏出近 1 个键位。
             row(
-                shift(),
+                spacerKey(0.5f),
+                shift(width = 1.0f),
                 charKey("Z"), charKey("X"), charKey("C"), charKey("V"),
                 charKey("B"), charKey("N"), charKey("M"),
-                backspace(),
+                backspace(width = 1.0f),
+                spacerKey(0.5f),
             ),
             row(
                 pageKey("123", width = 1.7f, icon = "symbols"), // 稍宽于 shift(1.5)，紧凑起步
@@ -134,7 +140,7 @@ object KeyboardPages {
                 enter(width = 2f),
             ),
         ),
-        rev = 3,
+        rev = 4, // 轮19.10：第 3 行结构变化（对齐第 2 行）
     )
 
     /** 数字/符号页（第四行首键切换）。rev=2：与 qwerty 第四行同步填满。 */

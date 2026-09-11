@@ -1,5 +1,6 @@
 package com.azime.input.ui.editor
 
+import androidx.activity.enableEdgeToEdge
 import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatActivity
@@ -46,6 +47,8 @@ class KeyboardEditorActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 轮19.10：状态栏沉浸（与设置页一致，edge-to-edge）
+        enableEdgeToEdge()
         setContent {
             MaterialTheme {
                 KeyboardEditorScreen(onBack = { finish() })
