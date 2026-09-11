@@ -439,15 +439,35 @@ object KeyboardManager {
         "emoji" to "emoji",
         "symbols" to "符号",
         "settings" to "设置",
+        // 轮19.11：把输入法里已有的功能都开放给工具栏（用户自选）
+        "voice" to "语音",
+        "candidates" to "候选",
+        "keyboard" to "键盘编辑",
+        "deploy" to "部署",
+        "theme" to "主题",
+        "ascii" to "中英",
+        "undo" to "撤回",
+        "deleteall" to "全清",
+        "hide" to "收起",
+        "float" to "悬浮窗",
+        "ring" to "O 圆环",
     )
 
-    private val defaultToolbarItems = listOf("clipboard", "schema", "numpad", "emoji", "symbols")
+    /** 工具栏两侧空间有限：最多可选 6 个（每侧 3 个）。 */
+    const val MAX_TOOLBAR_TOOLS = 6
+
+    /** 轮19.11：默认**不显示任何工具**（工具栏只有 ○ 圆环），由用户自行定制。 */
+    private val defaultToolbarItems = emptyList<String>()
+
+    /** 旧版默认集（用于识别「没定制过」的旧存档 → 视为空）。 */
+    private const val LEGACY_DEFAULT_TOOLBAR = "clipboard,schema,numpad,emoji,symbols"
 
     fun toolbarItems(): List<String> {
         val raw = prefs.getString(PREF_TOOLBAR_ITEMS, null) ?: return defaultToolbarItems
+        // 旧默认存档视为未定制（轮19.11 起默认为空）
+        if (raw == LEGACY_DEFAULT_TOOLBAR) return defaultToolbarItems
         val valid = availableToolbarTools.map { it.first }.toSet()
-        val list = raw.split(',').filter { it in valid }
-        return list.ifEmpty { defaultToolbarItems }
+        return raw.split(',').filter { it in valid }.take(MAX_TOOLBAR_TOOLS)
     }
 
     fun setToolbarItems(ids: List<String>) {

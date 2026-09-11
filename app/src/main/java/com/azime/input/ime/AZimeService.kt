@@ -187,7 +187,35 @@ class AZimeService : InputMethodService() {
             setInputView(onCreateInputView())
         }
         lastSizeSignature = sig
+        // 轮19.11：悬浮窗跟随光标——请求系统回传光标位置（Xime/trime2 同款做法）
+        runCatching {
+            getCurrentInputConnection()?.requestCursorUpdates(
+                android.view.inputmethod.InputConnection.CURSOR_UPDATE_MONITOR,
+            )
+        }
         scope.launch { refreshState() }
+    }
+
+    /** 轮19.11：系统回传光标位置 → 存进 uiState 供悬浮窗定位；同时把光标附近的文本告诉引擎。 */
+    override fun onUpdateCursorAnchorInfo(info: android.view.inputmethod.CursorAnchorInfo?) {
+        super.onUpdateCursorAnchorInfo(info)
+        if (info == null) return
+        val matrix = info.matrix
+        val r = android.graphics.RectF()
+        val hasInsertion = runCatching {
+            info.getInsertionMarkerTop() != Float.MAX_VALUE
+        }.getOrDefault(false)
+        if (hasInsertion) {
+            val h = info.insertionMarkerHorizontal
+            r.set(h, info.insertionMarkerTop, h + 1f, info.insertionMarkerBottom)
+        } else {
+            r.set(0f, 0f, 0f, 0f)
+        }
+        matrix.mapRect(r)
+        val left = r.left.toInt()
+        val bottom = r.bottom.toInt()
+        if (left == uiState.value.cursorLeft && bottom == uiState.value.cursorBottom) return
+        uiState.update { it.copy(cursorLeft = left, cursorBottom = bottom) }
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
@@ -205,8 +233,14 @@ class AZimeService : InputMethodService() {
                 showClipboardPanel = false,
                 showMenuPanel = false,
                 showCandidatePanel = false,
+                showSchemaPanel = false,
             )
         }
+        // 轮19.11：停止光标监听 + 清掉光标坐标
+        runCatching {
+            getCurrentInputConnection()?.requestCursorUpdates(0)
+        }
+        uiState.update { it.copy(cursorLeft = -1, cursorBottom = -1) }
         // 语音 = 最重的可选资源：闲置后卸载（90s 宽限）
         scheduleSpeechEngineRelease()
         super.onFinishInputView(finishingInput)
@@ -556,7 +590,23 @@ class AZimeService : InputMethodService() {
                     uiState.update { it.copy(themeRev = it.themeRev + 1) }
                 }
                 KeyAction.ToggleClipboardPanel ->
-                    uiState.update { it.copy(showClipboardPanel = !it.showClipboardPanel) }
+                    uiState.update {
+                        it.copy(
+                            showClipboardPanel = !it.showClipboardPanel,
+                            showMenuPanel = false,
+                            showSchemaPanel = false,
+                        )
+                    }
+                // 轮19.11：方案快捷面板（与其它面板互斥）
+                KeyAction.ToggleSchemaPanel ->
+                    uiState.update {
+                        it.copy(
+                            showSchemaPanel = !it.showSchemaPanel,
+                            showMenuPanel = false,
+                            showClipboardPanel = false,
+                            showCandidatePanel = false,
+                        )
+                    }
                 KeyAction.ToggleMenuPanel ->
                     uiState.update { it.copy(showMenuPanel = !it.showMenuPanel) }
                 is KeyAction.CommitClipboard -> {

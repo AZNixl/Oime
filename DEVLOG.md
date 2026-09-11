@@ -870,3 +870,32 @@ Oime 落地（本轮）：
      `androidx.activity.enableEdgeToEdge()` 调用（Kotlin 扩展函数不支持这种写法），
      必须 `import androidx.activity.enableEdgeToEdge` 后直接调用
 6. 推送并构建（用户已授权）
+
+# 轮19.11（0.9.25-oime vc35）：八项交互/功能
+
+1. **⇧/⌫ 宽度回退 1.5**（用户只要字母键对齐）：第 3 行改为
+   `[ε填充][⇧ 1.5][Z..M][⌫ 1.5][ε填充]`（ε=0.01 权重）——仍是 11 子元素/10 道行距，
+   Σw=10.02 vs 第 2 行 10 ⇒ 单位键宽差 0.2%，Z..M 与 S..K 偏差 < 0.3dp（肉眼不可见），
+   同时 ⇧/⌫ 回到原宽度。qwerty `rev` 4→5
+2. **悬浮窗重做**：
+   - **跟随光标**：`onStartInputView` 请求 `requestCursorUpdates(CURSOR_UPDATE_MONITOR)`，
+     `onUpdateCursorAnchorInfo` 用 `insertionMarkerHorizontal/Top/Bottom` + matrix 换成屏幕坐标
+     存入 uiState；UI 用 `LocalView.getLocationOnScreen` 得到 IME 窗口 top，把屏幕坐标换算成
+     Popup 偏移（浮在光标上方 6dp，高度用 `onGloballyPositioned` 实测回退修正）；
+     收起键盘时 `requestCursorUpdates(0)` 停监听并清坐标
+   - **同步候选**：悬浮窗内显示「前三码 + 前 6 个候选」
+   - **字号同步**：改用 `fontSizeBar()`（原来固定 `floatTextSp`）
+   - **前三码规则**：悬浮窗只显示 `preedit.take(3)`，工具栏显示 `preedit.drop(3)`
+3. **定制工具栏**：去掉顶部说明文字与底部「取消」按钮（保存仍在标题右侧）
+4. **O 圆环眼睛**：动作扩到 5 种（眨眼 / 连眨两下 / 左右看 / 上下看 / 眯眼），
+   间隔拉长到 **2000~9000ms**（原 500~3100ms），单次时长也拉长（看 700~2400ms、眯眼 900~2600ms）
+5. **上滑悬浮栏可关闭**：栏内**下滑即关闭**且不再误触「下滑收键盘」（新增 gestureDone 守卫）；
+   另外必须**横向移动 > 24dp** 才算选中某槽，否则松手只关闭不启动（原来必启动中间槽 = 「只能打开不能关闭」）
+6. **工具栏工具扩充**：availableToolbarTools 从 6 个扩到 **17 个**（新增语音/候选/键盘编辑/部署/
+   主题/中英/撤回/全清/收起/悬浮窗/O 圆环），上限 6 个（每侧 3）；
+   **默认不再显示任何工具（工具栏只有 ○ 圆环）**，旧默认存档自动视为空
+7. **方案按钮 → 剪贴板同款悬浮栏**：新增 `ToggleSchemaPanel` + `SchemaQuickPanel`
+   （MenuSubPanel chrome + 底部悬浮栏），方案**横向排布**（可横滑）、点击切换并关闭；
+   当前方案高亮 + 勾选图标
+8. **○ 菜单图标同步**：原来仍是 Material 图标，现全部换成 OimeIcons（并新增 10 枚图标：
+   tune/toggle/apps/manage/sun/moon/ring/candidates/undo/trash）；菜单项也扩充到 19 项

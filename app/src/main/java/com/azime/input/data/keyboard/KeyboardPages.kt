@@ -125,12 +125,16 @@ object KeyboardPages {
             // 原来第 3 行是 [shift 1.5][7 字母][backspace 1.5]（9 个元素、8 道行距），
             // 行距数不同 → 单位键宽比第 2 行大 0.2×rowGap，累到行尾偏出近 1 个键位。
             row(
-                spacerKey(0.5f),
-                shift(width = 1.0f),
+                // 轮19.11：⇧/⌫ 宽度回退到 1.5（用户要求「没让 shift 和退格对齐」），
+                // 同时用两个**极小权重填充键**让本行仍是 11 子元素、10 道行距（与第 2 行同构），
+                // 这样单位键宽 U=(W−10G)/Σw 与第 2 行几乎相同（Σw=10.02 vs 10，差 0.2%），
+                // Z..M 依然精确落在 S..K 正下方（偏差 < 0.3dp，肉眼不可见）。
+                spacerKey(0.01f),
+                shift(width = 1.5f),
                 charKey("Z"), charKey("X"), charKey("C"), charKey("V"),
                 charKey("B"), charKey("N"), charKey("M"),
-                backspace(width = 1.0f),
-                spacerKey(0.5f),
+                backspace(width = 1.5f),
+                spacerKey(0.01f),
             ),
             row(
                 pageKey("123", width = 1.7f, icon = "symbols"), // 稍宽于 shift(1.5)，紧凑起步
@@ -140,7 +144,7 @@ object KeyboardPages {
                 enter(width = 2f),
             ),
         ),
-        rev = 4, // 轮19.10：第 3 行结构变化（对齐第 2 行）
+        rev = 5, // 轮19.11：第 3 行 ⇧/⌫ 回 1.5，用 ε 填充键保持对齐
     )
 
     /** 数字/符号页（第四行首键切换）。rev=2：与 qwerty 第四行同步填满。 */

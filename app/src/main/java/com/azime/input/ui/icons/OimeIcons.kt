@@ -250,6 +250,96 @@ object OimeIcons {
         )
     }
 
+    // ── 轮19.11 新增：○ 菜单 / 工具栏扩展工具用 ─────────────────
+
+    /** 方案开关（滑块）。 */
+    val tune by lazy {
+        Icon(
+            "oime_tune",
+            P("M4 7.4h9M17.5 7.4H20M4 16.6h3M11.5 16.6H20", w = 2.1f),
+            P("M15 5.2a2.2 2.2 0 1 0 0 4.4a2.2 2.2 0 1 0 0-4.4z", filled = true),
+            P("M9 14.4a2.2 2.2 0 1 0 0 4.4a2.2 2.2 0 1 0 0-4.4z", filled = true),
+        )
+    }
+
+    /** 开关（pill + 圆点）。 */
+    val toggle by lazy {
+        Icon(
+            "oime_toggle",
+            P("M8 7.6h8a4.4 4.4 0 0 1 0 8.8H8a4.4 4.4 0 0 1 0-8.8z", w = 2.1f),
+            P("M15.6 12a1.9 1.9 0 1 0 0 3.8a1.9 1.9 0 1 0 0-3.8z", filled = true),
+        )
+    }
+
+    /** 方案组（四宫格）。 */
+    val apps by lazy {
+        Icon(
+            "oime_apps",
+            P("M5.4 5.4h5.2v5.2H5.4zM13.4 5.4h5.2v5.2h-5.2zM5.4 13.4h5.2v5.2H5.4zM13.4 13.4h5.2v5.2h-5.2z", w = 1.9f),
+        )
+    }
+
+    /** 方案管理（清单 + 勾）。 */
+    val manage by lazy {
+        Icon(
+            "oime_manage",
+            P("M4.6 6.6h9.4M4.6 11.4h9.4M4.6 16.2h5.6", w = 2.0f),
+            P("M14.4 15.4 16.6 17.6 20.4 13", w = 2.2f),
+        )
+    }
+
+    /** 亮色（太阳）。 */
+    val sun by lazy {
+        Icon(
+            "oime_sun",
+            P("M12 7.6a4.4 4.4 0 1 0 0 8.8a4.4 4.4 0 1 0 0-8.8z", w = 2.1f),
+            P("M12 2.6v2.2M12 19.2v2.2M2.6 12h2.2M19.2 12h2.2M5.6 5.6l1.6 1.6M16.8 16.8l1.6 1.6M18.4 5.6l-1.6 1.6M7.2 16.8l-1.6 1.6"),
+        )
+    }
+
+    /** 暗色（月亮）。 */
+    val moon by lazy {
+        Icon(
+            "oime_moon",
+            P("M20 14.6A8.6 8.6 0 0 1 9.4 4a8.6 8.6 0 1 0 10.6 10.6z", w = 2.0f),
+        )
+    }
+
+    /** O 圆环（环 + 中心点）。 */
+    val ring by lazy {
+        Icon(
+            "oime_ring",
+            P("M12 4.4a7.6 7.6 0 1 0 0 15.2a7.6 7.6 0 1 0 0-15.2z", w = 2.3f),
+            P("M12 10.8a1.2 1.2 0 1 0 0 2.4a1.2 1.2 0 1 0 0-2.4z", filled = true),
+        )
+    }
+
+    /** 更多候选（网格列表）。 */
+    val candidates by lazy {
+        Icon(
+            "oime_candidates",
+            P("M4.4 5.6h6.4v4.4H4.4zM13.2 5.6h6.4v4.4h-6.4zM4.4 14h6.4v4.4H4.4zM13.2 14h6.4v4.4h-6.4z", w = 1.9f),
+        )
+    }
+
+    /** 撤回（逆时针箭头）。 */
+    val undo by lazy {
+        Icon(
+            "oime_undo",
+            P("M4.4 12a7.6 7.6 0 1 0 2.3-5.4"),
+            P("M4.2 4.2v3.8h3.8"),
+        )
+    }
+
+    /** 清空（垃圾桶）。 */
+    val trash by lazy {
+        Icon(
+            "oime_trash",
+            P("M5.4 7.4h13.2M9 7.4V5.6a1.2 1.2 0 0 1 1.2-1.2h3.6A1.2 1.2 0 0 1 15 5.6v1.8", w = 2.0f),
+            P("M7 7.4l0.9 11.2a1.6 1.6 0 0 0 1.6 1.5h5a1.6 1.6 0 0 0 1.6-1.5L17 7.4", w = 2.0f),
+        )
+    }
+
     /** 按 string id 取图标（键面 icon 字段 / 工具栏 id 用）。 */
     fun byName(name: String): ImageVector? = when (name) {
         "clipboard" -> clipboard
@@ -274,6 +364,22 @@ object OimeIcons {
         "emoji" -> emoji
         "keyboard" -> keyboard
         "check" -> check
+        "tune", "switches" -> tune
+        "toggle" -> toggle
+        "apps", "groups" -> apps
+        "manage" -> manage
+        "sun", "light" -> sun
+        "moon", "dark" -> moon
+        "ring", "oring" -> ring
+        "candidates" -> candidates
+        "undo" -> undo
+        "trash", "deleteall" -> trash
+        "voice" -> mic
+        "float" -> pip
+        "lua" -> code
+        "theme" -> palette
+        "deploy" -> refresh
+        "hide" -> back
         else -> null
     }
 }

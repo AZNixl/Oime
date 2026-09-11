@@ -1,5 +1,6 @@
 package com.azime.input.ui.keyboard
 
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -167,6 +168,8 @@ sealed interface KeyAction {
     data object HideKeyboard : KeyAction
     data object ToggleClipboardPanel : KeyAction
     data object ToggleMenuPanel : KeyAction
+    /** 轮19.11：工具栏「方案」按钮 → 剪贴板同款悬浮栏，方案横向排布、点击切换。 */
+    data object ToggleSchemaPanel : KeyAction
     /** 从剪贴板面板/条上屏：提交后清除条目并收起面板。 */
     data class CommitClipboard(val text: String) : KeyAction
     data class SetToolbarItems(val ids: List<String>) : KeyAction
@@ -215,6 +218,11 @@ data class KeyboardUiState(
     val showClipboardPanel: Boolean = false,
     val showMenuPanel: Boolean = false,
     val showCandidatePanel: Boolean = false,
+    /** 轮19.11：方案快捷面板。 */
+    val showSchemaPanel: Boolean = false,
+    /** 轮19.11：光标屏幕坐标（悬浮窗跟随光标用；-1 表示未知）。 */
+    val cursorLeft: Int = -1,
+    val cursorBottom: Int = -1,
     /** 剪贴板历史（最新在前，Service 持久化 clipboard.json）。 */
     val clipHistory: List<String> = emptyList(),
     /** 常用短语/收藏（Service 持久化 phrase.json）。 */
@@ -344,6 +352,8 @@ fun AzimeKeyboardScreen(
                 )
             } else if (state.showClipboardPanel) {
                 ClipboardPanel(state = state, onAction = onAction, totalHeight = areaH)
+            } else if (state.showSchemaPanel) {
+                SchemaQuickPanel(state = state, onAction = onAction, totalHeight = areaH)
             } else if (state.page == "emoji" || state.page == "symgrid") {
                 CategoryGridPane(
                     data = if (state.page == "emoji") EmojiGrid else SymbolGrid,
@@ -396,28 +406,140 @@ fun AzimeKeyboardScreen(
             if (KeyboardManager.floatEnabled() && state.preedit.isNotEmpty()) {
                 val density = LocalDensity.current
                 val custom = KeyboardManager.floatMode() == "custom"
-                val fx = KeyboardManager.floatXDp().dp
-                val fy = KeyboardManager.floatYDp().dp
                 val bgAlpha = if (custom) KeyboardManager.floatBgAlpha() / 100f else 0.92f
+                // 轮19.11：字号与工具栏/候选同步（原来固定 floatTextSp，放大键盘字号时不同步）
+                val fSp = KeyboardManager.fontSizeBar().toFloat()
+                val pSp = fSp * 0.7f
+                // 跟随光标：用 IME 窗口在屏幕上的 top 把光标屏幕坐标换算成弹层偏移
+                val rootView = androidx.compose.ui.platform.LocalView.current
+                val imeTop = remember(rootView) {
+                    val loc = IntArray(2)
+                    rootView.getLocationOnScreen(loc)
+                    loc[1]
+                }
+                var floatH by remember { mutableStateOf(0) }
+                val hasCursor = state.cursorBottom > 0
+                val showCandidates = state.candidates.take(6)
                 Popup(
                     alignment = Alignment.TopStart,
-                    offset = IntOffset(
-                        with(density) { fx.roundToPx() },
-                        with(density) { -fy.roundToPx() },
-                    ),
+                    offset = if (hasCursor) {
+                        // 位置 = 光标左端，浮在光标上方 6dp（高度按实测内容高度回退修正）
+                        IntOffset(
+                            state.cursorLeft.coerceAtLeast(0),
+                            state.cursorBottom - imeTop - floatH - with(density) { 6.dp.roundToPx() },
+                        )
+                    } else {
+                        IntOffset(
+                            with(density) { KeyboardManager.floatXDp().dp.roundToPx() },
+                            with(density) { -KeyboardManager.floatYDp().dp.roundToPx() },
+                        )
+                    },
                 ) {
-                    Text(
-                        text = state.preedit,
-                        fontSize = KeyboardManager.floatTextSp().sp,
-                        color = c.text,
-                        maxLines = 1,
+                    Column(
                         modifier = Modifier
+                            .onGloballyPositioned { floatH = it.size.height }
                             .background(c.barBg.copy(alpha = bgAlpha), RoundedCornerShape(10.dp))
-                            .padding(horizontal = 14.dp, vertical = 8.dp),
-                    )
+                            .padding(horizontal = 12.dp, vertical = 7.dp),
+                    ) {
+                        // 输入码：只显示前三码（余下的留在工具栏）
+                        Text(
+                            text = state.preedit.take(3),
+                            fontSize = pSp.sp,
+                            lineHeight = (pSp * 1.16f).sp,
+                            color = c.subText,
+                            maxLines = 1,
+                        )
+                        if (showCandidates.isNotEmpty()) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                showCandidates.forEachIndexed { i, cand ->
+                                    if (i > 0) Spacer(Modifier.width(10.dp))
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        if (i < 9) {
+                                            Text("${i + 1} ", fontSize = (fSp * 0.62f).sp, color = c.subText)
+                                        }
+                                        Text(cand.text, fontSize = fSp.sp, color = c.text, maxLines = 1)
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
+    }
+}
+
+/**
+ * 轮19.11：方案快捷面板 —— 与剪贴板面板同款 chrome（底部悬浮栏），
+ * 方案**横向排布**（可横滑），点击即切换并关闭。
+ */
+@Composable
+private fun SchemaQuickPanel(state: KeyboardUiState, onAction: (KeyAction) -> Unit, totalHeight: androidx.compose.ui.unit.Dp) {
+    val c = keyboardColors()
+    MenuSubPanel(
+        c = c,
+        title = "输入方案",
+        totalHeight = totalHeight,
+        onBack = { onAction(KeyAction.ToggleSchemaPanel) },
+        onClose = { onAction(KeyAction.ToggleSchemaPanel) },
+    ) {
+        if (state.schemas.isEmpty()) {
+            Text(
+                "暂无可用方案：在设置 → 输入方案 里导入或切换方案组",
+                fontSize = 13.sp, color = c.subText,
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp),
+            )
+        }
+        // 横向排布：一行放不下就横滑
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(vertical = 2.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            val current = state.schemaName
+            state.schemas.forEach { id ->
+                val selected = id == current
+                val name = remember(id) {
+                    com.azime.input.core.rime.RimeManager.schemaDisplayName(id)
+                }
+                Row(
+                    modifier = Modifier
+                        .height((KeyboardManager.keyHeightDp() * 0.78f).dp)
+                        .background(if (selected) c.accentKeyBg else c.keyBg, RoundedCornerShape(12.dp))
+                        .clickable {
+                            if (!selected) onAction(KeyAction.SelectSchema(id))
+                            onAction(KeyAction.ToggleSchemaPanel)
+                        }
+                        .padding(horizontal = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        name,
+                        fontSize = 14.sp,
+                        maxLines = 1,
+                        color = if (selected) c.accentActive else c.text,
+                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                    )
+                    if (selected) {
+                        Spacer(Modifier.width(6.dp))
+                        Icon(
+                            com.azime.input.ui.icons.OimeIcons.check,
+                            contentDescription = "当前",
+                            tint = c.accentActive,
+                            modifier = Modifier.size(16.dp),
+                        )
+                    }
+                }
+            }
+        }
+        Text(
+            "点击切换方案；长按 ○ 圆环可呼出定制工具栏。",
+            fontSize = 12.sp, color = c.subText,
+            modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
+        )
     }
 }
 
@@ -644,9 +766,12 @@ private fun ToolbarRow(
             val candCapSp = ((barHeight.value - 6f) / 2.04f).coerceIn(9f, 34f)
             val candSp = minOf(KeyboardManager.fontSizeBar().toFloat(), candCapSp)
             val preeditSp = candSp * 0.7f
-            if (state.preedit.isNotEmpty()) {
+            // 轮19.11：悬浮窗生效时，前三码交给悬浮窗显示，工具栏只显示余下的
+            val floatOn = KeyboardManager.floatEnabled() && state.preedit.isNotEmpty()
+            val preeditForBar = if (floatOn) state.preedit.drop(3) else state.preedit
+            if (preeditForBar.isNotEmpty()) {
                 Text(
-                    text = state.preedit,
+                    text = preeditForBar,
                     // 轮18.2：输入码小字随候选字号缩放；轮19.4：随工具栏可用高度收敛
                     fontSize = preeditSp.sp,
                     lineHeight = (preeditSp * 1.16f).sp,
@@ -758,34 +883,54 @@ private fun ToolbarRow(
                 // 轮19.6：O 圆环形状（ring / square / eye）+ 眼睛随机动画
                 val ringShape = KeyboardManager.ringShape()
                 var eyeBlink by remember { mutableStateOf(false) }
-                var eyeDx by remember { mutableStateOf(0f) } // -1 左看 / 0 中 / 1 右看
+                var eyeDx by remember { mutableStateOf(0f) }  // -1 左看 / 0 中 / 1 右看
+                var eyeDy by remember { mutableStateOf(0f) }  // -1 上看 / 0 中 / 1 下看
+                var eyeSquint by remember { mutableStateOf(false) } // 眯眼（眼睛变小）
                 // 上滑应用弧：显示中 / 高亮槽位（-1 = 未选）
                 var showAppArc by remember { mutableStateOf(false) }
                 var arcSel by remember { mutableStateOf(-1) }
                 val ringApps = KeyboardManager.ringApps()
                 LaunchedEffect(ringShape) {
                     if (ringShape != KeyboardManager.RING_SHAPE_EYE) return@LaunchedEffect
-                    // 随机动作 + 随机时间：眨眼（圆点↔长条）/ 左右看
+                    // 轮19.11：动作扩充 + 时间区间拉长（用户要求「拉长触发时间」）
+                    //   动作：眨眼(圆点↔长条) / 左右看 / 上下看 / 眯眼 / 连眨两下
+                    //   间隔：动作之间 2000~9000ms（原来 500~3100ms）
+                    //   单次时长：看 700~2400ms，眨眼 120~260ms，眯眼 900~2600ms
                     val rnd = java.util.Random()
                     while (true) {
-                        when (rnd.nextInt(3)) {
-                            0 -> {
+                        when (rnd.nextInt(5)) {
+                            0 -> { // 眨眼
                                 eyeBlink = true
-                                kotlinx.coroutines.delay(90L + rnd.nextInt(110))
+                                kotlinx.coroutines.delay(120L + rnd.nextInt(140))
                                 eyeBlink = false
                             }
-                            1 -> {
-                                eyeDx = -1f
-                                kotlinx.coroutines.delay(260L + rnd.nextInt(900))
+                            1 -> { // 连眨两下
+                                repeat(2) {
+                                    eyeBlink = true
+                                    kotlinx.coroutines.delay(110L + rnd.nextInt(90))
+                                    eyeBlink = false
+                                    kotlinx.coroutines.delay(150L + rnd.nextInt(120))
+                                }
+                            }
+                            2 -> { // 左右看
+                                val dir = if (rnd.nextBoolean()) -1f else 1f
+                                eyeDx = dir
+                                kotlinx.coroutines.delay(700L + rnd.nextInt(1700))
                                 eyeDx = 0f
                             }
-                            else -> {
-                                eyeDx = 1f
-                                kotlinx.coroutines.delay(260L + rnd.nextInt(900))
-                                eyeDx = 0f
+                            3 -> { // 上下看
+                                val dir = if (rnd.nextBoolean()) -1f else 1f
+                                eyeDy = dir
+                                kotlinx.coroutines.delay(700L + rnd.nextInt(1700))
+                                eyeDy = 0f
+                            }
+                            else -> { // 眯眼
+                                eyeSquint = true
+                                kotlinx.coroutines.delay(900L + rnd.nextInt(1700))
+                                eyeSquint = false
                             }
                         }
-                        kotlinx.coroutines.delay(500L + rnd.nextInt(2600))
+                        kotlinx.coroutines.delay(2000L + rnd.nextInt(7000))
                     }
                 }
                 LaunchedEffect(oPressing) {
@@ -823,6 +968,8 @@ private fun ToolbarRow(
                                 var anchor: Offset? = null
                                 var swipedDown = false
                                 var swipedUp = false
+                                // 轮19.11：下滑关闭悬浮栏后，本次手势不再参与其它判定
+                                var gestureDone = false
                                 while (true) {
                                     val ev = awaitPointerEvent()
                                     val ch = ev.changes.firstOrNull() ?: break
@@ -844,12 +991,25 @@ private fun ToolbarRow(
                                         arcSel = -1
                                         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                                     }
-                                    if (swipedUp) {
-                                        val idx = ((dx - arcFirstPx) / arcStepPx)
-                                            .roundToInt().coerceIn(0, 4)
-                                        if (idx != arcSel) {
-                                            arcSel = idx
-                                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    if (gestureDone) {
+                                        // 已处理完（如下滑关栏），只等抬起
+                                    } else if (swipedUp) {
+                                        // 轮19.11：① 下滑即关闭悬浮栏（原来只能打开）；
+                                        //          ② 只有横向移动超过 24dp 才视为「选中某槽」，
+                                        //             否则松手仅关闭、不启动应用（避免误启动中间槽）
+                                        if (dy > downPx && abs(dy) > abs(dx)) {
+                                            swipedUp = false
+                                            gestureDone = true   // 不要再被后面的「下滑收键盘」分支吃掉
+                                            arcSel = -1
+                                            showAppArc = false
+                                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        } else if (abs(dx) > with(this@pointerInput) { 24.dp.toPx() }) {
+                                            val idx = ((dx - arcFirstPx) / arcStepPx)
+                                                .roundToInt().coerceIn(0, 4)
+                                            if (idx != arcSel) {
+                                                arcSel = idx
+                                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                            }
                                         }
                                         ringKnob = Offset.Zero
                                     } else if (dy > downPx && abs(dy) > abs(dx)) {
@@ -944,9 +1104,9 @@ private fun ToolbarRow(
                             KeyboardManager.RING_SHAPE_EYE -> {
                                 drawCircle(color = col, radius = ringR, style = Stroke(strokeW))
                                 // 双眼：圆点（睁眼）↔ 长条（闭眼）；eyeDx 左右看
-                                val eyeR = 2.2.dp.toPx()
+                                val eyeR = if (eyeSquint) 1.5.dp.toPx() else 2.2.dp.toPx()
                                 val sep = 3.6.dp.toPx()
-                                val dyEye = -0.4.dp.toPx()
+                                val dyEye = -0.4.dp.toPx() + eyeDy * 1.3.dp.toPx()
                                 val dxEye = eyeDx * 1.4.dp.toPx()
                                 for (sx in listOf(-sep, sep)) {
                                     val cxE = center.x + sx + dxEye
@@ -1151,11 +1311,22 @@ private fun RowScope.toolbarToolItem(id: String, state: KeyboardUiState, onActio
             .clickable {
                 when (id) {
                     "clipboard" -> onAction(KeyAction.ToggleClipboardPanel)
-                    "schema" -> onSchema()
+                    // 轮19.11：方案按钮改为「剪贴板同款悬浮栏 + 横向方案」的面板
+                    "schema" -> { onAction(KeyAction.ToggleSchemaPanel); onSchema() }
                     "numpad" -> onAction(KeyAction.SwitchPage(if (state.page == "numpad") "main" else "numpad"))
                     "emoji" -> onAction(KeyAction.SwitchPage("emoji"))
                     "symbols" -> onAction(KeyAction.SwitchPage("symgrid"))
                     "settings" -> onAction(KeyAction.OpenSettings)
+                    "voice" -> onAction(KeyAction.ToggleVoiceInput)
+                    "candidates" -> onAction(KeyAction.ToggleCandidatePanel)
+                    "keyboard" -> onAction(KeyAction.OpenKeyboardEditor)
+                    "deploy" -> onAction(KeyAction.Deploy)
+                    "theme" -> onAction(KeyAction.ToggleThemeMode)
+                    "ascii" -> onAction(KeyAction.ToggleAscii)
+                    "undo" -> onAction(KeyAction.Undo)
+                    "deleteall" -> onAction(KeyAction.DeleteAll)
+                    "hide" -> onAction(KeyAction.HideKeyboard)
+                    "float", "ring" -> onAction(KeyAction.OpenSettings)
                 }
             }
             .padding(horizontal = 8.dp, vertical = 6.dp),
@@ -1537,22 +1708,34 @@ private fun MenuPanel(
                         val themeDark = remember(state.themeRev, sysDark) {
                             com.azime.input.core.theme.KeyboardTheme.isDark(sysDark)
                         }
+                        // 轮19.11：○ 菜单图标改用 OimeIcons（此前仍是 Material 旧图标，与工具栏不一致）
+                        val oi = com.azime.input.ui.icons.OimeIcons
                         val menuItems: List<Triple<androidx.compose.ui.graphics.vector.ImageVector, String, () -> Unit>> = listOf(
-                            Triple(Icons.AutoMirrored.Filled.Assignment, "剪贴板") { close(); onAction(KeyAction.ToggleClipboardPanel) },
-                            Triple(Icons.Default.Tune, "方案开关") { subPage = "switches" },
+                            Triple(oi.clipboard, "剪贴板") { close(); onAction(KeyAction.ToggleClipboardPanel) },
+                            Triple(oi.tune, "方案开关") { subPage = "switches" },
                             // 反馈轮13：方案组大项（组 → 方案 两级，一次只加载一个组）
-                            Triple(Icons.Default.Apps, "方案组") { subPage = "groups" },
+                            Triple(oi.apps, "方案组") { subPage = "groups" },
                             // 反馈轮15：方案管理 —— 组内启用集选择（部署范围 + 「输入方案」列表）
-                            Triple(Icons.Default.PlaylistAddCheck, "方案管理") { subPage = "manage" },
-                            Triple(Icons.Default.List, "输入方案") { subPage = "schema" },
-                            Triple(Icons.Default.Sync, "部署") { close(); onAction(KeyAction.Deploy) },
+                            Triple(oi.manage, "方案管理") { subPage = "manage" },
+                            Triple(oi.schemas, "输入方案") { subPage = "schema" },
+                            Triple(oi.refresh, "部署") { close(); onAction(KeyAction.Deploy) },
                             // 反馈轮16：键盘编辑 —— 布局编辑器直达入口
-                            Triple(Icons.Default.Edit, "键盘编辑") { close(); onAction(KeyAction.OpenKeyboardEditor) },
-                            Triple(Icons.Default.Category, "定制工具栏") { subPage = "toolbar" },
+                            Triple(oi.keyboard, "键盘编辑") { close(); onAction(KeyAction.OpenKeyboardEditor) },
+                            Triple(oi.ring, "O 圆环") { close(); onAction(KeyAction.OpenSettings) },
+                            Triple(oi.candidates, "更多候选") { close(); onAction(KeyAction.ToggleCandidatePanel) },
+                            Triple(oi.toggle, "中英切换") { onAction(KeyAction.ToggleAscii) },
+                            Triple(oi.trash, "全清") { onAction(KeyAction.DeleteAll) },
+                            Triple(oi.undo, "撤回") { onAction(KeyAction.Undo) },
+                            Triple(oi.mic, "语音") { close(); onAction(KeyAction.ToggleVoiceInput) },
+                            Triple(oi.pip, "悬浮窗") { close(); onAction(KeyAction.OpenSettings) },
+                            Triple(oi.code, "预设置") { close(); onAction(KeyAction.OpenSettings) },
+                            Triple(oi.palette, "主题") { close(); onAction(KeyAction.OpenSettings) },
+                            Triple(oi.tune, "定制工具栏") { subPage = "toolbar" },
                             Triple(
-                                if (themeDark) Icons.Default.LightMode else Icons.Default.DarkMode,
+                                if (themeDark) oi.sun else oi.moon,
                                 if (themeDark) "亮色" else "暗色",
                             ) { onAction(KeyAction.ToggleThemeMode) },
+                            Triple(oi.check, "收起键盘") { close(); onAction(KeyAction.HideKeyboard) },
                         )
                         menuItems.chunked(4).forEach { rowItems ->
                             Row(
@@ -1602,7 +1785,7 @@ private fun MenuPanel(
                         )
                         Text("○ 菜单", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = c.text)
                         Icon(
-                            Icons.Default.Settings,
+                            com.azime.input.ui.icons.OimeIcons.settings,
                             contentDescription = "设置",
                             tint = c.text,
                             modifier = Modifier
@@ -1716,12 +1899,6 @@ private fun ToolbarCustomizePanel(
             )
         },
     ) {
-        Text(
-            "○ 菜单键固定居中（拖动移光标）；点选的工具先左后右排列在 ○ 两侧。",
-            fontSize = 12.sp,
-            color = c.subText,
-            modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
-        )
         // 反馈轮10：横向卡片网格（选中 = 强调色），与一级菜单同风格
         KeyboardManager.availableToolbarTools.chunked(4).forEach { rowTools ->
             Row(
@@ -1735,7 +1912,9 @@ private fun ToolbarCustomizePanel(
                             .weight(1f)
                             .background(if (on) c.accentKeyBg else c.keyBg, RoundedCornerShape(12.dp))
                             .clickable {
-                                if (on) selected.remove(id) else selected.add(id)
+                                // 轮19.11：两侧空间有限，最多 6 个
+                                if (on) selected.remove(id)
+                                else if (selected.size < KeyboardManager.MAX_TOOLBAR_TOOLS) selected.add(id)
                             }
                             .padding(vertical = 10.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
@@ -1753,13 +1932,6 @@ private fun ToolbarCustomizePanel(
                 repeat(4 - rowTools.size) { Spacer(Modifier.weight(1f)) }
             }
             Spacer(Modifier.height(10.dp))
-        }
-        Spacer(Modifier.height(6.dp))
-        // 轮19.10：保存已移到标题右侧，这里只留取消/关闭
-        Row(modifier = Modifier.fillMaxWidth()) {
-            OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) {
-                Text("取消")
-            }
         }
     }
 }
@@ -2651,8 +2823,8 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     listOf(
-                        "symbols" to Icons.Default.GridOn,   // 26 键符号键盘
-                        "numpad" to Icons.Default.Dialpad,   // 九宫格数字键盘
+                        "symbols" to com.azime.input.ui.icons.OimeIcons.symbols,  // 26 键符号键盘
+                        "numpad" to com.azime.input.ui.icons.OimeIcons.numpad,    // 九宫格数字键盘
                     ).forEach { (page, icon) ->
                         val on = page == KeyboardManager.preferredPage()
                         Icon(
