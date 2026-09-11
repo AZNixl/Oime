@@ -1709,12 +1709,8 @@ private fun MenuPanel(
                         val oi = com.azime.input.ui.icons.OimeIcons
                         val menuItems: List<Triple<androidx.compose.ui.graphics.vector.ImageVector, String, () -> Unit>> = listOf(
                             Triple(oi.clipboard, "剪贴板") { close(); onAction(KeyAction.ToggleClipboardPanel) },
+                            // 轮19.14：方案组 / 方案管理 / 输入方案 从 ○ 菜单移除，统一到设置里管理
                             Triple(oi.tune, "方案开关") { subPage = "switches" },
-                            // 反馈轮13：方案组大项（组 → 方案 两级，一次只加载一个组）
-                            Triple(oi.apps, "方案组") { subPage = "groups" },
-                            // 反馈轮15：方案管理 —— 组内启用集选择（部署范围 + 「输入方案」列表）
-                            Triple(oi.manage, "方案管理") { subPage = "manage" },
-                            Triple(oi.schemas, "输入方案") { subPage = "schema" },
                             Triple(oi.refresh, "部署") { close(); onAction(KeyAction.Deploy) },
                             // 反馈轮16：键盘编辑 —— 布局编辑器直达入口
                             Triple(oi.keyboard, "键盘编辑") { close(); onAction(KeyAction.OpenKeyboardEditor) },
@@ -2067,7 +2063,11 @@ private fun CategoryGridPane(
                 .fillMaxSize(),
         ) { page ->
             val items = data.categories.getOrNull(page)?.second ?: emptyList()
-            val chunks = items.chunked(8)
+            // 轮19.14：每页排成 **4 行**（每行 = ceil(n/4)，上限 8 列；条目多于一页时仍按 8 列滚动）
+            val perRow = if (items.isEmpty()) 8
+            else if (items.size <= 24) maxOf(1, kotlin.math.ceil(items.size / 4.0).toInt())
+            else 8
+            val chunks = items.chunked(perRow)
             // 轮19.6：行高自适应填充——分类条目少（如「全部符号」只有 3 行）时下方大片空白，
             // 现按可用高度均分行高（下限 = 标准键高，上限 2.6×，底部预留悬浮栏空间）。
             val barReserve = 56.dp
@@ -2100,11 +2100,19 @@ private fun CategoryGridPane(
                                     .clickable { onAction(KeyAction.DirectCommit(item)) },
                                 contentAlignment = Alignment.Center,
                             ) {
-                                Text(item, fontSize = 21.sp, maxLines = 1)
+                                // 轮19.14：显式用键盘主题文字色——原来不指定颜色，
+                                // 而 IME 内 MaterialTheme 恒为 lightColorScheme ⇒ 暗色下字是黑的，
+                                // 深色键面上完全看不清（截图即此问题）
+                                Text(
+                                    item,
+                                    fontSize = 21.sp,
+                                    maxLines = 1,
+                                    color = c.text,
+                                )
                             }
                         }
-                        if (chunk.size < 8) {
-                            Spacer(Modifier.weight((8 - chunk.size).toFloat()))
+                        if (chunk.size < perRow) {
+                            Spacer(Modifier.weight((perRow - chunk.size).toFloat()))
                         }
                     }
                 }
@@ -2159,6 +2167,9 @@ private fun CategoryGridPane(
 private fun NumpadPane(state: KeyboardUiState, onAction: (KeyAction) -> Unit, keyHeight: androidx.compose.ui.unit.Dp) {
     // 反馈轮9：数字横向 123/456/789 排布（列存 = 1,4,7 / 2,5,8 / 3,6,9）
     val topRows = listOf(listOf("1", "4", "7"), listOf("2", "5", "8"), listOf("3", "6", "9"))
+    // 轮19.14：第一列（滑键）/第五列（功能键）收窄，中间三列数字加宽（总权重仍为 5）
+    val sideW = 0.78f
+    val midW = (5f - sideW * 2f) / 3f
     val keyCornerDp = KeyboardManager.keyCornerDp().dp
     val rowGap = KeyboardManager.rowGapDp().dp
     val colGap = KeyboardManager.colGapDp().dp
@@ -2179,10 +2190,10 @@ private fun NumpadPane(state: KeyboardUiState, onAction: (KeyAction) -> Unit, ke
                 .height(keyHeight * 3 + rowGap * 2),
             horizontalArrangement = Arrangement.spacedBy(colGap),
         ) {
-            NumpadSliderKey(onAction = onAction, modifier = Modifier.weight(1f).fillMaxSize())
+            NumpadSliderKey(onAction = onAction, modifier = Modifier.weight(sideW).fillMaxSize())
             topRows.forEach { col ->
                 Column(
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(midW),
                     verticalArrangement = Arrangement.spacedBy(rowGap),
                 ) {
                     col.forEach { digit ->
@@ -2196,7 +2207,7 @@ private fun NumpadPane(state: KeyboardUiState, onAction: (KeyAction) -> Unit, ke
                 }
             }
             Column(
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(sideW),
                 verticalArrangement = Arrangement.spacedBy(rowGap),
             ) {
                 listOf(
@@ -2217,18 +2228,19 @@ private fun NumpadPane(state: KeyboardUiState, onAction: (KeyAction) -> Unit, ke
                 .height(keyHeight),
             horizontalArrangement = Arrangement.spacedBy(colGap),
         ) {
+            // 与上方各列对齐：返回 / ⏎ 同宽（sideW），四个字符键同宽（midW）
             KeyboardKey(
-                key = Key("返回", code = "main", width = 1f, type = KeyType.FUNCTION, icon = "back"),
+                key = Key("返回", code = "main", width = sideW, type = KeyType.FUNCTION, icon = "back"),
                 state = state, onAction = onAction,
             )
             listOf("00", "0", ".").forEach { ch ->
                 KeyboardKey(
-                    key = Key(ch, code = ch, width = 1f, type = KeyType.CHARACTER),
+                    key = Key(ch, code = ch, width = midW, type = KeyType.CHARACTER),
                     state = state, onAction = onAction,
                 )
             }
             KeyboardKey(
-                key = Key("⏎", code = "enter", width = 1f, type = KeyType.ENTER, icon = "enter"),
+                key = Key("⏎", code = "enter", width = sideW, type = KeyType.ENTER, icon = "enter"),
                 state = state, onAction = onAction,
             )
         }
