@@ -816,10 +816,10 @@ private fun ToolbarRow(
                                 val downPx = with(this@pointerInput) { 40.dp.toPx() }
                                 // 上滑阈值（比下滑略小，悬浮栏呼出要跟手）
                                 val upPx = with(this@pointerInput) { 34.dp.toPx() }
-                                // 横向悬浮栏 5 槽：图标 48dp + 间距 8dp = 56dp/槽，
-                                // 槽 0 的中心在 ○ 键中心左侧 112dp（面板宽 296 居中后推算）
-                                val arcStepPx = with(this@pointerInput) { 56.dp.toPx() }
-                                val arcFirstPx = with(this@pointerInput) { (-112).dp.toPx() }
+                                // 横向悬浮栏 5 槽：图标 48dp + 间距 6dp = 54dp/槽（面板 280dp 居中后，
+                                // 槽 0 的中心在 ○ 键中心左侧 108dp）
+                                val arcStepPx = with(this@pointerInput) { 54.dp.toPx() }
+                                val arcFirstPx = with(this@pointerInput) { (-108).dp.toPx() }
                                 var anchor: Offset? = null
                                 var swipedDown = false
                                 var swipedUp = false
@@ -959,20 +959,24 @@ private fun ToolbarRow(
                     if (showAppArc) {
                         Popup(
                             alignment = Alignment.TopCenter,
+                            // 轮19.8b：Compose 的 AlignmentOffsetPositionProvider 语义是
+                            //   popupPos = 父左上 + 父对齐点 − 弹层对齐点 + offset
+                            // ⇒ TopCenter 下「弹层中心 = 父中心 + offset.x」，所以居中要 offset.x = 0
+                            // （上一版写 -面板宽/2，把整条往左推了半个屏，用户看到的就是没居中）
                             offset = IntOffset(
-                                // 面板宽 296dp → 左移半个面板宽即水平居中于 ○ 键中心
-                                with(density) { (-148).dp.roundToPx() },
-                                // 面板高 72dp，再留 10dp 间距，贴在 ○ 键上方
+                                0,
+                                // 面板高 72dp + 10dp 间距，贴在 ○ 键上方
                                 with(density) { (-82).dp.roundToPx() },
                             ),
                             onDismissRequest = { showAppArc = false },
                         ) {
                             Row(
+                                // 面板收窄到 280dp（原 296dp 在窄屏上几乎占满整宽）
                                 modifier = Modifier
-                                    .size(296.dp, 72.dp)
+                                    .size(280.dp, 72.dp)
                                     .background(c.barBg.copy(alpha = 0.94f), RoundedCornerShape(20.dp))
-                                    .padding(horizontal = 12.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    .padding(horizontal = 8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 for (i in 0 until KeyboardManager.RING_APP_SLOTS) {

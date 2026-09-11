@@ -783,3 +783,24 @@ Compose 的 `Popup(alignment = ..., offset = ...)` 走 `AlignmentOffsetPositionP
 - 已计入 `sizeSignature()` → 改完自动重建输入视图（热生效）
 - 说明：工具栏高度同时决定「输入码 + 候选」两行字号上限 `(barHeight-6dp)/2.04`（轮19.4），
   调高工具栏自然能放更大字号
+
+## 轮19.8b 修正：上滑悬浮栏没有居中（vc32）
+
+**现象**：上滑呼出的横向悬浮栏明显偏左。
+
+**根因**：对 Compose `Popup(alignment = TopCenter, offset)` 的定位语义理解错了。
+`AlignmentOffsetPositionProvider` 的真实公式是：
+
+```
+popupPos = 父左上 + alignment.align(Zero, 父尺寸) − alignment.align(Zero, 弹层尺寸) + offset
+```
+
+即 TopCenter 下 **弹层中心 = 父中心 + offset.x**（弹层自身对齐点被减掉了），
+**offset.x = 0 就是水平居中**。上一版按「左边缘对齐父中心」推断写了 `-面板宽/2 = -148dp`，
+把整条往左推了 148dp，所以看起来没居中。
+
+**旁证**：长按符号气泡（同 TopCenter）的 `bubbleXDp` 默认值是 3dp、范围 0~24 的「微调」量——
+若真按左边缘对齐，3dp 的微调会让气泡整个跑到键右侧，早就该被反馈了。
+
+**修复**：`offset.x = 0`；同时把面板从 296dp 收窄到 280dp（图标 48dp、间距 6dp、内边距 8dp），
+避免在 308dp 级窄屏上几乎占满整宽。选择映射同步为 54dp/槽、首槽 −108dp。
