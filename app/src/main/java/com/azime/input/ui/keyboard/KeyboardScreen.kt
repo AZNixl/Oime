@@ -328,8 +328,9 @@ fun AzimeKeyboardScreen(
             ToolbarRow(
                 state = state,
                 onAction = onAction,
-                // 反馈轮11：○ 菜单键 36dp + 上下留白；轮19.6：44→40dp（用户反馈与首行之间空白偏宽）
-                barHeight = 40.dp,
+                // 反馈轮11：○ 菜单键 36dp + 上下留白；轮19.6：44→40dp；
+                // 轮19.8：改为设置内可微调（键盘 → 工具栏高度，32~72dp）
+                barHeight = KeyboardManager.toolbarHeightDp().dp,
                 voiceRms = voiceRms,
             )
             // 面板优先：更多候选 / ○ 菜单 / 剪贴板 覆盖主键盘区（等高），否则显示键盘
@@ -813,10 +814,12 @@ private fun ToolbarRow(
                                 val cy = size.height / 2f
                                 val capR = minOf(size.width, size.height) / 2f - 5f
                                 val downPx = with(this@pointerInput) { 40.dp.toPx() }
-                                // 上滑阈值（比下滑略小，弧呼出要跟手）
+                                // 上滑阈值（比下滑略小，悬浮栏呼出要跟手）
                                 val upPx = with(this@pointerInput) { 34.dp.toPx() }
-                                // 弧上 5 槽：按横向位移选槽（半径 110dp，步长 ≈ 55dp）
-                                val arcStepPx = with(this@pointerInput) { 55.dp.toPx() }
+                                // 横向悬浮栏 5 槽：图标 48dp + 间距 8dp = 56dp/槽，
+                                // 槽 0 的中心在 ○ 键中心左侧 112dp（面板宽 296 居中后推算）
+                                val arcStepPx = with(this@pointerInput) { 56.dp.toPx() }
+                                val arcFirstPx = with(this@pointerInput) { (-112).dp.toPx() }
                                 var anchor: Offset? = null
                                 var swipedDown = false
                                 var swipedUp = false
@@ -842,7 +845,8 @@ private fun ToolbarRow(
                                         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                                     }
                                     if (swipedUp) {
-                                        val idx = (2f + dx / arcStepPx).roundToInt().coerceIn(0, 4)
+                                        val idx = ((dx - arcFirstPx) / arcStepPx)
+                                            .roundToInt().coerceIn(0, 4)
                                         if (idx != arcSel) {
                                             arcSel = idx
                                             haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -950,33 +954,33 @@ private fun ToolbarRow(
                             else -> drawCircle(color = col, radius = ringR, style = Stroke(strokeW))
                         }
                     }
-                    // 上滑应用弧（5 个图标，半圆弧分布；滑动选择-松手打开）
+                    // 上滑快捷应用：**横向悬浮栏**（轮19.8：原来是半圆弧分布，改为横向居中排布）
+                    // 5 个图标一行居中，滑动选择-松手打开
                     if (showAppArc) {
                         Popup(
                             alignment = Alignment.TopCenter,
                             offset = IntOffset(
-                                with(density) { (-130).dp.roundToPx() },
-                                with(density) { (-150).dp.roundToPx() },
+                                // 面板宽 296dp → 左移半个面板宽即水平居中于 ○ 键中心
+                                with(density) { (-148).dp.roundToPx() },
+                                // 面板高 72dp，再留 10dp 间距，贴在 ○ 键上方
+                                with(density) { (-82).dp.roundToPx() },
                             ),
                             onDismissRequest = { showAppArc = false },
                         ) {
-                            Box(
+                            Row(
                                 modifier = Modifier
-                                    .size(260.dp, 150.dp)
-                                    .background(c.barBg.copy(alpha = 0.92f), RoundedCornerShape(18.dp)),
+                                    .size(296.dp, 72.dp)
+                                    .background(c.barBg.copy(alpha = 0.94f), RoundedCornerShape(20.dp))
+                                    .padding(horizontal = 12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                val r = 110.dp
-                                val angles = listOf(160f, 125f, 90f, 55f, 20f)
                                 for (i in 0 until KeyboardManager.RING_APP_SLOTS) {
-                                    val th = Math.toRadians(angles.getOrElse(i) { 90f }.toDouble())
-                                    val x = 130.dp + r * cos(th).toFloat()
-                                    val y = 150.dp - r * sin(th).toFloat()
                                     val pkg = ringApps.getOrNull(i).orEmpty()
                                     val sel = i == arcSel
                                     Box(
                                         modifier = Modifier
-                                            .offset(x = x - 26.dp, y = y - 26.dp)
-                                            .size(52.dp)
+                                            .size(48.dp)
                                             .background(
                                                 if (sel) c.accentKeyBg else c.keyBg,
                                                 RoundedCornerShape(14.dp),

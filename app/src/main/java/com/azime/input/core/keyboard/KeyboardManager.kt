@@ -178,8 +178,7 @@ object KeyboardManager {
     }
 
     /** 上滑弧的 5 个应用包名（顺序 = 弧上从左到右；空串 = 该槽未设置）。 */
-    fun ringApps(): List<String> {
-        val raw = prefs.getString(PREF_RING_APPS, "") ?: ""
+    fun ringApps(): List<String> {        val raw = prefs.getString(PREF_RING_APPS, "") ?: ""
         if (raw.isEmpty()) return List(RING_APP_SLOTS) { "" }
         val parts = raw.split('|')
         return List(RING_APP_SLOTS) { parts.getOrElse(it) { "" } }
@@ -194,6 +193,17 @@ object KeyboardManager {
         val cur = ringApps().toMutableList()
         if (slot in cur.indices) cur[slot] = pkg
         setRingApps(cur)
+    }
+
+    // ── 工具栏高度（轮19.8：用户可微调） ─────────────────────
+
+    private const val PREF_TOOLBAR_HEIGHT = "toolbar_height_dp"
+
+    /** 工具栏（候选行 / 工具图标行）高度 dp，默认 40。 */
+    fun toolbarHeightDp(): Int = prefs.getInt(PREF_TOOLBAR_HEIGHT, 40).coerceIn(32, 72)
+
+    fun setToolbarHeightDp(v: Int) {
+        synchronized(lock) { prefs.edit().putInt(PREF_TOOLBAR_HEIGHT, v.coerceIn(32, 72)).apply() }
     }
 
     // ── 字号 / 外观（反馈轮9：键盘与工具栏字号分开；圆角/行距/列距可调） ──
@@ -413,6 +423,7 @@ object KeyboardManager {
         "${keyHeightDp()}x${barHeightDp()}x${barEnabled()}x${hintLong()}" +
             "x${hintUp()}x${hintDown()}x${hintLeft()}x${hintRight()}x${spaceLabel()}x${sliderSymbolsRaw()}" +
             "x${fontSizeKey()}x${fontSizeBar()}x${keyCornerDp()}x${rowGapDp()}x${colGapDp()}" +
+            "x${toolbarHeightDp()}" +
             "x${floatEnabled()}x${floatMode()}x${floatXDp()}x${floatYDp()}x${floatTextSp()}x${floatBgAlpha()}" +
             "x${bubbleXDp()}x${bubbleYExtraDp()}" +
             "x${com.azime.input.core.theme.KeyboardTheme.mode()}" +

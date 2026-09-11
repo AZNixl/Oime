@@ -755,3 +755,31 @@ ColorOS 无 RecognitionService（探测不到、调用即失败），改为自�
 - **本地 `.git` 已损坏**：`git add -A` 报 `bad tree object HEAD`，index 不可用。
   改用 `push_via_api_tree.py`（不读 index，遍历工作树 + 内置忽略规则）推送到 Git Data API
 - 推送后已逐文件核对（git blob 哈希比对）：远程与本地**完全一致**
+
+# 轮19.8（0.9.21-oime vc31）：O 圆环上滑改横向悬浮栏 + 工具栏高度可调
+
+## 上滑快捷应用：半圆弧 → 横向悬浮栏
+
+- 原来是 Popper 面板内按 160°/125°/90°/55°/20° 摆 5 个图标（半圆），现改为
+  **一行横向居中排布**的悬浮栏：面板 296×72dp，图标 48dp、间距 8dp、左右内边距 12dp
+- 选择逻辑相应简化：`idx = ((dx - arcFirst)/arcStep).roundToInt()`，
+  其中 `arcStep = 56dp`（图标 48 + 间距 8），`arcFirst = -112dp`
+  （面板居中后，槽 0 的中心落在 ○ 键中心左侧 112dp）
+- 选中态：强调色底 + 图标放大（30→34dp）；松手即启动；未排布的槽显示「＋」
+
+### Popup 定位原理（备忘）
+
+Compose 的 `Popup(alignment = ..., offset = ...)` 走 `AlignmentOffsetPositionProvider`：
+`alignment.align(IntSize.Zero, 父容器尺寸, ld)` —— 计算的是**零尺寸点**在父容器内的位置。
+所以对 `Alignment.TopCenter`，弹层**左边缘**落在「父容器水平中点 + offset.x」。
+要水平居中于父容器：`offset.x = -面板宽/2`；要贴在上方：`offset.y = -(面板高 + 间距)`。
+（这也是长按气泡 `bubbleOffset` 的算法基础。）
+
+## 工具栏高度可调（新设置项）
+
+- 新增 pref `toolbar_height_dp`（默认 40dp，钳位 32~72）
+- 设置路径：键盘 → 键高 下方「工具栏高度」滑杆
+- `barHeight` 不再硬编码，读 `KeyboardManager.toolbarHeightDp()`
+- 已计入 `sizeSignature()` → 改完自动重建输入视图（热生效）
+- 说明：工具栏高度同时决定「输入码 + 候选」两行字号上限 `(barHeight-6dp)/2.04`（轮19.4），
+  调高工具栏自然能放更大字号

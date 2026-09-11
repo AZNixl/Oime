@@ -1124,11 +1124,23 @@ private fun KeyHeightSliders() {
     var keyH by remember { mutableStateOf(com.azime.input.core.keyboard.KeyboardManager.keyHeightDp().toFloat()) }
     var barH by remember { mutableStateOf(com.azime.input.core.keyboard.KeyboardManager.barHeightDp().toFloat()) }
     var barOn by remember { mutableStateOf(com.azime.input.core.keyboard.KeyboardManager.barEnabled()) }
+    // 轮19.8：工具栏（候选行 / 工具图标行）高度可微调
+    var toolH by remember { mutableStateOf(com.azime.input.core.keyboard.KeyboardManager.toolbarHeightDp().toFloat()) }
     Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
         XimeSlider("键高", "${keyH.toInt()}dp", keyH, 36f..64f) {
             keyH = it
             com.azime.input.core.keyboard.KeyboardManager.setKeyHeightDp(it.toInt())
         }
+        XimeSlider("工具栏高度", "${toolH.toInt()}dp", toolH, 32f..72f) {
+            toolH = it
+            com.azime.input.core.keyboard.KeyboardManager.setToolbarHeightDp(it.toInt())
+        }
+        Text(
+            "工具栏 = 候选/输入码区 + ○ 菜单键与工具图标所在的那一条；改后自动重建键盘生效",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(4.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
