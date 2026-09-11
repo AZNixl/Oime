@@ -628,3 +628,130 @@ sharedDataDir  = files/rime/shared（固定，assets 同步 default.yaml/opencc/
 
 - https://github.com/nirenr/trime2（及用户 fork 方圆：Documents/rime/schemas 实测结构）
 - https://github.com/rime/weasel
+
+
+# 轮19（0.9.13-oime vc23）：语音输入本地模型 + 方案管理页精简
+
+## 语音三引擎（删除系统 SpeechRecognizer）
+
+ColorOS 无 RecognitionService（探测不到、调用即失败），改为自带引擎，设置页单选：
+
+| 引擎 | 说明 |
+|---|---|
+| `sense_voice` | SenseVoice Small int8 离线解码，`zh/en/ja/ko/yue`，松手出全文 |
+| `zipformer` | streaming zipformer zh-en int8，边说边出（流式） |
+| `web_api` | OpenAI 兼容 `/v1/audio/transcriptions`（自填 BaseURL/Key/模型） |
+
+- `SpeechEngineManager`：AudioRecord 16k mono PCM16 管线 + RMS 声纹；模型侧载 `Documents/Oime/models/`
+- 就绪探测：设置页显示每个引擎「已就绪 / 缺模型」，模型缺失时按键提示而不是崩溃
+
+## sherpa-onnx 接入方式（重要）
+
+- 依赖 jitpack 在线拉取在本机网络下卡死（>50 分钟无进展），改用**官方 release AAR**：
+  `sherpa-onnx-1.13.5.aar`（49MB，含 Kotlin API + 4 ABI 的 so）
+- **49MB 超过 Git Data API blob 上限**（POST 报 422 `input too large`）→ AAR **不进仓库**：
+  `.gitignore` 加 `app/libs/*.aar`，CI 在构建前 `curl` 官方 release 下载（GitHub Actions 侧直连很快）
+- API 签名核对方法：`api.github.com/repos/k2-fsa/sherpa-onnx/contents/...?ref=v1.13.5` 拉官方
+  Kotlin 源码，逐字段比对（类名是 `OfflineSenseVoiceModelConfig` 而不是 `SenseVoiceModelConfig`）
+
+## 方案管理页精简
+
+- 去掉页内「方案组」区块（切组只在上一级「输入方案」页），页内只列组内方案
+- `Column` → `LazyColumn`（组内方案可达 20+，原来固定高度不可滚）
+
+# 轮19.1（0.9.14-oime vc24）：五项反馈修复
+
+| 问题 | 根因 | 修复 |
+|---|---|---|
+| 退格下滑撤回失效 | 撤回栈只存「上屏文本」且撤回**永远执行删除**（上滑全删→下滑撤回会把无关文本再删一遍）；退格方向滑动阈值沿用全局 30dp 太高 | 撤回改**操作栈** `UndoOp(text,isDelete)`：INSERT→删除、DELETE→**恢复**；退格上下滑阈值降至 18dp |
+| 剪贴板要再复制一次才显示 | `onCreate` 加载 `clipboard.json` 后**没推 uiState**，面板读到空列表 | 加载后立即 `uiState.update`；︙菜单加「分词」（按标点切词入历史）/「全清」 |
+| 震动滑杆 UI 不一致 | 用了原生 `Slider` | 换成 `XimeSlider` |
+| 四向符号提示不显示 | 原实现只控制**滑动过程中的临时预览**，键面从不显示 | 常驻渲染四向提示（长按=右上、上=左上、下=左下、左=中左、右=中右） |
+| 方案管理后界面不刷新 | 无刷新机制 | 标题栏「部署」后加「刷新」，`SchemaList`/`SchemaManagePage` 加 `refreshRev` |
+
+# 轮19.2（0.9.15-oime vc25）：六项交互
+
+- popup 滑动选择：步长 40dp→**22dp**，并支持上滑换行（每行 5 项）——原值下 K 键 6 对括号要滑 200dp
+- 第四行首键长按 popup：只留 26键符号 / 九宫格两项，横向排布 + 图标（`GridOn`/`Dialpad`）
+- 26键符号页第四行首键：切九宫格 → **返回**
+- 九宫格高度：垂直内边距 `colGap`→`rowGap`（行列距不同时切页跳变）
+- 设置页：大方块去 ○ 图标；版本号改**动态读取**（原硬编码 0.9.8，两处）
+- 九宫格：滑键默认符号 → `+ - * / = ？ ！`；第四行第二键 `=` → `00`（`rev` 3→4）
+
+# 轮19.3（0.9.16-oime vc26）：三项修复 + 语音波纹
+
+- ○ 圆环下滑：改为**松手才关闭**（原实现越过阈值就 `break` 并立即 `HideKeyboard`，手指没松键盘就没了）
+- 九宫格高度**仍**不一致的真因：增高行前多了一个显式 `Spacer(rowGap)`，而外层 Column 已有
+  `Arrangement.spacedBy(rowGap)` → 比主键盘高 2×rowGap
+- 上一轮第六项未生效的真因：九宫格第 4 行实际渲染在 **`NumpadPane` 内硬编码**，
+  改 `KeyboardPages.numpad` 只影响键盘编辑器预览 → 现改 NumpadPane
+  **教训：布局改动先找「真实渲染点」，编辑器预览数据与实际渲染是两套**
+- 语音动画：铺满工具栏的 28 根音量条 → 中央 120dp **同心波纹**（3 圈错相扩散 + 中心点随音量脉动）
+
+# 轮19.4（0.9.17-oime vc27）：图标方案 J 落地 + 四项交互
+
+## OimeIcons（新文件 `ui/icons/OimeIcons.kt`）
+
+- 自绘 **21 枚** 图标（24 网格）：剪贴板/方案/数字/符号/设置/退格/回车/空格/换挡/返回/语音/云/
+  刷新/信息/链接/字体/调色/悬浮窗/代码/emoji/键盘/勾选
+- **Compose 1.6 的 `addGroup` 没有 block 重载** → 用 `addGroup(...)` + `addPath` + `clearGroup()` 配对
+- 回车 = **纸飞机**（两片机翼留缝形成折痕，单色 tint 下也能读出折线）
+- 键面图标：`Key` 新增 `icon: String?` 字段；`KeyboardKey` 优先渲染图标（滑动预览中回落文字），
+  尺寸 = `fontSizeKey×1.25` 限幅 14~34dp
+- 工具栏 `toolbarToolIcon` 与设置页 13 处图标全部替换
+
+## 其余
+
+- 工具栏复制条：**任意按键消亡**（原来只有上屏消亡），白名单判定按键类动作
+- 工具栏字号收敛：`上限=(barHeight-6dp)/2.04`——高度不变但字号再大也不伸出窗口
+- 主键盘/九宫格底部留白 `rowGap→2dp`（与最下沿距离过大）
+- O 圆环改**呼啦圈**：移动光标时圆环自身平移（锚点不动），去掉环内蓝点
+
+# 轮19.5（0.9.18-oime vc28）：图标去重影 + 空格键显示方案名称
+
+- OimeIcons 去掉重影层（用户反馈阴影看得眼花）→ 纯单层主体
+- 空格键显示优先级：自定义文本有可见字符→该文本；**只打空格→只显示图标**；留空→**方案名称**
+  - 修正：原来显示的是 schema **文件名**（`schemaName.substringAfterLast('.')`），
+    改用 `RimeManager.schemaDisplayName()` 读 `schema.yaml` 的 `name` 字段
+  - `KeyboardKey` 加例外：空格键有文本时优先文本，文本为空才用图标（其它功能键仍图标优先）
+
+# 轮19.6（0.9.19-oime vc29）：O 圆环形状与应用弧 + 间距对齐 + 黑底白圆环图标
+
+## 间距与面板高度
+
+- 工具栏 `barHeight` 44→**40dp**；键盘顶留白 `rowGap→0`（图标在「灰色带+首行」整体中才居中）
+- **面板高度公式修正**：`stdH = keyH*4 + rowGap*3 + 2dp`（原 `+rowGap*5`）——
+  19.4 改底留白后，面板比键盘高 `rowGap-2dp`，剪贴板/O菜单/emoji/符号面板随之对齐
+- 九宫格/符号页空格键永远显示图标（`preferText` 仅主键盘生效）
+- emoji/全部符号网格**行高自适应填充**（原来只 3 行、下方大片空白）
+
+## O 圆环：三形状 + 上滑应用弧
+
+- 形状：`ring` 圆环 / `square` 圆角方形环 / `eye` 环内双眼
+  - eye 随机动作随机时间：眨眼（圆点 ↔ 长条）、左右看（`eyeDx ±1`），`LaunchedEffect` 循环
+- **上滑呼出应用弧**：5 个应用图标半圆分布（半径 110dp，角度 160/125/90/55/20），
+  按横向位移选槽（55dp/槽），松手 `AppLauncher.launch`
+- `core/apps/AppLauncher.kt`：`installedApps` / `icon` / `launch` / `canQueryApps`
+- Manifest 加 `QUERY_ALL_PACKAGES`；首次向导加**第 5 页**（说明 + 可读应用数状态）
+- 设置新大项「O 圆环」：形状三选一 + 5 槽位（应用选择器含搜索/清除槽位/图标列表）
+
+## 黑底白圆环 App 图标
+
+- `ic_launcher_background.xml` → `#000000`；`ic_launcher_foreground.xml` → 只留白环（stroke 3.4）
+- PNG 全密度重生成（48/72/96/144/192，方形 + 圆形）
+
+# 轮19.7（0.9.20-oime vc30）：耗电优化四项
+
+| # | 问题 | 优化 |
+|---|---|---|
+| 1 | `schemaDisplayName` **每次调用读磁盘**（schema.yaml `useLines`），空格键标签每次重组都会调 → 键盘可见期间≈每帧一次 IO | RimeManager 加 HashMap 缓存 + UI `remember(schemaName)`；切组/部署时 `clearDisplayNameCache()` |
+| 2 | `refreshState()` 每次按键都调 `availableSchemas()`（JNI + 列表分配） | 改按需（`schemasDirty` 脏标记） |
+| 3 | **无上限 3s 轮询** `while(!isSessionReady) delay(3000)`——引擎起不来会永久每 3 秒唤醒 | 有上限退避：5×3s + 15×15s ≈ 4 分钟后放弃，按键兜底 |
+| 4 | 设置页 O 圆环一次性解码上百个应用图标（几十 MB Bitmap） | 列表只带包名/名称，图标渲染时按需 + 缓存上限 240 |
+
+# 构建与推送链路（轮19 期间的变化）
+
+- 版本推进：vc23 → vc30（0.9.13 → 0.9.20-oime），全部经 GitHub Actions 构建后 `adb install -r` 装机
+- **本地 `.git` 已损坏**：`git add -A` 报 `bad tree object HEAD`，index 不可用。
+  改用 `push_via_api_tree.py`（不读 index，遍历工作树 + 内置忽略规则）推送到 Git Data API
+- 推送后已逐文件核对（git blob 哈希比对）：远程与本地**完全一致**
