@@ -484,7 +484,8 @@ fun AzimeKeyboardScreen(
                 ) {
                     Row(
                         modifier = Modifier
-                            .background(c.barBg.copy(alpha = 0.96f), RoundedCornerShape(20.dp))
+                            // 轮19.16：改灰色半透明（与剪贴板/菜单悬浮栏同 chrome：funcKeyBg @80%）
+                            .background(c.funcKeyBg.copy(alpha = 0.8f), RoundedCornerShape(20.dp))
                             .horizontalScroll(rememberScrollState())
                             .padding(horizontal = 10.dp, vertical = 8.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -830,21 +831,25 @@ private fun ToolbarRow(
             }
         }
         // ── 剪贴板条：复制内容覆盖整条工具栏，点击直接上屏 ──
-        clipFresh -> Text(
-            text = state.clipText.replace("\n", " "),
-            fontSize = 14.sp,
-            color = c.text,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            // 轮19.15：复制条内容**居中**显示
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+        // 轮19.16：复制条 —— 内容水平+**垂直居中**，字号**跟随工具栏字号**
+        clipFresh -> Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(barHeight)
                 .background(c.bg)
-                .clickable { onAction(KeyAction.CommitClipboard(state.clipText)) }
-                .padding(horizontal = 10.dp, vertical = 8.dp),
-        )
+                .clickable { onAction(KeyAction.CommitClipboard(state.clipText)) },
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = state.clipText.replace("\n", " "),
+                fontSize = KeyboardManager.fontSizeBar().sp,
+                color = c.text,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp),
+            )
+        }
         // ── 常规工具栏：工具在 ○ 两侧剩余空间内居中排列（反馈轮10，⌄ 关闭键已删除） ──
         else -> {
             val items = KeyboardManager.toolbarItems()
@@ -1760,8 +1765,9 @@ private fun MenuPanel(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
+                        // 轮19.16：统一为左侧「← 返回」（原右侧「↑ 关闭」已删）
                         Text(
-                            "↑",
+                            "←",
                             fontSize = 16.sp,
                             color = c.text,
                             fontWeight = FontWeight.Bold,
@@ -1796,7 +1802,7 @@ private fun MenuSubPanel(
     title: String,
     totalHeight: androidx.compose.ui.unit.Dp,
     onBack: () -> Unit,
-    onClose: () -> Unit,
+    @Suppress("UNUSED_PARAMETER") onClose: () -> Unit,
     /** 轮19.10：标题右侧的动作槽（如「定制工具栏」的保存按钮）。 */
     headerTrailing: (@Composable () -> Unit)? = null,
     content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
@@ -1840,15 +1846,7 @@ private fun MenuSubPanel(
             Text(title, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = c.text)
             // 轮19.10：标题后紧跟的动作按钮（有则显示）
             headerTrailing?.invoke()
-            Text(
-                "↑",
-                fontSize = 16.sp,
-                color = c.text,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier
-                    .clickable { onClose() }
-                    .padding(horizontal = 10.dp, vertical = 2.dp),
-            )
+            // 轮19.16：右侧「↑ 关闭」已删除——统一只用左侧「← 返回」（onClose 不再需要单独入口）
         }
     }
 }

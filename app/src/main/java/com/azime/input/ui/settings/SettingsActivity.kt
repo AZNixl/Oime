@@ -625,12 +625,12 @@ fun SettingsScreen(
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         Card(
-                            // 轮19.15：右侧两小方块改**浅白色**底
+                            // 轮19.16：浅白与页面底色撞了 → 改「功能键灰」（与键盘功能键同色系）
                             colors = CardDefaults.cardColors(
                                 containerColor = if (androidx.compose.foundation.isSystemInDarkTheme()) {
-                                    Color(0xFF2E2E33)
+                                    Color(0xFF3A3A3F)
                                 } else {
-                                    Color(0xFFFCFCFD)
+                                    Color(0xFFE3E5E8)
                                 },
                             ),
                             shape = RoundedCornerShape(16.dp),
@@ -654,9 +654,9 @@ fun SettingsScreen(
                         Card(
                             colors = CardDefaults.cardColors(
                                 containerColor = if (androidx.compose.foundation.isSystemInDarkTheme()) {
-                                    Color(0xFF2E2E33)
+                                    Color(0xFF3A3A3F)
                                 } else {
-                                    Color(0xFFFCFCFD)
+                                    Color(0xFFE3E5E8)
                                 },
                             ),
                             shape = RoundedCornerShape(16.dp),

@@ -74,6 +74,15 @@ class AZimeService : InputMethodService() {
     /** 轮19.7：方案列表是否需要重新拉取（部署/切组/引擎就绪后置 true）。 */
     @Volatile private var schemasDirty = true
 
+    /**
+     * 轮19.16：被「按键消亡」过的复制条文本。
+     * 真因——原来消亡只是把 clipText 清空，而 readClipboard() 只跳过 `lastCommittedClip`
+     * （那条只在**点击复制条上屏**时才写），于是任何再次触发的 readClipboard
+     * （剪贴板监听器重放 / 重新弹出键盘）都会把文本重新塞回去 ⇒ 表现为
+     * 「打字怎么都不消失，只有点一下上屏才消失」。现在消亡时记住文本，同文本不再复活。
+     */
+    @Volatile private var dismissedClip: String = ""
+
     private val clipboardManager by lazy {
         getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     }
@@ -393,9 +402,15 @@ class AZimeService : InputMethodService() {
         }
         val text = item.coerceToText(this)?.toString().orEmpty()
         if (text.isNotBlank()) {
-            // 已上屏过的同一段文本不再弹条（复制新内容才会重新出现）
-            if (text.take(80) == lastCommittedClip) return
-            uiState.update { it.copy(clipText = text.take(80), clipAtMs = System.currentTimeMillis()) }
+            // 已上屏过 / 已被按键消亡过的同一段文本不再弹条（复制新内容才会重新出现）
+            val key = text.take(80)
+            if (key == lastCommittedClip) return
+            if (key == dismissedClip) {
+                android.util.Log.d("OimeClip", "skip re-show (dismissed)")
+                return
+            }
+            android.util.Log.d("OimeClip", "show clip strip: ${key.take(20)}")
+            uiState.update { it.copy(clipText = key, clipAtMs = System.currentTimeMillis()) }
             recordClip(text)
         }
     }
@@ -453,6 +468,8 @@ class AZimeService : InputMethodService() {
                 else -> false
             }
             if (!keepClip && uiState.value.clipText.isNotBlank()) {
+                dismissedClip = uiState.value.clipText
+                android.util.Log.d("OimeClip", "dismiss by key: ${action::class.simpleName}")
                 uiState.update { it.copy(clipText = "", clipAtMs = 0L) }
             }
             when (action) {
@@ -990,7 +1007,13 @@ class AZimeService : InputMethodService() {
                 showCandidatePanel = it.showCandidatePanel && result.candidates.isNotEmpty(),
                 // 轮19.15：**打字即消亡**复制条（兜底，覆盖所有按键路径）。
                 // 反馈轮12 曾特意做成「组词不清空」，但用户明确要求「直接打字也要消失」。
-                clipText = if (composingNow) "" else it.clipText,
+                clipText = if (composingNow) {
+                    if (it.clipText.isNotBlank()) {
+                        dismissedClip = it.clipText
+                        android.util.Log.d("OimeClip", "dismiss by composing")
+                    }
+                    ""
+                } else it.clipText,
                 clipAtMs = if (composingNow) 0L else it.clipAtMs,
             )
         }

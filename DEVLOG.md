@@ -985,3 +985,21 @@ Unresolved reference）；要么 import 后 `x.roundToInt()`，要么直接 `x.t
    - **二级页卡片统一浅灰**：在 `MaterialTheme` 里覆盖 `surfaceContainerLow` / `surfaceContainer`
      （Card 默认底色）为浅灰 #F1F1F2（深色 #26262A）——一处改动，所有二级页生效
    - 状态卡改为**三行**：`○输入法` → `运行状态`（运行正常 / 未启用 · 点击去启用 / 引擎未就绪）→ `方案 · <当前方案>`
+
+# 轮19.16（0.9.29-oime vc39）：复制条复活真因 / 菜单悬浮栏统一返回 / 方案栏半透明 / 设置配色
+
+1. **「复制条打字不消亡」的真因（终于）**：
+   - 现象不对称：**点击复制条上屏**能永久消失，**打字**怎么都不消失
+   - 原因：`readClipboard()` 里只跳过 `lastCommittedClip`，而它**只在点击复制条上屏时**才被赋值；
+     消亡（按键/组词）只是把 `clipText` 清空，没留痕 ⇒ 任何再次触发的 `readClipboard()`
+     （剪贴板监听器重放、重新弹出键盘时的 `onStartInputView`）都会把文本**重新塞回来**
+   - 修复：新增 `dismissedClip`，消亡时记住文本；`readClipboard()` 对「已上屏 / 已消亡」的文本一律跳过
+   - 同时**加了埋点日志**（tag `OimeClip`）：show clip strip / dismiss by key / dismiss by composing /
+     skip re-show (dismissed)——下次复现可直接从 logcat 看到是哪条路径在复活
+   - 附带：复制条**垂直+水平居中**，字号**跟随工具栏字号**（原来固定 14sp）
+2. **菜单父级/子级悬浮栏统一「左侧返回」**：删掉 `MenuSubPanel` 右侧的「↑ 关闭」与 ○ 菜单一级栏的
+   「↑」，两个层级都只保留左侧「← 返回」
+3. **设置右侧两小方块改色**：上一版的浅白跟页面底色撞了 → 改用**功能键灰**
+   （浅色 #E3E5E8 / 深色 #3A3A3F，与键盘功能键同色系）
+4. **工具栏「方案」悬浮栏**：背景由 `barBg @96%` 改成 **`funcKeyBg @80%`**（灰色半透明，
+   与剪贴板/菜单悬浮栏同一 chrome）
