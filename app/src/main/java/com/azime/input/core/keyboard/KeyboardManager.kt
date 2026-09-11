@@ -109,6 +109,18 @@ object KeyboardManager {
     fun numpadLayout(): KeyboardLayout = KeyboardPages.numpad
 
     /** 按页面名取布局；emoji 页由 UI 层专门渲染，返回 null。 */
+    /**
+     * 横屏分体主键盘（轮19.13，方案 L4）。横屏时 main 页用它，竖屏不受影响。
+     */
+    fun landscapeMainLayout(): KeyboardLayout = com.azime.input.data.keyboard.KeyboardPages.qwertyLand
+
+    /**
+     * 横屏键高：横屏可视高度只有竖屏的一半左右，按竖屏键高 72% 折算并钳位 28~40dp，
+     * 保证「工具栏 + 4 行」大约只占横屏高度的 55%。
+     */
+    fun landscapeKeyHeightDp(): Int =
+        (keyHeightDp() * 0.72f).toInt().coerceIn(28, 40)
+
     fun layoutFor(page: String): KeyboardLayout? = when (page) {
         "main" -> mainLayout()
         "symbols" -> symbolLayout()

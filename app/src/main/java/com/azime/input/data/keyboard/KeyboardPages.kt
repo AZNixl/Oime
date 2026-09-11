@@ -125,16 +125,16 @@ object KeyboardPages {
             // 原来第 3 行是 [shift 1.5][7 字母][backspace 1.5]（9 个元素、8 道行距），
             // 行距数不同 → 单位键宽比第 2 行大 0.2×rowGap，累到行尾偏出近 1 个键位。
             row(
-                // 轮19.11：⇧/⌫ 宽度回退到 1.5（用户要求「没让 shift 和退格对齐」），
-                // 同时用两个**极小权重填充键**让本行仍是 11 子元素、10 道行距（与第 2 行同构），
-                // 这样单位键宽 U=(W−10G)/Σw 与第 2 行几乎相同（Σw=10.02 vs 10，差 0.2%），
-                // Z..M 依然精确落在 S..K 正下方（偏差 < 0.3dp，肉眼不可见）。
-                spacerKey(0.01f),
+                // 轮19.11b：填充键挪到**内侧**（⇧ 与 Z 之间、M 与 ⌫ 之间），而不是两端——
+                // 这样 ⇧ 左边缘 = 行首 0（与下方 # 键左边缘齐），⌫ 右边缘 = 行尾 W（与下方 ⏎ 齐），
+                // 同时仍是 11 子元素、10 道行距 ⇒ 单位键宽与第 2 行差 0.6%、
+                // Z..M 相对 S..K 偏差 < 0.3dp（字母依然对齐）。
                 shift(width = 1.5f),
+                spacerKey(0.01f),
                 charKey("Z"), charKey("X"), charKey("C"), charKey("V"),
                 charKey("B"), charKey("N"), charKey("M"),
-                backspace(width = 1.5f),
                 spacerKey(0.01f),
+                backspace(width = 1.5f),
             ),
             row(
                 pageKey("123", width = 1.7f, icon = "symbols"), // 稍宽于 shift(1.5)，紧凑起步
@@ -144,7 +144,51 @@ object KeyboardPages {
                 enter(width = 2f),
             ),
         ),
-        rev = 5, // 轮19.11：第 3 行 ⇧/⌫ 回 1.5，用 ε 填充键保持对齐
+        rev = 6, // 轮19.11b：第 3 行填充键改为内置，⇧/⌫ 边缘与上下行对齐
+    )
+
+    /**
+     * 横屏分体键盘（轮19.13，方案 L4 镜像错位分体，**B 键归右半**）。
+     *
+     * 用占位键表达分体结构：左半缩进（越往下越往中间缩）+ 中间分体空隙 + 右半镜像缩进。
+     * 每行权重和都是 **10.9** ⇒ 各行单位键宽一致，上下按键对齐；
+     * 第四行按同样的 10.9 设计（123 / 空格 ×2 / ⌫），所以底行与字母行也对齐。
+     */
+    val qwertyLand: KeyboardLayout = KeyboardLayout(
+        name = "qwerty_land",
+        rows = listOf(
+            // 1：Q W E R T ‖ Y U I O P
+            row(
+                charKey("Q"), charKey("W"), charKey("E"), charKey("R"), charKey("T"),
+                spacerKey(0.9f),
+                charKey("Y"), charKey("U"), charKey("I"), charKey("O"), charKey("P"),
+            ),
+            // 2：左半右缩 0.4 / 右半左缩 0.4（镜像）
+            row(
+                spacerKey(0.4f),
+                charKey("A"), charKey("S"), charKey("D"), charKey("F"), charKey("G"),
+                spacerKey(0.9f),
+                charKey("H"), charKey("J"), charKey("K"), charKey("L"),
+                spacerKey(0.6f),
+            ),
+            // 3：缩进 0.8；B 归右半 → 左 Z X C V，右 B N M
+            row(
+                spacerKey(0.8f),
+                charKey("Z"), charKey("X"), charKey("C"), charKey("V"),
+                spacerKey(0.9f),
+                charKey("B"), charKey("N"), charKey("M"),
+                spacerKey(2.2f),
+            ),
+            // 4：123 ‖ 空格 ｜ 空格 ‖ ⌫（权重和同为 10.9，与上面各列对齐）
+            row(
+                pageKey("123", width = 1.6f, icon = "symbols"),
+                space(width = 3.4f),
+                spacerKey(0.9f),
+                space(width = 3.4f),
+                backspace(width = 1.6f),
+            ),
+        ),
+        rev = 1,
     )
 
     /** 数字/符号页（第四行首键切换）。rev=2：与 qwerty 第四行同步填满。 */

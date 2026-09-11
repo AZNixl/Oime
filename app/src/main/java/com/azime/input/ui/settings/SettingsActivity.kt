@@ -188,6 +188,14 @@ fun SettingsScreen(
     onPickZip: () -> Unit,
 ) {
     val cs = MaterialTheme.colorScheme
+    // 轮19.11b：设置主页卡片配色——大方块=强调色(不变)、右侧两方块=按键色、其余大项=浅灰
+    val plainCardColors = CardDefaults.cardColors(
+        containerColor = if (androidx.compose.foundation.isSystemInDarkTheme()) {
+            Color(0xFF26262A)
+        } else {
+            Color(0xFFF1F1F2)
+        },
+    )
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     // 一级菜单（main）+ 二级页：schemas | keyboard | theme | about
@@ -612,7 +620,12 @@ fun SettingsScreen(
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         Card(
-                            colors = CardDefaults.cardColors(containerColor = cs.surfaceVariant),
+                            // 轮19.11b：右侧两个小方块跟随「按键色」（原 surfaceVariant 灰）
+                            colors = CardDefaults.cardColors(
+                                containerColor = com.azime.input.ui.keyboard.keyboardAccentKeyColor(
+                                    androidx.compose.foundation.isSystemInDarkTheme(),
+                                ),
+                            ),
                             shape = RoundedCornerShape(16.dp),
                             modifier = Modifier.fillMaxWidth().weight(1f),
                         ) {
@@ -632,7 +645,11 @@ fun SettingsScreen(
                             }
                         }
                         Card(
-                            colors = CardDefaults.cardColors(containerColor = cs.surfaceVariant),
+                            colors = CardDefaults.cardColors(
+                                containerColor = com.azime.input.ui.keyboard.keyboardAccentKeyColor(
+                                    androidx.compose.foundation.isSystemInDarkTheme(),
+                                ),
+                            ),
                             shape = RoundedCornerShape(16.dp),
                             modifier = Modifier.fillMaxWidth().weight(1f).clickable {
                                 runCatching {
@@ -671,7 +688,7 @@ fun SettingsScreen(
             // 各设置项
             // 轮19.10：大项**各自独立成卡**（原来 7 个条目共用一块背景，用户反馈要分开）
             item {
-                Card {
+                Card(colors = plainCardColors) {
                     KsuItem(
                         icon = OimeIcons.schemas,
                         title = "输入方案",
@@ -681,7 +698,7 @@ fun SettingsScreen(
                 }
             }
             item {
-                Card {
+                Card(colors = plainCardColors) {
                     KsuItem(
                         icon = OimeIcons.keyboard,
                         title = "键盘",
@@ -691,7 +708,7 @@ fun SettingsScreen(
                 }
             }
             item {
-                Card {
+                Card(colors = plainCardColors) {
                     KsuItem(
                         icon = OimeIcons.pip,
                         title = "悬浮窗",
@@ -701,7 +718,7 @@ fun SettingsScreen(
                 }
             }
             item {
-                Card {
+                Card(colors = plainCardColors) {
                     KsuItem(
                         icon = OimeIcons.palette,
                         title = "主题与配色",
@@ -711,7 +728,7 @@ fun SettingsScreen(
                 }
             }
             item {
-                Card {
+                Card(colors = plainCardColors) {
                     KsuItem(
                         icon = OimeIcons.emoji,
                         title = "O 圆环",
@@ -721,7 +738,7 @@ fun SettingsScreen(
                 }
             }
             item {
-                Card {
+                Card(colors = plainCardColors) {
                     KsuItem(
                         icon = OimeIcons.code,
                         title = "预设置",
@@ -731,7 +748,7 @@ fun SettingsScreen(
                 }
             }
             item {
-                Card {
+                Card(colors = plainCardColors) {
                     KsuItem(
                         icon = OimeIcons.info,
                         title = "关于",

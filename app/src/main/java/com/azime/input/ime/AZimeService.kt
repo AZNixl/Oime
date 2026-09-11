@@ -420,6 +420,25 @@ class AZimeService : InputMethodService() {
 
     // ── 按键处理 ─────────────────────────────────────────────
 
+    /**
+     * 轮19.11b：按字符数移动光标（负=左）。优先 `setSelection`（用 ExtractedText 拿绝对位置），
+     * 拿不到再退回 DPAD 方向键事件。
+     */
+    private fun moveCursorByConnection(ic: android.view.inputmethod.InputConnection, delta: Int) {
+        val moved = runCatching {
+            val ex = ic.getExtractedText(android.view.inputmethod.ExtractedTextRequest(), 0) ?: return@runCatching false
+            val pos = ex.startOffset + ex.selectionEnd
+            val target = (pos + delta).coerceAtLeast(0)
+            ic.setSelection(target, target)
+        }.getOrDefault(false)
+        if (!moved) {
+            val key = if (delta < 0) android.view.KeyEvent.KEYCODE_DPAD_LEFT else android.view.KeyEvent.KEYCODE_DPAD_RIGHT
+            repeat(kotlin.math.abs(delta)) {
+                ic.sendKeyEvent(android.view.KeyEvent(0, 0, 0, 0, 0, 0, key, 0))
+            }
+        }
+    }
+
     private fun onKeyAction(action: KeyAction) {
         scope.launch {
             // 轮19.4：任意按键让工具栏「复制条」消亡（原来只有上屏才消亡，条会一直占着工具栏）。
@@ -535,8 +554,11 @@ class AZimeService : InputMethodService() {
                             if (ic != null) {
                                 ic.beginBatchEdit()
                                 ic.commitText(resolved.text, 1)
-                                repeat(resolved.moveLeft) { ic.sendKeyEvent(android.view.KeyEvent(0, 0, 0, 0, 0, 0, android.view.KeyEvent.KEYCODE_DPAD_LEFT, 0)) }
-                                repeat(resolved.moveRight) { ic.sendKeyEvent(android.view.KeyEvent(0, 0, 0, 0, 0, 0, android.view.KeyEvent.KEYCODE_DPAD_RIGHT, 0)) }
+                                // 轮19.11b：`{Left}` 光标回退改用 **setSelection**——
+                                // 原来发 KEYCODE_DPAD_LEFT，实测绝大多数 App（微信等）不理会
+                                // 软键盘发来的 DPAD 事件，所以「括号上屏后光标停在括号中间」不生效。
+                                val move = resolved.moveLeft - resolved.moveRight
+                                if (move != 0) moveCursorByConnection(ic, move)
                                 ic.endBatchEdit()
                                 pushUndo(resolved.text)
                             }

@@ -899,3 +899,59 @@ Oime 落地（本轮）：
    当前方案高亮 + 勾选图标
 8. **○ 菜单图标同步**：原来仍是 Material 图标，现全部换成 OimeIcons（并新增 10 枚图标：
    tune/toggle/apps/manage/sun/moon/ring/candidates/undo/trash）；菜单项也扩充到 19 项
+
+# 轮19.12（待发 vc36）：八项修正 + 横屏设计（横屏待选型，故未推送）
+
+1. **第 3 行填充键挪到内侧**：`[⇧ 1.5][ε][Z..M][ε][⌫ 1.5]`（ε=0.01）——
+   端部不再有填充键 ⇒ ⇧ 左边缘=0（与下行 # 键左缘齐）、⌫ 右边缘=行尾（与 ⏎ 齐），
+   同时仍 11 子元素/10 道行距（单位键宽与第 2 行差 0.6%，Z..M 对齐 S..K 偏差 <0.3dp）。rev 5→6
+2. **○ 环呼吸放慢**：19.9 为省电把 InfiniteTransition 换成 120ms 步进的**三角波**，
+   周期没变但线性往返没有缓入缓出 → 观感"急促"。现改为**周期 3.6s 的正弦波**（步进仍是 120ms，省电不变）
+3. **○ 菜单瘦回 9 项**：19.11 塞进菜单的那些（O 圆环/更多候选/中英/全清/撤回/语音/悬浮窗/预设置/主题/收起）
+   全部移出——只在「定制工具栏」的可选列表里
+4. **方案切换改为键盘下方中间的横向悬浮栏**：去掉原来的左上角 popup 菜单 + 19.11 的整屏面板，
+   改为 `Popup(alignment = BottomCenter)` 的圆角悬浮栏（方案 chip 横排、可横滑，点击切换并关闭）
+5. **`{Left}` 光标回退改用 setSelection**：原来发 KEYCODE_DPAD_LEFT，多数 App（微信等）不理会
+   软键盘的 DPAD 事件 → 括号上屏后光标不在中间。现用 `getExtractedText` 算绝对位置后 `setSelection`，
+   失败才回落 DPAD。K 键括号气泡（BracketPairs 已带 `{Left}`）即刻生效
+6. **设置主页配色**：大方块=强调色（不变）、右侧版本/项目两方块=**按键色**、其余 7 个大项卡=**浅灰**
+   （浅色 #F1F1F2 / 深色 #26262A）。坑：`plainCardColors` 必须建在 composable 作用域，
+   放 LazyColumn 的 scope 里会报 "@Composable invocations can only happen from …"
+7. **语音动画改长条波纹**：16 根竖条 + 钟形包络 + 相位流动，宽度 = `fillMaxWidth(0.5f)`（工具栏一半）
+8. **键面提示位置**：四向提示回归字面方向（上→TopCenter、下→BottomCenter、左→CenterStart、右→CenterEnd），
+   长按仍固定右上角（TopEnd）
+
+## 横屏键盘三套设计（待用户选型）
+- **L1 双侧分体**：左右各 5 列 + 中间手势区；拇指行程短
+- **L2 侧栏候选**：左右分栏，中间竖条常显 3 个候选；底行全宽
+- **L3 全宽紧凑**：候选独立一行在最上，四行满宽；最接近竖屏肌肉记忆、改动最小
+
+# 轮19.13（0.9.26-oime vc36）：横屏分体键盘（方案 L4，B 键归右半）
+
+用户在两轮共 6 套设计里选定 **L4 镜像错位分体**，并要求 **B 键挪到右半**（左 Z X C V / 右 B N M）。
+
+## 结构（数据侧就用占位键表达，无需改 Key 模型）
+
+```
+Q W E R T ‖ Y U I O P
+ A S D F G ‖ H J K L           ← 左半右缩 0.4 / 右半左缩 0.4（镜像）
+  Z X C V ‖ B N M              ← 缩进 0.8
+123 ‖ 空格 ｜ 空格 ‖ ⌫          ← 权重和同为 10.9，与上面各列对齐
+```
+
+- 每行权重和都取 **10.9**（行内占位键表达缩进与中间分体空隙）⇒ 各行单位键宽一致、上下按键对齐
+- 中间分体空隙 = 0.9 键宽（横屏 ≈ 70dp），左半越往下越向中间缩（镜像错位）
+- 横屏**键高** = 竖屏键高的 72%（钳位 28~40dp）：横屏可视高度只有竖屏一半，
+  「工具栏 + 4 行」控制在横屏高度 ~55%
+
+## 切换方式
+
+`AzimeKeyboardScreen` 读 `LocalConfiguration.orientation`：
+- 横屏 + main 页 → `KeyboardManager.landscapeMainLayout()`（qwertyLand）+ 横屏键高
+- 其余情况（竖屏、横屏下的符号/九宫格/emoji 页）→ 原逻辑不变
+竖屏布局、用户自定义布局、键盘编辑器均**不受影响**。
+
+## 踩坑
+
+`kotlin.math.roundToInt(Float)` 是**扩展函数**，不能当普通函数调用（`kotlin.math.roundToInt(x)` 报
+Unresolved reference）；要么 import 后 `x.roundToInt()`，要么直接 `x.toInt()`（此处用了后者）。

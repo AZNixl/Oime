@@ -312,7 +312,11 @@ fun AzimeKeyboardScreen(
     val kbFontFamily = remember { FontManager.keyboardFontFamily() }
 
     // 尺寸可调（设置页滑杆）；工具栏高度（增高 1/5=46dp），「增高行」= 键盘底部额外空行
-    val keyH = KeyboardManager.keyHeightDp().dp
+    // 轮19.13：横屏用分体布局 + 更矮的键高（竖屏逻辑完全不变）
+    val isLandscape = androidx.compose.ui.platform.LocalConfiguration.current.orientation ==
+        android.content.res.Configuration.ORIENTATION_LANDSCAPE
+    val keyH = (if (isLandscape) KeyboardManager.landscapeKeyHeightDp()
+    else KeyboardManager.keyHeightDp()).dp
     val barH = KeyboardManager.barHeightDp().dp
     // 反馈轮9：按键圆角/行距/列距可调（默认 8dp / 4dp / 4dp）
     val keyCorner = KeyboardManager.keyCornerDp().dp
@@ -352,8 +356,7 @@ fun AzimeKeyboardScreen(
                 )
             } else if (state.showClipboardPanel) {
                 ClipboardPanel(state = state, onAction = onAction, totalHeight = areaH)
-            } else if (state.showSchemaPanel) {
-                SchemaQuickPanel(state = state, onAction = onAction, totalHeight = areaH)
+
             } else if (state.page == "emoji" || state.page == "symgrid") {
                 CategoryGridPane(
                     data = if (state.page == "emoji") EmojiGrid else SymbolGrid,
@@ -366,7 +369,11 @@ fun AzimeKeyboardScreen(
                 // 九宫格：5 列专用布局（左列滑动预览符号键 + 返回，中间三列数字，右列功能键）
                 NumpadPane(state = state, onAction = onAction, keyHeight = keyH)
             } else {
-                val layout = KeyboardManager.layoutFor(state.page) ?: KeyboardManager.mainLayout()
+                val layout = if (isLandscape && state.page == "main") {
+                    KeyboardManager.landscapeMainLayout()
+                } else {
+                    KeyboardManager.layoutFor(state.page) ?: KeyboardManager.mainLayout()
+                }
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -465,81 +472,66 @@ fun AzimeKeyboardScreen(
                     }
                 }
             }
-        }
-    }
-}
 
-/**
- * 轮19.11：方案快捷面板 —— 与剪贴板面板同款 chrome（底部悬浮栏），
- * 方案**横向排布**（可横滑），点击即切换并关闭。
- */
-@Composable
-private fun SchemaQuickPanel(state: KeyboardUiState, onAction: (KeyAction) -> Unit, totalHeight: androidx.compose.ui.unit.Dp) {
-    val c = keyboardColors()
-    MenuSubPanel(
-        c = c,
-        title = "输入方案",
-        totalHeight = totalHeight,
-        onBack = { onAction(KeyAction.ToggleSchemaPanel) },
-        onClose = { onAction(KeyAction.ToggleSchemaPanel) },
-    ) {
-        if (state.schemas.isEmpty()) {
-            Text(
-                "暂无可用方案：在设置 → 输入方案 里导入或切换方案组",
-                fontSize = 13.sp, color = c.subText,
-                modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp),
-            )
-        }
-        // 横向排布：一行放不下就横滑
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
-                .padding(vertical = 2.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            val current = state.schemaName
-            state.schemas.forEach { id ->
-                val selected = id == current
-                val name = remember(id) {
-                    com.azime.input.core.rime.RimeManager.schemaDisplayName(id)
-                }
-                Row(
-                    modifier = Modifier
-                        .height((KeyboardManager.keyHeightDp() * 0.78f).dp)
-                        .background(if (selected) c.accentKeyBg else c.keyBg, RoundedCornerShape(12.dp))
-                        .clickable {
-                            if (!selected) onAction(KeyAction.SelectSchema(id))
-                            onAction(KeyAction.ToggleSchemaPanel)
-                        }
-                        .padding(horizontal = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+            // 轮19.11b：方案切换改为「**主键盘下方中间的横向悬浮栏**」
+            // （原来弹出的是左上角 popup 菜单 + 整屏面板，用户要求改到键盘下方中间）
+            if (state.showSchemaPanel) {
+                val d2 = LocalDensity.current
+                Popup(
+                    alignment = Alignment.BottomCenter,
+                    offset = IntOffset(0, with(d2) { (-14).dp.roundToPx() }),
+                    onDismissRequest = { onAction(KeyAction.ToggleSchemaPanel) },
                 ) {
-                    Text(
-                        name,
-                        fontSize = 14.sp,
-                        maxLines = 1,
-                        color = if (selected) c.accentActive else c.text,
-                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                    )
-                    if (selected) {
-                        Spacer(Modifier.width(6.dp))
-                        Icon(
-                            com.azime.input.ui.icons.OimeIcons.check,
-                            contentDescription = "当前",
-                            tint = c.accentActive,
-                            modifier = Modifier.size(16.dp),
-                        )
+                    Row(
+                        modifier = Modifier
+                            .background(c.barBg.copy(alpha = 0.96f), RoundedCornerShape(20.dp))
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        if (state.schemas.isEmpty()) {
+                            Text("引擎部署中…", fontSize = 13.sp, color = c.subText,
+                                modifier = Modifier.padding(horizontal = 8.dp))
+                        }
+                        state.schemas.forEach { id ->
+                            val selected = id == state.schemaName
+                            val name = remember(id) {
+                                com.azime.input.core.rime.RimeManager.schemaDisplayName(id)
+                            }
+                            Row(
+                                modifier = Modifier
+                                    .background(
+                                        if (selected) c.accentKeyBg else c.keyBg,
+                                        RoundedCornerShape(14.dp),
+                                    )
+                                    .clickable {
+                                        if (!selected) onAction(KeyAction.SelectSchema(id))
+                                        onAction(KeyAction.ToggleSchemaPanel)
+                                    }
+                                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    name, fontSize = 14.sp, maxLines = 1,
+                                    color = if (selected) c.accentActive else c.text,
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                                )
+                                if (selected) {
+                                    Spacer(Modifier.width(5.dp))
+                                    Icon(
+                                        com.azime.input.ui.icons.OimeIcons.check,
+                                        contentDescription = "当前",
+                                        tint = c.accentActive,
+                                        modifier = Modifier.size(15.dp),
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
-        Text(
-            "点击切换方案；长按 ○ 圆环可呼出定制工具栏。",
-            fontSize = 12.sp, color = c.subText,
-            modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
-        )
     }
 }
 
@@ -1064,15 +1056,19 @@ private fun ToolbarRow(
                     // 键盘可见期间每个 vsync（60~120fps）都要让 IME 窗口失效重绘一次。
                     // 实测该 App 9.7h 内 main(1659s)+RenderThread(496s) 占进程 CPU 的 92%，
                     // 而这是唯一的常驻动画。改为 120ms 步进（≈8fps）正弦取值，视觉几乎无差。
+                    // 轮19.11b：呼吸**放慢 + 改正弦**——19.9 为了省电把 InfiniteTransition 换成
+                    // 120ms 步进的三角波，周期没变(1.6s)但线性往返没有缓入缓出，观感变成"急促开关"。
+                    // 现在周期 1.6s→**3.6s**，用正弦曲线（cos 映射），120ms 步进（≈8fps）省电不变。
                     var breathAlpha by remember { mutableStateOf(1f) }
                     LaunchedEffect(Unit) {
-                        val periodMs = 1600f
+                        val periodMs = 3600f
                         val stepMs = 120L
                         var t = 0f
                         while (true) {
                             val phase = (t % periodMs) / periodMs
-                            val tri = if (phase < 0.5f) phase * 2f else (1f - phase) * 2f
-                            breathAlpha = 0.55f + 0.45f * tri
+                            // 0 → 1 → 0 的正弦往返
+                            val s01 = (1f - kotlin.math.cos(phase * 2f * Math.PI.toFloat())) / 2f
+                            breathAlpha = 0.55f + 0.45f * s01
                             kotlinx.coroutines.delay(stepMs)
                             t += stepMs.toFloat()
                         }
@@ -1262,33 +1258,34 @@ private fun VoiceWavePanel(
     ) {
         // 轮19.3：语音动画改为**中央波纹**——原实现是铺满整条工具栏的 28 根音量条
         // （用户反馈「太长、占满工具栏」）。现在只占中央 120dp，同心圆扩散 + 中心点随音量。
+        // 轮19.11b：语音动画改为**长条波纹**（一排竖条 + 钟形包络 + 相位流动），
+        // 长度 = 工具栏宽度的一半（居中）。
         Canvas(
             Modifier
-                .width(120.dp)
+                .fillMaxWidth(0.5f)
                 .height(barHeight - 6.dp),
         ) {
             val level = (rms.value / 10f).coerceIn(0f, 1f)
             val accent = keyboardAccentActiveColor(c.barBg.luminance() < 0.5f)
-            val cx = size.width / 2f
-            val cy = size.height / 2f
-            val maxR = minOf(size.width, size.height) / 2f
-            // 3 圈错相扩散波纹，越外越淡；音量越大越亮越远
-            repeat(3) { i ->
-                val p = (phase.value + i / 3f) % 1f
-                val r = maxR * (0.28f + 0.72f * p) * (0.7f + 0.3f * level)
-                drawCircle(
-                    color = accent.copy(alpha = (1f - p) * (0.25f + 0.5f * level)),
-                    radius = r,
-                    center = Offset(cx, cy),
-                    style = Stroke(width = 1.6.dp.toPx()),
+            val bars = 16
+            val gap = 3.dp.toPx()
+            val barW = ((size.width - gap * (bars - 1)) / bars).coerceAtLeast(1f)
+            val midY = size.height / 2f
+            val maxAmp = size.height * 0.42f
+            for (i in 0 until bars) {
+                val t = i / (bars - 1f)
+                // 钟形包络：中间高、两端低
+                val env = kotlin.math.sin(t * Math.PI).toFloat()
+                val w = kotlin.math.sin(phase.value * 2f * Math.PI.toFloat() + i * 0.7f)
+                val amp = maxAmp * env * (0.22f + 0.28f * (w + 1f) / 2f + 0.6f * level)
+                val h = (2.dp.toPx() + amp).coerceAtMost(size.height * 0.94f)
+                drawRoundRect(
+                    color = accent.copy(alpha = 0.55f + 0.45f * env * (0.4f + 0.6f * level)),
+                    topLeft = Offset(i * (barW + gap), midY - h / 2f),
+                    size = androidx.compose.ui.geometry.Size(barW, h),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(barW / 2f),
                 )
             }
-            // 中心实心点：半径随音量脉动
-            drawCircle(
-                color = accent.copy(alpha = 0.85f),
-                radius = maxR * (0.14f + 0.20f * level),
-                center = Offset(cx, cy),
-            )
         }
         Text(
             "正在听写…点击结束",
@@ -1312,7 +1309,7 @@ private fun RowScope.toolbarToolItem(id: String, state: KeyboardUiState, onActio
                 when (id) {
                     "clipboard" -> onAction(KeyAction.ToggleClipboardPanel)
                     // 轮19.11：方案按钮改为「剪贴板同款悬浮栏 + 横向方案」的面板
-                    "schema" -> { onAction(KeyAction.ToggleSchemaPanel); onSchema() }
+                    "schema" -> onAction(KeyAction.ToggleSchemaPanel)
                     "numpad" -> onAction(KeyAction.SwitchPage(if (state.page == "numpad") "main" else "numpad"))
                     "emoji" -> onAction(KeyAction.SwitchPage("emoji"))
                     "symbols" -> onAction(KeyAction.SwitchPage("symgrid"))
@@ -1721,22 +1718,13 @@ private fun MenuPanel(
                             Triple(oi.refresh, "部署") { close(); onAction(KeyAction.Deploy) },
                             // 反馈轮16：键盘编辑 —— 布局编辑器直达入口
                             Triple(oi.keyboard, "键盘编辑") { close(); onAction(KeyAction.OpenKeyboardEditor) },
-                            Triple(oi.ring, "O 圆环") { close(); onAction(KeyAction.OpenSettings) },
-                            Triple(oi.candidates, "更多候选") { close(); onAction(KeyAction.ToggleCandidatePanel) },
-                            Triple(oi.toggle, "中英切换") { onAction(KeyAction.ToggleAscii) },
-                            Triple(oi.trash, "全清") { onAction(KeyAction.DeleteAll) },
-                            Triple(oi.undo, "撤回") { onAction(KeyAction.Undo) },
-                            Triple(oi.mic, "语音") { close(); onAction(KeyAction.ToggleVoiceInput) },
-                            Triple(oi.pip, "悬浮窗") { close(); onAction(KeyAction.OpenSettings) },
-                            Triple(oi.code, "预设置") { close(); onAction(KeyAction.OpenSettings) },
-                            Triple(oi.palette, "主题") { close(); onAction(KeyAction.OpenSettings) },
                             Triple(oi.tune, "定制工具栏") { subPage = "toolbar" },
                             Triple(
                                 if (themeDark) oi.sun else oi.moon,
                                 if (themeDark) "亮色" else "暗色",
                             ) { onAction(KeyAction.ToggleThemeMode) },
-                            Triple(oi.check, "收起键盘") { close(); onAction(KeyAction.HideKeyboard) },
                         )
+                        // 轮19.11b：19.11 加进 ○ 菜单的那些功能已移除——它们只出现在「定制工具栏」的可选列表里
                         menuItems.chunked(4).forEach { rowItems ->
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -2741,16 +2729,18 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
         // 现按设置把该方向的滑动符号常驻渲染在键面对应位置（无滑动动作的键不显示）。
         if (key.type == KeyType.CHARACTER || key.type == KeyType.DELETE) {
             val dirHintFont = 9.sp
+            // 轮19.11b：四向提示位置 = 字面方向（上→正上、下→正下、左→正左、右→正右），
+            // 长按仍固定右上角（见上方 hintText 的 TopEnd）。
             key.swipeUp?.let {
                 if (KeyboardManager.hintUp()) Text(
                     actionPreview(it), fontSize = dirHintFont, color = c.subText,
-                    modifier = Modifier.align(Alignment.TopStart).padding(start = 5.dp, top = 3.dp),
+                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 3.dp),
                 )
             }
             key.swipeDown?.let {
                 if (KeyboardManager.hintDown()) Text(
                     actionPreview(it), fontSize = dirHintFont, color = c.subText,
-                    modifier = Modifier.align(Alignment.BottomStart).padding(start = 5.dp, bottom = 3.dp),
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 3.dp),
                 )
             }
             key.swipeLeft?.let {
