@@ -366,10 +366,17 @@ fun AzimeKeyboardScreen(
     ) {
         // 轮19.21：用 BoxWithConstraints 拿到窗口可用高度 → 拖动时把键盘**钳制在窗口内**，
         // 保证任何情况下整个键盘都可见（19.20 只做了窗口全屏，若窗口未生效就会把上半截拖出窗口）
+        // 轮19.23：悬浮时把容器**撑到屏幕高度**——IME 窗口是按内容高度测量的（WRAP_CONTENT），
+        // 只 setLayout(MATCH_PARENT) 会被系统覆盖回来 → 之前窗口只有键盘高，拖动被"框"在下半屏。
+        // 让内容自己变高，窗口才真的高，才能自由拖动。
+        val screenHdp = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp
         androidx.compose.foundation.layout.BoxWithConstraints(
             modifier = modifier
                 .fillMaxWidth()
-                .then(if (floating) Modifier else Modifier.background(c.bg)),
+                .then(
+                    if (floating) Modifier.height((screenHdp - 48).coerceAtLeast(320).dp)
+                    else Modifier.background(c.bg),
+                ),
             contentAlignment = boxAlign,
         ) {
             val winHdp = maxHeight.value
@@ -2570,10 +2577,16 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
         if (!state.asciiMode) base
         else base.filter { sym -> sym.isNotEmpty() && sym.all { it.code in 32..126 } }.ifEmpty { base }
     }
+    // 轮19.23（H 键英文不出 `_` 的真因）：手势块是 pointerInput(code, longClick, page)——
+    // **asciiMode 不在 key 里**，切换中英后手势闭包不重建，提交时读到的仍是旧 state
+    // （日志实证：show 时 list=[_] 正确，commit 时 ascii=false 且提交了——）。
+    // 用 rememberUpdatedState 让手势里永远读最新值（Compose 处理过期闭包的标准做法）。
+    val curState by rememberUpdatedState(state)
+    val curSymbols by rememberUpdatedState(longPressSymbols)
     /** 气泡/松手提交：内置命令走命令分发，{Left} 后缀走文本+光标移动，其他字面上屏。 */
     fun commitLongSymbol(s: String) {
         // 轮19.21：埋点放到**提交点**（原来放在 remember{} 里，长按不会重算 → 日志永远不出现）
-        com.azime.input.core.diag.Diag.log("Sym", "commit sym=$s ascii=${state.asciiMode}")
+        com.azime.input.core.diag.Diag.log("Sym", "commit sym=$s ascii=${curState.asciiMode}")
         when {
             s == "select_all" || s == "cut" || s == "copy" || s == "paste" ->
                 onAction(KeyAction.Resolved(s))
@@ -2625,9 +2638,9 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
             delay(KeyboardManager.longPressMs().toLong())
             if (pressing && !longFired && !longCancelled) {
                 when {
-                    longPressSymbols.isNotEmpty() -> {
+                    curSymbols.isNotEmpty() -> {
                         // 轮19.21：长按即打点——记录本次气泡的真实列表与英文状态
-                        com.azime.input.core.diag.Diag.log("Sym", "show code=${key.code} ascii=${state.asciiMode} list=$longPressSymbols")
+                        com.azime.input.core.diag.Diag.log("Sym", "show code=${key.code} ascii=${curState.asciiMode} list=$curSymbols")
                         longFired = true
                         longSelIdx = 0
                         showBubble = true
@@ -2685,7 +2698,7 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
     if (hasGestures) {
         // 手势闭包内读取最新 state（preedit 等会随打字频繁变化）
         val currentState by rememberUpdatedState(state)
-        baseModifier = baseModifier.pointerInput(key.code, key.longClick, state.page) {
+        baseModifier = baseModifier.pointerInput(key.code, key.longClick, state.page, state.asciiMode) {
             awaitEachGesture {
                 val down = awaitFirstDown(requireUnconsumed = false)
                 longFired = false
@@ -2719,14 +2732,14 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
                         ) {
                             longCancelled = true
                         }
-                        if (longFired && longPressSymbols.isNotEmpty()) {
+                        if (longFired && curSymbols.isNotEmpty()) {
                             // 长按气泡已弹出：滑动选择符号（多符号时），松手上屏（不触发四向手势）
-                            if (longPressSymbols.size > 1) {
+                            if (curSymbols.size > 1) {
                                 // 轮19.2：横向按 22dp/项 选列，上滑换行（气泡每行 5 项）
                                 val colSteps = (dx / longStepPx).roundToInt()
                                 val rowSteps = (-dy / longRowStepPx).toInt().coerceAtLeast(0)
                                 val idx = (rowSteps * 5 + colSteps)
-                                    .coerceIn(0, longPressSymbols.size - 1)
+                                    .coerceIn(0, curSymbols.size - 1)
                                 if (idx != longSelIdx) {
                                     longSelIdx = idx
                                     com.azime.input.core.haptic.HapticsManager.haptic(com.azime.input.core.haptic.HapticsManager.Type.STEP)
@@ -2804,9 +2817,9 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
                         if (action != null) onAction(KeyAction.Resolved(action))
                     }
                     // 长按气泡：松手直接上屏当前选中符号（单符号 = 首个；多符号 = 滑动选中项）
-                    longFired && showBubble && longPressSymbols.isNotEmpty() -> {
-                        val symbol = longPressSymbols[
-                            if (longPressSymbols.size == 1) 0 else longSelIdx.coerceIn(0, longPressSymbols.size - 1)
+                    longFired && showBubble && curSymbols.isNotEmpty() -> {
+                        val symbol = curSymbols[
+                            if (curSymbols.size == 1) 0 else longSelIdx.coerceIn(0, curSymbols.size - 1)
                         ]
                         commitLongSymbol(symbol)
                         longSelIdx = 0

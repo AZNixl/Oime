@@ -1124,3 +1124,26 @@ Unresolved reference）；要么 import 后 `x.roundToInt()`，要么直接 `x.t
   看起来不像悬浮
 - 现在 `onComputeInsets` 里把 `contentTopInsets` / `visibleTopInsets` 报成**满屏高度** ⇒
   App 整屏铺开、键盘浮在其之上；触摸区仍限定为键盘矩形（其余穿透给 App）
+
+# 轮19.23（0.9.36-oime vc46）：H 键英文不出 `_` 的真因（Compose 闭包过期）/ 悬浮可自由拖动
+
+## 1. H 键英文不出 `_` —— 文件埋点抓到了铁证
+```
+22:11:13.876 [Sym] show   code=h ascii=true  list=[_]      ← 气泡里的列表过滤**正确**
+22:11:14.173 [Sym] commit sym=—— ascii=false                ← 提交的却是中文那项、ascii 还是 false
+```
+**真因**：长按气泡的手势块是 `pointerInput(key.code, key.longClick, state.page)` ——
+**`asciiMode` 不在 key 里** ⇒ 切换中英后手势闭包**不重建**，里面的 `state`/`longPressSymbols`
+都是切换前的旧值（ascii=false、列表 `[——, _]`），所以提交回到 `——`。
+（气泡本身是在 composition 里渲染的，读的是新列表 → 所以"看得见 `_`，点了却出 `——`"）
+
+**修复**：按 Compose 处理过期闭包的标准做法——
+- `val curState by rememberUpdatedState(state)` / `val curSymbols by rememberUpdatedState(longPressSymbols)`
+- 手势块内 **6 处**读取（show 判定、拖动选号、提交取符号、size 判定）全部改读 `cur*`
+- 并把 `state.asciiMode` 加进 `pointerInput` 的 key（双保险）
+
+## 2. 悬浮键盘"被框在下半部分"不能自由拖
+**真因**：IME 窗口是**按内容高度测量**的（WRAP_CONTENT），`window.setLayout(MATCH_PARENT, MATCH_PARENT)`
+会被系统覆盖回来 ⇒ 窗口只有键盘那么高，拖动范围自然被限制在小半屏。
+**修复**：让**内容自己占满屏幕高度**（`Modifier.height(screenHeightDp - 48dp)`）→ 窗口随之变高
+→ 拖动范围＝整屏（配合已有的 `contentTopInsets` 满屏 + `touchableRegion` 限定键盘矩形，App 不会被顶起）
