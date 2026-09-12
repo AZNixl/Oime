@@ -203,6 +203,18 @@ fun SettingsScreen(
     )
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    // 轮19.21：恢复备份——选 JSON 文件后覆盖写回偏好
+    val restoreLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val n = restoreSettings(context, uri)
+        Toast.makeText(
+            context,
+            if (n >= 0) "已恢复 $n 项设置，建议重新打开键盘生效" else "恢复失败：文件格式不对",
+            Toast.LENGTH_LONG,
+        ).show()
+    }
     // 一级菜单（main）+ 二级页：schemas | keyboard | theme | about
     var subPage by remember { mutableStateOf("main") }
     // 反馈轮16：输入方案页的「方案管理」子级页（勾选启用集）
@@ -583,6 +595,12 @@ fun SettingsScreen(
                                         ).show()
                                     }
                                 },
+                            )
+                            KsuItem(
+                                icon = OimeIcons.refresh,
+                                title = "恢复备份",
+                                subtitle = "从 Oime_backup_*.json 恢复全部偏好（覆盖当前设置）",
+                                onClick = { restoreLauncher.launch(arrayOf("application/json", "*/*")) },
                             )
                             KsuItem(
                                 icon = Icons.Default.WavingHand,
@@ -1921,6 +1939,36 @@ private fun backupSettings(context: android.content.Context): String? = runCatch
     }
     fileName
 }.getOrNull()
+
+/** 轮19.21：从备份 JSON 恢复偏好（覆盖式写回；类型按 JSON 值推断）。返回恢复项数，失败 -1。 */
+private fun restoreSettings(context: android.content.Context, uri: android.net.Uri): Int = runCatching {
+    val text = context.contentResolver.openInputStream(uri)?.use {
+        it.readBytes().toString(Charsets.UTF_8)
+    } ?: return -1
+    val root = org.json.JSONObject(text)
+    var count = 0
+    for (name in root.keys()) {
+        val obj = root.optJSONObject(name) ?: continue
+        val p = context.getSharedPreferences(name, android.content.Context.MODE_PRIVATE)
+        val ed = p.edit()
+        for (key in obj.keys()) {
+            when (val v = obj.get(key)) {
+                is Boolean -> ed.putBoolean(key, v)
+                is Int -> ed.putInt(key, v)
+                is Long -> ed.putLong(key, v)
+                is Double -> {
+                    // JSON 数字统一是 Double：无小数位且落在 Int 范围时按 Int 存（滑杆/枚举都是 Int）
+                    if (v == v.toInt().toDouble()) ed.putInt(key, v.toInt()) else ed.putFloat(key, v.toFloat())
+                }
+                is String -> ed.putString(key, v)
+                else -> Unit
+            }
+            count++
+        }
+        ed.apply()
+    }
+    count
+}.getOrDefault(-1)
 
 @Composable
 private fun SectionLabel(text: String) {    Text(

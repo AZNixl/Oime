@@ -186,6 +186,23 @@ class AZimeService : InputMethodService() {
         }
     }
 
+    /** 轮19.21：按当前模式应用 IME 窗口布局（悬浮 → 铺满整屏；普通 → 由内容决定高度）。 */
+    private fun applyKeyboardWindowLayout() {
+        val w = window.window ?: return
+        if (KeyboardManager.floatKeyboard()) {
+            w.setLayout(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+            )
+            w.setDimAmount(0f)
+        } else {
+            w.setLayout(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+            )
+        }
+    }
+
     /**
      * 轮19.20：悬浮模式下把窗口的可触摸区域限定为键盘矩形，其余触摸穿透给下面的 App；
      * contentTopInsets 报满屏（不让 App 为悬浮键盘让位，键盘浮在上层）。
@@ -504,6 +521,15 @@ class AZimeService : InputMethodService() {
      * ③ 再不行用 `deleteSurroundingText` 无副作用探测（仅记录日志，便于真机定位）。
      * 关键：调用点必须在 commitText 的 batch 之外（batch 内 getExtractedText 是过期快照）。
      */
+    /**
+     * 轮19.21：**成对括号自动居中**——上屏「（）」这类成对符号后光标移到中间。
+     * 不依赖用户在编辑器里写 `{Left}`：只要提交的文本本身是一对括号就自动处理。
+     */
+    private fun bracketMiddleMove(text: String): Int = when (text) {
+        "()", "（）", "[]", "【】", "{}", "｛｝", "「」", "『』", "《》", "〈〉", "“”", "‘’" -> 1
+        else -> 0
+    }
+
     private fun moveCursorByConnection(ic: android.view.inputmethod.InputConnection, delta: Int) {
         val req = android.view.inputmethod.ExtractedTextRequest()
         val moved = runCatching {
@@ -545,7 +571,11 @@ class AZimeService : InputMethodService() {
                             return@launch
                         }
                     }
-                    currentInputConnection?.commitText(text, 1)
+                    val ic = currentInputConnection
+                    ic?.commitText(text, 1)
+                    // 成对括号：上屏后光标自动居中（不依赖 {Left}）
+                    val bm = bracketMiddleMove(text)
+                    if (bm > 0 && ic != null) moveCursorByConnection(ic, -bm)
                     pushUndo(text)
                     uiState.update { it.copy(shiftOn = false) }
                     refreshState()
@@ -635,8 +665,11 @@ class AZimeService : InputMethodService() {
                                 // 轮19.19：**光标回退必须在 batch 之外做**——batch 内
                                 // getExtractedText 常返回提交前的过期快照，导致 setSelection
                                 // 算错位置（19.12 的括号居中就是这么失效的）。
-                                val move = resolved.moveLeft - resolved.moveRight
-                                if (move != 0) moveCursorByConnection(ic, move)
+                                // 约定：delta 负 = 左移。{Left} → 左移；括号对无 {Left} 时自动居中
+                                val raw = resolved.moveLeft - resolved.moveRight
+                                var delta = -raw
+                                if (raw == 0) delta = -bracketMiddleMove(resolved.text)
+                                if (delta != 0) moveCursorByConnection(ic, delta)
                                 pushUndo(resolved.text)
                             }
                         }
@@ -671,6 +704,9 @@ class AZimeService : InputMethodService() {
                     val on = !KeyboardManager.floatKeyboard()
                     KeyboardManager.setFloatKeyboard(on)
                     if (!on) KeyboardManager.resetFloatKbdPos()
+                    // 轮19.21：**立即**重设窗口布局（否则切换后窗口仍是键盘高度，
+                    // 键盘往上拖会被窗口裁掉——用户截图里只看见下面两行就是这个原因）
+                    runCatching { applyKeyboardWindowLayout() }
                     uiState.update { it.copy(layoutRev = it.layoutRev + 1, statusMessage = if (on) "悬浮模式：拖动顶部横条移动" else "") }
                 }
                 KeyAction.BackspaceSelectStart -> startSelectBack()
@@ -1113,7 +1149,10 @@ class AZimeService : InputMethodService() {
             it.copy(
                 candidates = result.candidates.map { c -> c.toCandidate() },
                 preedit = result.preeditText,
-                asciiMode = result.isAsciiMode,
+                asciiMode = result.isAsciiMode.also { now ->
+                    // 轮19.21：ascii 状态变化打点（排查「英文模式下 H 长按不出 _」）
+                    if (now != it.asciiMode) android.util.Log.d("OimeAscii", "ascii=$now")
+                },
                 hasNextPage = result.hasNextPage,
                 hasPrevPage = result.hasPrevPage,
                 // 编码清空（候选消失）时自动收起更多候选面板

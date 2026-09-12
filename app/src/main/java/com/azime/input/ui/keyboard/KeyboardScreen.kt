@@ -364,14 +364,15 @@ fun AzimeKeyboardScreen(
     CompositionLocalProvider(
         LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = kbFontFamily ?: FontFamily.Default),
     ) {
-        Box(
+        // 轮19.21：用 BoxWithConstraints 拿到窗口可用高度 → 拖动时把键盘**钳制在窗口内**，
+        // 保证任何情况下整个键盘都可见（19.20 只做了窗口全屏，若窗口未生效就会把上半截拖出窗口）
+        androidx.compose.foundation.layout.BoxWithConstraints(
             modifier = modifier
                 .fillMaxWidth()
-                // 轮19.20：普通/单手模式铺满底色；**悬浮模式必须透明**（窗口已铺满整屏，
-                // 再铺底色会把下面的 App 整片盖住）
                 .then(if (floating) Modifier else Modifier.background(c.bg)),
             contentAlignment = boxAlign,
         ) {
+            val winHdp = maxHeight.value
         // 轮19.20：单手模式——空白一侧显示切换箭头（点击切左右手）
         if (hand != KeyboardManager.HAND_OFF) {
             val arrowAlign = if (hand == KeyboardManager.HAND_LEFT) Alignment.CenterEnd else Alignment.CenterStart
@@ -430,7 +431,9 @@ fun AzimeKeyboardScreen(
                             ) { change, drag ->
                                 change.consume()
                                 fxDp = (fxDp + with(density0) { drag.x.toDp().value }).coerceIn(-300f, 300f)
-                                fyDp = (fyDp + with(density0) { drag.y.toDp().value }).coerceIn(-500f, 120f)
+                                // 钳制：键盘顶不能越过窗口顶（否则上半截看不见）
+                                fyDp = (fyDp + with(density0) { drag.y.toDp().value })
+                                    .coerceIn(-(winHdp - 260f).coerceAtLeast(0f), 60f)
                             }
                         },
                     contentAlignment = Alignment.Center,
@@ -866,7 +869,11 @@ private fun ToolbarRow(
             // 轮19.11：悬浮窗生效时，前三码交给悬浮窗显示，工具栏只显示余下的
             val floatOn = KeyboardManager.floatEnabled() && state.preedit.isNotEmpty()
             val preeditForBar = if (floatOn) state.preedit.drop(3) else state.preedit
-            if (preeditForBar.isNotEmpty()) {
+            // 轮19.21：嵌入式已把编码内嵌到文本框（编码/输入码模式）→ 工具栏只留候选，不再重复显示编码
+            val inlineShowsCode = KeyboardManager.inlineMode().let {
+                it == KeyboardManager.INLINE_CODE || it == KeyboardManager.INLINE_INPUT
+            }
+            if (preeditForBar.isNotEmpty() && !inlineShowsCode) {
                 Text(
                     text = preeditForBar,
                     // 轮18.2：输入码小字随候选字号缩放；轮19.4：随工具栏可用高度收敛
@@ -2555,13 +2562,13 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
             key.code == "k" -> BracketPairs
             else -> LongPressSymbols[key.code.firstOrNull()] ?: emptyList()
         }
-        val chosen = if (!state.asciiMode) base
+        if (!state.asciiMode) base
         else base.filter { sym -> sym.isNotEmpty() && sym.all { it.code in 32..126 } }.ifEmpty { base }
-        android.util.Log.d("OimeSym", "code=${key.code} ascii=${state.asciiMode} list=$chosen")
-        chosen
     }
     /** 气泡/松手提交：内置命令走命令分发，{Left} 后缀走文本+光标移动，其他字面上屏。 */
     fun commitLongSymbol(s: String) {
+        // 轮19.21：埋点放到**提交点**（原来放在 remember{} 里，长按不会重算 → 日志永远不出现）
+        android.util.Log.d("OimeSym", "commit sym=$s ascii=${state.asciiMode}")
         when {
             s == "select_all" || s == "cut" || s == "copy" || s == "paste" ->
                 onAction(KeyAction.Resolved(s))
@@ -2614,6 +2621,8 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
             if (pressing && !longFired && !longCancelled) {
                 when {
                     longPressSymbols.isNotEmpty() -> {
+                        // 轮19.21：长按即打点——记录本次气泡的真实列表与英文状态
+                        android.util.Log.d("OimeSym", "show code=${key.code} ascii=${state.asciiMode} list=$longPressSymbols")
                         longFired = true
                         longSelIdx = 0
                         showBubble = true
