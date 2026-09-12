@@ -1025,3 +1025,14 @@ Unresolved reference）；要么 import 后 `x.roundToInt()`，要么直接 `x.t
 3. **工具栏白名单精简到 11 项**：剪贴板 / 方案 / 数字 / emoji / 符号 / 设置 / 语音 / 收起 / 中英 / **撤回** / **重做**
    - 「中英」原来 fallback 到「方案」图标（重合）→ 新增专属 `OimeIcons.lang`（"文 A" 造型）
    - **新增 redo**：`KeyAction.Redo` + `redoStack`（撤回时把反向操作压入 redo 栈；任何新操作清空 redo 栈）
+
+# 轮19.18（0.9.31-oime vc41）：复制条改为「左右划动消亡」
+
+- **撤掉 19.17 的「退格键消亡」**：用户场景是**强制复制的无效内容**——被逼着先上屏才能清掉不合理
+- **新增：在复制条上左右划动即消亡**（`KeyAction.DismissClipStrip`）：
+  - 实现在复制条 Box 上挂 `detectHorizontalDragGestures`，横向累计位移 > **40dp** 触发消亡
+  - 拖动时 `change.consume()`，因此**不会同时触发 clickable 的上屏**（点=上屏，划=消亡，互不干扰）
+  - 消亡同样写入 `dismissedClip`，避免被剪贴板回调"复活"
+- 打字 / 组词依旧**不消亡**复制条（保持上一轮语义）
+- 坑（第二次踩）：`detectHorizontalDragGestures` 是 **PointerInputScope 的扩展函数**，
+  不能用全限定名调用（和 19.10 的 `enableEdgeToEdge` 同一个坑）→ 必须 `import` 后直调

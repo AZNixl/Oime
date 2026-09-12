@@ -1,5 +1,6 @@
 package com.azime.input.ui.keyboard
 
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Canvas
@@ -174,6 +175,8 @@ sealed interface KeyAction {
     data object ToggleSchemaPanel : KeyAction
     /** 从剪贴板面板/条上屏：提交后清除条目并收起面板。 */
     data class CommitClipboard(val text: String) : KeyAction
+    /** 轮19.18：复制条**左右划动**消亡（不必先上屏；用于清掉强制复制的无效内容）。 */
+    data object DismissClipStrip : KeyAction
     data class SetToolbarItems(val ids: List<String>) : KeyAction
     /** 键盘 UI 内部：切页（main/symbols/numpad/emoji），不经 Service。 */
     data class SwitchPage(val page: String) : KeyAction
@@ -830,15 +833,31 @@ private fun ToolbarRow(
             }
         }
         // ── 剪贴板条：复制内容覆盖整条工具栏，点击直接上屏 ──
-        // 轮19.16：复制条 —— 内容水平+**垂直居中**，字号**跟随工具栏字号**
-        clipFresh -> Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(barHeight)
-                .background(c.bg)
-                .clickable { onAction(KeyAction.CommitClipboard(state.clipText)) },
-            contentAlignment = Alignment.Center,
-        ) {
+        // 轮19.18：复制条 —— 点=上屏，**左右划动=消亡**（不再需要"先上屏再删"）
+        clipFresh -> {
+            val dismissPx = with(LocalDensity.current) { 40.dp.toPx() }
+            var dragAccum by remember { mutableStateOf(0f) }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(barHeight)
+                    .background(c.bg)
+                    .pointerInput(state.clipText) {
+                        detectHorizontalDragGestures(
+                            onDragStart = { dragAccum = 0f },
+                            onHorizontalDrag = { change, delta ->
+                                change.consume() // 消费掉，避免同时触发 clickable 的上屏
+                                dragAccum += delta
+                                if (abs(dragAccum) > dismissPx) {
+                                    dragAccum = 0f
+                                    onAction(KeyAction.DismissClipStrip)
+                                }
+                            },
+                        )
+                    }
+                    .clickable { onAction(KeyAction.CommitClipboard(state.clipText)) },
+                contentAlignment = Alignment.Center,
+            ) {
             Text(
                 text = state.clipText.replace("\n", " "),
                 fontSize = KeyboardManager.fontSizeBar().sp,
@@ -848,6 +867,7 @@ private fun ToolbarRow(
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp),
             )
+            }
         }
         // ── 常规工具栏：工具在 ○ 两侧剩余空间内居中排列（反馈轮10，⌄ 关闭键已删除） ──
         else -> {

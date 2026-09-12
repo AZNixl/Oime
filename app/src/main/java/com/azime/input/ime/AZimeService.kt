@@ -492,19 +492,11 @@ class AZimeService : InputMethodService() {
         scope.launch {
             // 轮19.4：任意按键让工具栏「复制条」消亡（原来只有上屏才消亡，条会一直占着工具栏）。
             // 仅对真正的按键动作生效——剪贴板面板自身的操作（上屏/收藏/删除/切页）不清除。
-            // 轮19.17（按用户要求定稿）：复制条**只有两条消亡途径**——
-            //   ① 点击复制条上屏（CommitClipboard，在别处处理）
-            //   ② **按退格键**，且**当前没有输入码/候选**（组词中按退格是删编码，不该消亡）
-            // 撤销 19.15/19.16 的「任意按键消亡 / 组词消亡」——用户明确要求打字不消亡。
-            if (action is KeyAction.Backspace &&
-                uiState.value.clipText.isNotBlank() &&
-                uiState.value.preedit.isEmpty() &&
-                uiState.value.candidates.isEmpty()
-            ) {
-                dismissedClip = uiState.value.clipText
-                android.util.Log.d("OimeClip", "dismiss by backspace (no composing)")
-                uiState.update { it.copy(clipText = "", clipAtMs = 0L) }
-            }
+            // 轮19.18（按用户要求定稿）：复制条**只有两条消亡途径**——
+            //   ① 点击复制条上屏（CommitClipboard）
+            //   ② **在复制条上左右划动**（DismissClipStrip，见下）
+            // 撤掉 19.17 的「退格键消亡」：强制复制的无效内容不该被逼着先上屏才能清掉；
+            // 打字/组词依旧不消亡。
             when (action) {
                 is KeyAction.CharKey -> handleChar(action.c)
                 is KeyAction.DirectCommit -> {
@@ -682,6 +674,12 @@ class AZimeService : InputMethodService() {
                     }
                 KeyAction.ToggleMenuPanel ->
                     uiState.update { it.copy(showMenuPanel = !it.showMenuPanel) }
+                // 轮19.18：复制条左右划动 → 只消亡不上屏（并记住，避免被剪贴板回调复活）
+                KeyAction.DismissClipStrip -> {
+                    dismissedClip = uiState.value.clipText
+                    android.util.Log.d("OimeClip", "dismiss by swipe")
+                    uiState.update { it.copy(clipText = "", clipAtMs = 0L) }
+                }
                 is KeyAction.CommitClipboard -> {
                     currentInputConnection?.commitText(action.text, 1)
                     pushUndo(action.text)
