@@ -1059,3 +1059,33 @@ Unresolved reference）；要么 import 后 `x.roundToInt()`，要么直接 `x.t
      `getExtractedText` 常返回**提交前的过期快照** → 位置算错
    - 现在：光标移动移到 `endBatchEdit()` **之后**；加 **回读校验**（没真动就回落到 DPAD）；
      并加埋点日志 `OimeCursor`（`move delta=… setSelection=ok/failed`）便于真机确认
+
+# 轮19.20（0.9.33-oime vc43）：嵌入式语义修正 / 悬浮浮到最上层 / 单手交互 / K 键覆盖真因
+
+## 1. 「嵌入式」我之前理解错了 → 现按中文输入法的**嵌入式编辑**实现
+- 19.19 做成了"工具栏候选行显示什么"，**错了**。真正含义：把编码/候选**内嵌到应用文本框**（带下划线）
+- 现在：`KeyboardManager.inlineMode()` = 首选 / 编码 / 输入码（编码+首选，最常见）/ 无（默认）
+- 实现：`applyInlineComposing()` 在 `updateFromResult` 里用 **`setComposingText`** 把
+  「编码 / 首选候选」作为 composing text 写进输入框；组合结束或关闭时 `finishComposingText()`
+- 默认「无」⇒ 不改变现有行为，只有选了才生效
+- 同时**回退** 19.19 对工具栏候选行的改动（工具栏恢复恒定显示）
+
+## 2. K 键「不能完全覆盖原生配置」的真因
+- 手势优先级是：`longPressSymbols.isNotEmpty()` → 才轮到 `hasCustomLong`
+- 而 K 键的**内置括号表恒非空** ⇒ 自定义的 `longClick`（编辑器「长按」字段）**永远到不了** ✗
+- 现在：`popup`（编辑器「长按气泡」）**或** `longClick`（编辑器「长按」）任一非空，
+  就**完全替换**内置表（含 K 的括号表）
+- 另加埋点 `OimeSym`（`code=… ascii=… list=[…]`）：下次长按即可确认实际用的是哪份列表
+
+## 3. 悬浮模式浮不到最上层（被 App 挡住）→ 改窗口级实现
+- 真因：IME 窗口只有键盘那么高，把内容往上偏移就画到窗口外 → 被 App 覆盖且不可触摸
+- 现在：悬浮模式把 **IME 窗口设为铺满整屏** + 背景透明 + `setDimAmount(0)`；
+  并用 **`onComputeInsets`** 把 `touchableInsets` 设为 `TOUCHABLE_INSETS_REGION`、
+  `touchableRegion` = 键盘矩形（UI 通过 `onGloballyPositioned` 上报 `floatKbdTop/Bottom`）
+  ⇒ 键盘浮在最上层、其余区域触摸穿透给 App
+- 悬浮时外层**不再铺键盘底色**（否则整屏被盖）
+
+## 4. 单手模式交互按用户要求改
+- 工具栏「单手」= **开关**（关 ↔ 开，开时沿用上次那侧/默认左手）
+- 单手时**空白一侧显示圆形箭头 ▶/◀**，点击切左右手（`SwitchHandSide`）
+- 替换掉 19.19 的「循环三态」逻辑

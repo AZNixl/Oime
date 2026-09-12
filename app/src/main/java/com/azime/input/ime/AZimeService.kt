@@ -103,6 +103,15 @@ class AZimeService : InputMethodService() {
                 w.setBackgroundDrawableResource(android.R.color.transparent)
                 w.navigationBarColor = navBarColorInt()
                 w.isNavigationBarContrastEnforced = false
+                // 轮19.20：悬浮模式 → IME 窗口铺满整屏（否则键盘往上拖会被窗口裁掉/被 App 挡住），
+                // 具体可触摸范围由 onComputeInsets 的 touchableRegion 限定为键盘矩形，其余穿透给 App。
+                if (KeyboardManager.floatKeyboard()) {
+                    w.setLayout(
+                        android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                        android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                    )
+                    w.setDimAmount(0f)
+                }
             }
         }
         KeyboardManager.initialize(applicationContext)
@@ -175,6 +184,21 @@ class AZimeService : InputMethodService() {
                 }
             }
         }
+    }
+
+    /**
+     * 轮19.20：悬浮模式下把窗口的可触摸区域限定为键盘矩形，其余触摸穿透给下面的 App；
+     * contentTopInsets 报满屏（不让 App 为悬浮键盘让位，键盘浮在上层）。
+     */
+    override fun onComputeInsets(outInsets: android.inputmethodservice.InputMethodService.Insets?) {
+        super.onComputeInsets(outInsets)
+        if (outInsets == null) return
+        if (!KeyboardManager.floatKeyboard()) return
+        val top = KeyboardManager.floatKbdTop
+        val bottom = KeyboardManager.floatKbdBottom
+        if (top < 0 || bottom <= top) return
+        outInsets.touchableInsets = android.inputmethodservice.InputMethodService.Insets.TOUCHABLE_INSETS_REGION
+        outInsets.touchableRegion.set(0, top, resources.displayMetrics.widthPixels, bottom)
     }
 
     override fun onCreateInputView(): View {
@@ -625,13 +649,23 @@ class AZimeService : InputMethodService() {
                 KeyAction.Redo -> redo()
                 // 轮19.19：单手模式循环（off→left→right）+ 悬浮模式开关；
                 // layoutRev 自增用于强制键盘重组（只改 prefs 不会触发重组）
-                KeyAction.CycleHandMode -> {
-                    val m = KeyboardManager.cycleHandMode()
-                    uiState.update { it.copy(layoutRev = it.layoutRev + 1, statusMessage = "单手模式：" + when (m) {
-                        KeyboardManager.HAND_LEFT -> "左手"
-                        KeyboardManager.HAND_RIGHT -> "右手"
-                        else -> "关闭"
-                    }) }
+                // 轮19.20：工具栏「单手」= 开关（关↔开），空白处箭头 = 切左右手
+                KeyAction.ToggleHandMode -> {
+                    val on = KeyboardManager.handMode() != KeyboardManager.HAND_OFF
+                    val next = if (on) KeyboardManager.HAND_OFF else KeyboardManager.handMode().let { prev ->
+                        if (prev == KeyboardManager.HAND_OFF) KeyboardManager.HAND_LEFT else prev
+                    }
+                    KeyboardManager.setHandMode(if (on) KeyboardManager.HAND_OFF else next)
+                    uiState.update { it.copy(layoutRev = it.layoutRev + 1, statusMessage = if (on) "单手模式：关闭" else "单手模式：开启") }
+                }
+                KeyAction.SwitchHandSide -> {
+                    val next = if (KeyboardManager.handMode() == KeyboardManager.HAND_LEFT) {
+                        KeyboardManager.HAND_RIGHT
+                    } else {
+                        KeyboardManager.HAND_LEFT
+                    }
+                    KeyboardManager.setHandMode(next)
+                    uiState.update { it.copy(layoutRev = it.layoutRev + 1, statusMessage = "单手模式：" + if (next == KeyboardManager.HAND_LEFT) "左手" else "右手") }
                 }
                 KeyAction.ToggleFloatKeyboard -> {
                     val on = !KeyboardManager.floatKeyboard()
@@ -1074,6 +1108,7 @@ class AZimeService : InputMethodService() {
     }
 
     private fun updateFromResult(result: com.kingzcheung.xime.rime.RimeProcessResult) {
+        applyInlineComposing(result)
         uiState.update {
             it.copy(
                 candidates = result.candidates.map { c -> c.toCandidate() },
@@ -1088,6 +1123,44 @@ class AZimeService : InputMethodService() {
                 // 轮19.17：组词**不再**消亡复制条（只有「点击上屏」与「无候选时按退格」两条途径）
             )
         }
+    }
+
+    /** 轮19.20：嵌入式编辑——把「编码 / 首选候选」作为 composing text 内嵌进文本框。 */
+    @Volatile private var inlineActive = false
+
+    private fun applyInlineComposing(result: com.kingzcheung.xime.rime.RimeProcessResult) {
+        val mode = KeyboardManager.inlineMode()
+        val ic = currentInputConnection
+        if (mode == KeyboardManager.INLINE_NONE) {
+            if (inlineActive) {
+                runCatching { ic?.finishComposingText() }
+                inlineActive = false
+            }
+            return
+        }
+        if (ic == null) return
+        val preedit = result.preeditText
+        val first = result.candidates.firstOrNull()?.text.orEmpty()
+        val text = when (mode) {
+            KeyboardManager.INLINE_FIRST -> first
+            KeyboardManager.INLINE_CODE -> preedit
+            KeyboardManager.INLINE_INPUT -> when {
+                preedit.isEmpty() -> first
+                first.isEmpty() -> preedit
+                else -> "$preedit $first"
+            }
+            else -> ""
+        }
+        if (text.isEmpty()) {
+            // 组合结束（无编码无候选）：收尾 composing
+            if (inlineActive) {
+                runCatching { ic.finishComposingText() }
+                inlineActive = false
+            }
+            return
+        }
+        runCatching { ic.setComposingText(text, 1) }
+        inlineActive = true
     }
 
     private suspend fun refreshState() {

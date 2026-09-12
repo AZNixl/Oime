@@ -202,20 +202,32 @@ object KeyboardManager {
         setRingApps(cur)
     }
 
-    // ── 工具栏候选行显示内容（轮19.19「嵌入式」设置） ──
+    // ── 嵌入式编辑（轮19.20 语义修正） ──
+    // 说明：19.19 我误做成了「工具栏候选行显示什么」。用户要的是中文输入法常见的
+    // **嵌入式编辑模式**——把编码/候选**内嵌到应用文本框里**（带下划线），而不是放在键盘上方工具栏。
 
-    private const val PREF_BAR_CONTENT = "bar_content_mode"
+    private const val PREF_INLINE_MODE = "inline_mode"
 
-    /** 首选=只显示首选候选；编码=只显示输入码；输入码=输入码+候选（默认）；无=不显示。 */
-    const val BAR_FIRST = "first"
-    const val BAR_CODE = "code"
-    const val BAR_BOTH = "input"
-    const val BAR_NONE = "none"
+    /** 首选=内嵌首选候选；编码=内嵌编码；输入码=编码+首选（最常见）；无=不内嵌（默认）。 */
+    const val INLINE_FIRST = "first"
+    const val INLINE_CODE = "code"
+    const val INLINE_INPUT = "input"
+    const val INLINE_NONE = "none"
 
-    fun barContentMode(): String = prefs.getString(PREF_BAR_CONTENT, BAR_BOTH) ?: BAR_BOTH
+    fun inlineMode(): String = prefs.getString(PREF_INLINE_MODE, INLINE_NONE) ?: INLINE_NONE
 
-    fun setBarContentMode(v: String) {
-        synchronized(lock) { prefs.edit().putString(PREF_BAR_CONTENT, v).apply() }
+    fun setInlineMode(v: String) {
+        synchronized(lock) { prefs.edit().putString(PREF_INLINE_MODE, v).apply() }
+    }
+
+    // ── 悬浮键盘的屏幕矩形（服务端 onComputeInsets 用：触摸穿透到 App） ──
+
+    @Volatile var floatKbdTop: Int = -1
+    @Volatile var floatKbdBottom: Int = -1
+
+    fun setFloatKbdRect(top: Int, bottom: Int) {
+        floatKbdTop = top
+        floatKbdBottom = bottom
     }
 
     // ── 单手 / 悬浮模式（轮19.19） ──
@@ -507,7 +519,7 @@ object KeyboardManager {
         "${keyHeightDp()}x${barHeightDp()}x${barEnabled()}x${hintLong()}" +
             "x${hintUp()}x${hintDown()}x${hintLeft()}x${hintRight()}x${spaceLabel()}x${sliderSymbolsRaw()}" +
             "x${fontSizeKey()}x${fontSizeBar()}x${keyCornerDp()}x${rowGapDp()}x${colGapDp()}" +
-            "x${toolbarHeightDp()}x${barContentMode()}x${handMode()}x${floatKeyboard()}" +
+            "x${toolbarHeightDp()}x${inlineMode()}x${handMode()}x${floatKeyboard()}" +
             "x${floatKbdX()}x${floatKbdY()}" +
             "x${floatEnabled()}x${floatMode()}x${floatXDp()}x${floatYDp()}x${floatTextSp()}x${floatBgAlpha()}" +
             "x${bubbleXDp()}x${bubbleYExtraDp()}" +

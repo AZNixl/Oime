@@ -1196,36 +1196,40 @@ private fun KeyHeightSliders() {
             toolH = it
             com.azime.input.core.keyboard.KeyboardManager.setToolbarHeightDp(it.toInt())
         }
-        // 轮19.19：「嵌入式」——工具栏候选行显示内容（首选 / 编码 / 输入码 / 无）
-        var barMode by remember {
-            mutableStateOf(com.azime.input.core.keyboard.KeyboardManager.barContentMode())
+        // 轮19.20：嵌入式编辑——把编码/候选**内嵌到应用文本框**（带下划线）
+        var inlineMode by remember {
+            mutableStateOf(com.azime.input.core.keyboard.KeyboardManager.inlineMode())
         }
-        Text("工具栏内容（嵌入式）", style = MaterialTheme.typography.bodyMedium)
-        val barModes = listOf(
-            com.azime.input.core.keyboard.KeyboardManager.BAR_FIRST to "首选（只显示首选候选）",
-            com.azime.input.core.keyboard.KeyboardManager.BAR_CODE to "编码（只显示输入码）",
-            com.azime.input.core.keyboard.KeyboardManager.BAR_BOTH to "输入码（输入码 + 候选）",
-            com.azime.input.core.keyboard.KeyboardManager.BAR_NONE to "无（不显示）",
-        )
-        barModes.forEach { (id, label) ->
+        Text("嵌入式编辑（内嵌到文本框）", style = MaterialTheme.typography.bodyMedium)
+        listOf(
+            com.azime.input.core.keyboard.KeyboardManager.INLINE_FIRST to "首选（只内嵌首选候选）",
+            com.azime.input.core.keyboard.KeyboardManager.INLINE_CODE to "编码（只内嵌编码）",
+            com.azime.input.core.keyboard.KeyboardManager.INLINE_INPUT to "输入码（编码 + 首选候选）",
+            com.azime.input.core.keyboard.KeyboardManager.INLINE_NONE to "无（默认，编码与候选只显示在工具栏）",
+        ).forEach { (id, label) ->
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable {
-                        barMode = id
-                        com.azime.input.core.keyboard.KeyboardManager.setBarContentMode(id)
+                        inlineMode = id
+                        com.azime.input.core.keyboard.KeyboardManager.setInlineMode(id)
                     }
                     .padding(vertical = 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                RadioButton(selected = barMode == id, onClick = {
-                    barMode = id
-                    com.azime.input.core.keyboard.KeyboardManager.setBarContentMode(id)
+                RadioButton(selected = inlineMode == id, onClick = {
+                    inlineMode = id
+                    com.azime.input.core.keyboard.KeyboardManager.setInlineMode(id)
                 })
                 Spacer(Modifier.width(6.dp))
                 Text(label, style = MaterialTheme.typography.bodySmall)
             }
         }
+        Text(
+            "内嵌内容以 composing text（带下划线）写进输入框，选词时被替换；默认关闭。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         Spacer(Modifier.height(6.dp))
 
         // 轮19.19：单手模式（关 / 左手 / 右手）
