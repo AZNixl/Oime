@@ -1196,6 +1196,88 @@ private fun KeyHeightSliders() {
             toolH = it
             com.azime.input.core.keyboard.KeyboardManager.setToolbarHeightDp(it.toInt())
         }
+        // 轮19.19：「嵌入式」——工具栏候选行显示内容（首选 / 编码 / 输入码 / 无）
+        var barMode by remember {
+            mutableStateOf(com.azime.input.core.keyboard.KeyboardManager.barContentMode())
+        }
+        Text("工具栏内容（嵌入式）", style = MaterialTheme.typography.bodyMedium)
+        val barModes = listOf(
+            com.azime.input.core.keyboard.KeyboardManager.BAR_FIRST to "首选（只显示首选候选）",
+            com.azime.input.core.keyboard.KeyboardManager.BAR_CODE to "编码（只显示输入码）",
+            com.azime.input.core.keyboard.KeyboardManager.BAR_BOTH to "输入码（输入码 + 候选）",
+            com.azime.input.core.keyboard.KeyboardManager.BAR_NONE to "无（不显示）",
+        )
+        barModes.forEach { (id, label) ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        barMode = id
+                        com.azime.input.core.keyboard.KeyboardManager.setBarContentMode(id)
+                    }
+                    .padding(vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                RadioButton(selected = barMode == id, onClick = {
+                    barMode = id
+                    com.azime.input.core.keyboard.KeyboardManager.setBarContentMode(id)
+                })
+                Spacer(Modifier.width(6.dp))
+                Text(label, style = MaterialTheme.typography.bodySmall)
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+
+        // 轮19.19：单手模式（关 / 左手 / 右手）
+        var handMode by remember {
+            mutableStateOf(com.azime.input.core.keyboard.KeyboardManager.handMode())
+        }
+        Text("单手模式", style = MaterialTheme.typography.bodyMedium)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(
+                com.azime.input.core.keyboard.KeyboardManager.HAND_OFF to "关闭",
+                com.azime.input.core.keyboard.KeyboardManager.HAND_LEFT to "左手",
+                com.azime.input.core.keyboard.KeyboardManager.HAND_RIGHT to "右手",
+            ).forEach { (id, label) ->
+                val on = handMode == id
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .background(
+                            if (on) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                            androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+                        )
+                        .clickable {
+                            handMode = id
+                            com.azime.input.core.keyboard.KeyboardManager.setHandMode(id)
+                        }
+                        .padding(vertical = 8.dp),
+                    contentAlignment = Alignment.Center,
+                ) { Text(label, style = MaterialTheme.typography.bodySmall) }
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+
+        // 轮19.19：悬浮键盘（整体可拖动）
+        var floatKbd by remember {
+            mutableStateOf(com.azime.input.core.keyboard.KeyboardManager.floatKeyboard())
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("悬浮键盘（拖动顶部横条移动）", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            Switch(
+                checked = floatKbd,
+                onCheckedChange = {
+                    floatKbd = it
+                    com.azime.input.core.keyboard.KeyboardManager.setFloatKeyboard(it)
+                    if (!it) com.azime.input.core.keyboard.KeyboardManager.resetFloatKbdPos()
+                },
+            )
+        }
+        Spacer(Modifier.height(6.dp))
+
         // 轮19.17：复制条开关（关闭后不注册剪贴板监听、不读剪贴板）
         var clipStrip by remember {
             mutableStateOf(com.azime.input.core.keyboard.KeyboardManager.clipStripEnabled())

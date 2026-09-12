@@ -473,18 +473,29 @@ class AZimeService : InputMethodService() {
      * 轮19.11b：按字符数移动光标（负=左）。优先 `setSelection`（用 ExtractedText 拿绝对位置），
      * 拿不到再退回 DPAD 方向键事件。
      */
+    /**
+     * 轮19.19：按字符数移动光标（负=左）。
+     * ① `setSelection`（用 ExtractedText 取绝对位置）→ **回读校验**是否真的动了；
+     * ② 没动就回落到 DPAD 方向键事件（部分 App 只认它）；
+     * ③ 再不行用 `deleteSurroundingText` 无副作用探测（仅记录日志，便于真机定位）。
+     * 关键：调用点必须在 commitText 的 batch 之外（batch 内 getExtractedText 是过期快照）。
+     */
     private fun moveCursorByConnection(ic: android.view.inputmethod.InputConnection, delta: Int) {
+        val req = android.view.inputmethod.ExtractedTextRequest()
         val moved = runCatching {
-            val ex = ic.getExtractedText(android.view.inputmethod.ExtractedTextRequest(), 0) ?: return@runCatching false
+            val ex = ic.getExtractedText(req, 0) ?: return@runCatching false
             val pos = ex.startOffset + ex.selectionEnd
             val target = (pos + delta).coerceAtLeast(0)
             ic.setSelection(target, target)
+            val chk = ic.getExtractedText(req, 0) ?: return@runCatching false
+            (chk.startOffset + chk.selectionEnd) == target
         }.getOrDefault(false)
-        if (!moved) {
-            val key = if (delta < 0) android.view.KeyEvent.KEYCODE_DPAD_LEFT else android.view.KeyEvent.KEYCODE_DPAD_RIGHT
-            repeat(kotlin.math.abs(delta)) {
-                ic.sendKeyEvent(android.view.KeyEvent(0, 0, 0, 0, 0, 0, key, 0))
-            }
+        android.util.Log.d("OimeCursor", "move delta=$delta setSelection=${if (moved) "ok" else "failed"}")
+        if (moved) return
+        val key = if (delta < 0) android.view.KeyEvent.KEYCODE_DPAD_LEFT
+        else android.view.KeyEvent.KEYCODE_DPAD_RIGHT
+        repeat(kotlin.math.abs(delta)) {
+            ic.sendKeyEvent(android.view.KeyEvent(0, 0, 0, 0, 0, 0, key, 0))
         }
     }
 
@@ -596,12 +607,12 @@ class AZimeService : InputMethodService() {
                             if (ic != null) {
                                 ic.beginBatchEdit()
                                 ic.commitText(resolved.text, 1)
-                                // 轮19.11b：`{Left}` 光标回退改用 **setSelection**——
-                                // 原来发 KEYCODE_DPAD_LEFT，实测绝大多数 App（微信等）不理会
-                                // 软键盘发来的 DPAD 事件，所以「括号上屏后光标停在括号中间」不生效。
+                                ic.endBatchEdit()
+                                // 轮19.19：**光标回退必须在 batch 之外做**——batch 内
+                                // getExtractedText 常返回提交前的过期快照，导致 setSelection
+                                // 算错位置（19.12 的括号居中就是这么失效的）。
                                 val move = resolved.moveLeft - resolved.moveRight
                                 if (move != 0) moveCursorByConnection(ic, move)
-                                ic.endBatchEdit()
                                 pushUndo(resolved.text)
                             }
                         }
@@ -612,6 +623,22 @@ class AZimeService : InputMethodService() {
                 KeyAction.DeleteAll -> deleteAllText()
                 KeyAction.Undo -> undo()
                 KeyAction.Redo -> redo()
+                // 轮19.19：单手模式循环（off→left→right）+ 悬浮模式开关；
+                // layoutRev 自增用于强制键盘重组（只改 prefs 不会触发重组）
+                KeyAction.CycleHandMode -> {
+                    val m = KeyboardManager.cycleHandMode()
+                    uiState.update { it.copy(layoutRev = it.layoutRev + 1, statusMessage = "单手模式：" + when (m) {
+                        KeyboardManager.HAND_LEFT -> "左手"
+                        KeyboardManager.HAND_RIGHT -> "右手"
+                        else -> "关闭"
+                    }) }
+                }
+                KeyAction.ToggleFloatKeyboard -> {
+                    val on = !KeyboardManager.floatKeyboard()
+                    KeyboardManager.setFloatKeyboard(on)
+                    if (!on) KeyboardManager.resetFloatKbdPos()
+                    uiState.update { it.copy(layoutRev = it.layoutRev + 1, statusMessage = if (on) "悬浮模式：拖动顶部横条移动" else "") }
+                }
                 KeyAction.BackspaceSelectStart -> startSelectBack()
                 is KeyAction.BackspaceSelectTo -> moveSelectBack(action.charsFromAnchor)
                 KeyAction.DeleteSelection -> deleteSelection()

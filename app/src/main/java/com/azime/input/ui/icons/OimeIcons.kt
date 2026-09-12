@@ -333,6 +333,16 @@ object OimeIcons {
         )
     }
 
+    /** 单手模式（手机 + 拇指 + 左右切换箭头）。 */
+    val oneHand by lazy {
+        Icon(
+            "oime_onehand",
+            P("M8.4 2.8h7.2a1.6 1.6 0 0 1 1.6 1.6v15.2a1.6 1.6 0 0 1-1.6 1.6H8.4a1.6 1.6 0 0 1-1.6-1.6V4.4a1.6 1.6 0 0 1 1.6-1.6z", w = 1.8f),
+            P("M14.6 16.4a1.5 1.5 0 1 0 0 3a1.5 1.5 0 1 0 0-3z", filled = true),
+            P("M19.6 7.6h2.2M20.8 6.4v2.4M2.2 7.6h2.2M3.4 6.4v2.4", w = 1.8f),
+        )
+    }
+
     /** 重做（顺时针箭头）。 */
     val redo by lazy {
         Icon(
@@ -395,6 +405,7 @@ object OimeIcons {
         "undo" -> undo
         "redo" -> redo
         "ascii", "lang" -> lang
+        "onehand", "hand" -> oneHand
         "trash", "deleteall" -> trash
         "voice" -> mic
         "float" -> pip

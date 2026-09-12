@@ -202,6 +202,72 @@ object KeyboardManager {
         setRingApps(cur)
     }
 
+    // ── 工具栏候选行显示内容（轮19.19「嵌入式」设置） ──
+
+    private const val PREF_BAR_CONTENT = "bar_content_mode"
+
+    /** 首选=只显示首选候选；编码=只显示输入码；输入码=输入码+候选（默认）；无=不显示。 */
+    const val BAR_FIRST = "first"
+    const val BAR_CODE = "code"
+    const val BAR_BOTH = "input"
+    const val BAR_NONE = "none"
+
+    fun barContentMode(): String = prefs.getString(PREF_BAR_CONTENT, BAR_BOTH) ?: BAR_BOTH
+
+    fun setBarContentMode(v: String) {
+        synchronized(lock) { prefs.edit().putString(PREF_BAR_CONTENT, v).apply() }
+    }
+
+    // ── 单手 / 悬浮模式（轮19.19） ──
+
+    private const val PREF_HAND_MODE = "hand_mode"
+    private const val PREF_FLOAT_KBD = "float_keyboard"
+    private const val PREF_FLOATKBD_X = "float_kbd_x"
+    private const val PREF_FLOATKBD_Y = "float_kbd_y"
+
+    const val HAND_OFF = "off"
+    const val HAND_LEFT = "left"
+    const val HAND_RIGHT = "right"
+
+    /** 单手模式：off / left / right（键盘缩到一侧，宽 78%）。 */
+    fun handMode(): String = prefs.getString(PREF_HAND_MODE, HAND_OFF) ?: HAND_OFF
+
+    fun setHandMode(v: String) {
+        synchronized(lock) { prefs.edit().putString(PREF_HAND_MODE, v).apply() }
+    }
+
+    /** 单手模式循环：off → left → right → off。 */
+    fun cycleHandMode(): String {
+        val next = when (handMode()) {
+            HAND_OFF -> HAND_LEFT
+            HAND_LEFT -> HAND_RIGHT
+            else -> HAND_OFF
+        }
+        setHandMode(next)
+        return next
+    }
+
+    /** 悬浮模式：整个键盘缩到 86% 并可拖动（位置持久化）。 */
+    fun floatKeyboard(): Boolean = prefs.getBoolean(PREF_FLOAT_KBD, false)
+
+    fun setFloatKeyboard(v: Boolean) {
+        synchronized(lock) { prefs.edit().putBoolean(PREF_FLOAT_KBD, v).apply() }
+    }
+
+    fun floatKbdX(): Int = prefs.getInt(PREF_FLOATKBD_X, 0)
+    fun floatKbdY(): Int = prefs.getInt(PREF_FLOATKBD_Y, 0)
+
+    fun setFloatKbdPos(x: Int, y: Int) {
+        synchronized(lock) {
+            prefs.edit()
+                .putInt(PREF_FLOATKBD_X, x.coerceIn(-400, 400))
+                .putInt(PREF_FLOATKBD_Y, y.coerceIn(-600, 200))
+                .apply()
+        }
+    }
+
+    fun resetFloatKbdPos() = setFloatKbdPos(0, 0)
+
     // ── 复制条（轮19.17：可关闭——隐私 + 少一个剪贴板回调唤醒源） ──
 
     private const val PREF_CLIP_STRIP = "clip_strip_enabled"
@@ -441,7 +507,8 @@ object KeyboardManager {
         "${keyHeightDp()}x${barHeightDp()}x${barEnabled()}x${hintLong()}" +
             "x${hintUp()}x${hintDown()}x${hintLeft()}x${hintRight()}x${spaceLabel()}x${sliderSymbolsRaw()}" +
             "x${fontSizeKey()}x${fontSizeBar()}x${keyCornerDp()}x${rowGapDp()}x${colGapDp()}" +
-            "x${toolbarHeightDp()}" +
+            "x${toolbarHeightDp()}x${barContentMode()}x${handMode()}x${floatKeyboard()}" +
+            "x${floatKbdX()}x${floatKbdY()}" +
             "x${floatEnabled()}x${floatMode()}x${floatXDp()}x${floatYDp()}x${floatTextSp()}x${floatBgAlpha()}" +
             "x${bubbleXDp()}x${bubbleYExtraDp()}" +
             "x${com.azime.input.core.theme.KeyboardTheme.mode()}" +
@@ -463,6 +530,9 @@ object KeyboardManager {
         "ascii" to "中英",
         "undo" to "撤回",
         "redo" to "重做",
+        // 轮19.19
+        "onehand" to "单手",
+        "floatkbd" to "悬浮",
     )
 
     /** 工具栏两侧空间有限：最多可选 6 个（每侧 3 个）。 */

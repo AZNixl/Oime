@@ -1,5 +1,6 @@
 package com.azime.input.ui.keyboard
 
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -150,6 +151,10 @@ sealed interface KeyAction {
     data object Undo : KeyAction
     /** 轮19.17：重做（与撤回对称的 redo 栈）。 */
     data object Redo : KeyAction
+    /** 轮19.19：单手模式循环 off→left→right→off。 */
+    data object CycleHandMode : KeyAction
+    /** 轮19.19：悬浮模式开关（键盘整体可拖动）。 */
+    data object ToggleFloatKeyboard : KeyAction
     /** 退格左滑（trime2 退格脚本同款锚点模型）：
      *  Start 记锚点（composing 中不进入）；To 按位移换算选区活动端；松手 DeleteSelection。 */
     data object BackspaceSelectStart : KeyAction
@@ -225,6 +230,8 @@ data class KeyboardUiState(
     val showCandidatePanel: Boolean = false,
     /** 轮19.11：方案快捷面板。 */
     val showSchemaPanel: Boolean = false,
+    /** 轮19.19：布局版本号（单手/悬浮等只改 prefs 的动作靠它触发重组）。 */
+    val layoutRev: Int = 0,
     /** 轮19.11：光标屏幕坐标（悬浮窗跟随光标用；-1 表示未知）。 */
     val cursorLeft: Int = -1,
     val cursorBottom: Int = -1,
@@ -333,15 +340,75 @@ fun AzimeKeyboardScreen(
     val stdH = keyH * 4 + rowGap * 3 + 2.dp
     val areaH = if (KeyboardManager.barEnabled()) stdH + rowGap + barH else stdH
 
+    // 轮19.19：单手模式（缩到一侧 78%）/ 悬浮模式（86% + 可拖动整体移动）
+    val hand = KeyboardManager.handMode()
+    val floating = KeyboardManager.floatKeyboard()
+    val widthFrac = when {
+        floating -> 0.86f
+        hand != KeyboardManager.HAND_OFF -> 0.78f
+        else -> 1f
+    }
+    val boxAlign = when (hand) {
+        KeyboardManager.HAND_LEFT -> Alignment.BottomStart
+        KeyboardManager.HAND_RIGHT -> Alignment.BottomEnd
+        else -> Alignment.BottomCenter
+    }
+    // 悬浮偏移（拖动时用本地状态，松手才落盘，避免 prefs 抖动）
+    val density0 = LocalDensity.current
+    var fxDp by remember(floating) { mutableStateOf(KeyboardManager.floatKbdX().toFloat()) }
+    var fyDp by remember(floating) { mutableStateOf(KeyboardManager.floatKbdY().toFloat()) }
+
     CompositionLocalProvider(
         LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = kbFontFamily ?: FontFamily.Default),
     ) {
-        Column(
+        Box(
             modifier = modifier
                 .fillMaxWidth()
-                // 反馈轮9：工具栏与键盘同色且不再做顶部圆角（整体平直，贴系统底栏）
-                .background(c.bg),
+                .background(c.bg),   // 全宽铺底色：单手/悬浮时两侧/周边不留透明
+            contentAlignment = boxAlign,
         ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth(widthFrac)
+                .then(
+                    if (floating) {
+                        Modifier
+                            .offset { IntOffset(with(density0) { fxDp.dp.roundToPx() }, with(density0) { fyDp.dp.roundToPx() }) }
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(c.barBg)
+                    } else {
+                        Modifier.background(c.bg)
+                    },
+                ),
+        ) {
+            // 悬浮模式：顶部拖动条（拖这里整体移动键盘；松手落盘）
+            if (floating) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(16.dp)
+                        .background(c.barBg)
+                        .pointerInput(Unit) {
+                            detectDragGestures(
+                                onDragEnd = {
+                                    KeyboardManager.setFloatKbdPos(fxDp.toInt(), fyDp.toInt())
+                                },
+                            ) { change, drag ->
+                                change.consume()
+                                fxDp = (fxDp + with(density0) { drag.x.toDp().value }).coerceIn(-300f, 300f)
+                                fyDp = (fyDp + with(density0) { drag.y.toDp().value }).coerceIn(-500f, 120f)
+                            }
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .width(48.dp)
+                            .height(4.dp)
+                            .background(c.subText.copy(alpha = 0.5f), RoundedCornerShape(2.dp)),
+                    )
+                }
+            }
             ToolbarRow(
                 state = state,
                 onAction = onAction,
@@ -534,6 +601,7 @@ fun AzimeKeyboardScreen(
                     }
                 }
             }
+        }
         }
     }
 }
@@ -746,7 +814,8 @@ private fun ToolbarRow(
 
     when {
         // ── 组合行：上下排布（上=输入码小字，下=候选横滚），高度恒定不加高 ──
-        composing -> Column(
+        // 轮19.19「嵌入式」设置：无 → 不显示候选行（直接落到工具/复制条）
+        composing && KeyboardManager.barContentMode() != KeyboardManager.BAR_NONE -> Column(
             modifier = Modifier
                 .fillMaxWidth()
                 // 反馈轮10：与常规工具栏同为 barHeight，打字时不再加高（对齐 xime.az）
@@ -764,7 +833,9 @@ private fun ToolbarRow(
             // 轮19.11：悬浮窗生效时，前三码交给悬浮窗显示，工具栏只显示余下的
             val floatOn = KeyboardManager.floatEnabled() && state.preedit.isNotEmpty()
             val preeditForBar = if (floatOn) state.preedit.drop(3) else state.preedit
-            if (preeditForBar.isNotEmpty()) {
+            val barMode = KeyboardManager.barContentMode()
+            // 轮19.19：编码/输入码模式显示输入码行；「首选」模式不显示
+            if (preeditForBar.isNotEmpty() && barMode != KeyboardManager.BAR_FIRST) {
                 Text(
                     text = preeditForBar,
                     // 轮18.2：输入码小字随候选字号缩放；轮19.4：随工具栏可用高度收敛
@@ -775,13 +846,18 @@ private fun ToolbarRow(
                     modifier = Modifier.padding(start = 2.dp),
                 )
             }
+            val candList = when (barMode) {
+                KeyboardManager.BAR_CODE -> emptyList()                 // 只显示输入码
+                KeyboardManager.BAR_FIRST -> state.candidates.take(1)   // 只显示首选
+                else -> state.candidates                              // 输入码 + 全部候选
+            }
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
+                    .then(if (barMode == KeyboardManager.BAR_FIRST) Modifier else Modifier.horizontalScroll(rememberScrollState())),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                state.candidates.forEachIndexed { index, candidate ->
+                candList.forEachIndexed { index, candidate ->
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
@@ -1348,6 +1424,8 @@ private fun RowScope.toolbarToolItem(id: String, state: KeyboardUiState, onActio
                     "ascii" -> onAction(KeyAction.ToggleAscii)
                     "undo" -> onAction(KeyAction.Undo)
                     "redo" -> onAction(KeyAction.Redo)
+                    "onehand" -> onAction(KeyAction.CycleHandMode)
+                    "floatkbd" -> onAction(KeyAction.ToggleFloatKeyboard)
                     "hide" -> onAction(KeyAction.HideKeyboard)
                     "float", "ring" -> onAction(KeyAction.OpenSettings)
                 }
@@ -2434,12 +2512,18 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
         }
     }
 
-    // 长按符号：内置映射（用户规范）或 preset_keys 条目；K 键 = 常用括号气泡（26键.lua）
-    val longPressSymbols = remember(key.code, state.page) {
-        if (state.page != "symbols" && key.type == KeyType.CHARACTER) {
-            if (key.code == "k") BracketPairs
-            else LongPressSymbols[key.code.firstOrNull()] ?: emptyList()
-        } else emptyList()
+    // 长按符号（轮19.19）：优先级 = 编辑器自定义 key.popup > 内置映射；
+    // K 键内置 = 常用括号气泡；英文模式时优先取该键的 **ASCII** 符号（如 H：中文「——」/英文「_」）
+    val longPressSymbols = remember(key.code, state.page, key.popup, state.asciiMode) {
+        val base = when {
+            state.page == "symbols" || key.type != KeyType.CHARACTER -> emptyList()
+            key.popup.isNotEmpty() -> key.popup
+            key.code == "k" -> BracketPairs
+            else -> LongPressSymbols[key.code.firstOrNull()] ?: emptyList()
+        }
+        if (!state.asciiMode) base
+        else base.filter { sym -> sym.isNotEmpty() && sym.all { it.code in 32..126 } }
+            .ifEmpty { base }
     }
     /** 气泡/松手提交：内置命令走命令分发，{Left} 后缀走文本+光标移动，其他字面上屏。 */
     fun commitLongSymbol(s: String) {

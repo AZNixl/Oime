@@ -1036,3 +1036,26 @@ Unresolved reference）；要么 import 后 `x.roundToInt()`，要么直接 `x.t
 - 打字 / 组词依旧**不消亡**复制条（保持上一轮语义）
 - 坑（第二次踩）：`detectHorizontalDragGestures` 是 **PointerInputScope 的扩展函数**，
   不能用全限定名调用（和 19.10 的 `enableEdgeToEdge` 同一个坑）→ 必须 `import` 后直调
+
+# 轮19.19（0.9.32-oime vc42）：长按 popup 可编辑 / 工具栏内容四态 / 单手+悬浮模式 / 两处修复
+
+1. **长按 popup 现在可以在键盘编辑器里自定义**
+   - `Key` 新增 `popup: List<String>` 字段（非空时**覆盖**内置 LongPressSymbols 与 K 键括号表）
+   - 编辑器属性对话框新增「长按气泡（空格分隔多个符号）」输入框，支持内置命令（copy/cut/…）与
+     `{text}{Left}` 光标后缀语法
+2. **「嵌入式」设置：工具栏候选行显示内容**（设置 → 键盘）
+   - `首选` 只显示首选候选（大字）· `编码` 只显示输入码 · `输入码` 输入码+候选（默认）· `无` 不显示
+   - 实现在 composing 分支按 `barContentMode()` 取舍两行
+3. **单手模式 + 悬浮模式**
+   - 单手：`off / left / right` 三态循环，键盘缩到 **78%** 并贴左/右侧（外层 Box 全宽铺底色，两侧不留透明）
+   - 悬浮：键盘缩到 **86%**，顶部出现 **16dp 拖动条**（拖它整体移动），位置持久化（松手落盘、钳位）
+   - 定制工具栏新增两个工具：**单手**（新图标 `OimeIcons.oneHand`）/ **悬浮**
+   - 新增 `KeyboardUiState.layoutRev`：这类"只改 prefs"的动作靠它强制重组
+   - 设置 → 键盘 也加了对应入口（含关闭悬浮时重置位置）
+4. **修复：H 键长按在英文模式应输出 `_`**（原来固定出「——」）
+   - H 的内置表改 `("——", "_")`；长按气泡在有 asciiMode 时**优先取 ASCII 符号**（无则回落原列表）
+5. **修复：K 键括号上屏后光标不居中**
+   - 真因：19.12 加的 `setSelection` 是在 **`beginBatchEdit()` 内**调的，batch 内
+     `getExtractedText` 常返回**提交前的过期快照** → 位置算错
+   - 现在：光标移动移到 `endBatchEdit()` **之后**；加 **回读校验**（没真动就回落到 DPAD）；
+     并加埋点日志 `OimeCursor`（`move delta=… setSelection=ok/failed`）便于真机确认

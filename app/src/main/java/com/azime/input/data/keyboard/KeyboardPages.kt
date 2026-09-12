@@ -19,7 +19,8 @@ val LongPressSymbols: Map<Char, List<String>> = mapOf(
     'u' to listOf("7"), 'i' to listOf("8"), 'o' to listOf("9"),
     'p' to listOf("0"),
     'a' to listOf("select_all"), 's' to listOf("-"), 'd' to listOf("@"),
-    'f' to listOf("#"), 'g' to listOf("/"), 'h' to listOf("——"),
+    // 轮19.19：H 长按两个候选——中文模式出「——」，英文模式出「_」（见 KeyboardKey 的 ASCII 优选）
+    'f' to listOf("#"), 'g' to listOf("/"), 'h' to listOf("——", "_"),
     'j' to listOf("+"), 'k' to listOf("括号"), 'l' to listOf("="),
     'z' to listOf("`"), 'x' to listOf("cut"), 'c' to listOf("copy"),
     'v' to listOf("paste"), 'b' to listOf("\""), 'n' to listOf("'"),

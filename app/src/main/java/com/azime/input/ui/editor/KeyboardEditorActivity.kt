@@ -515,6 +515,8 @@ private fun KeyEditDialog(
     var swipeLeft by remember { mutableStateOf(key.swipeLeft ?: "") }
     var swipeRight by remember { mutableStateOf(key.swipeRight ?: "") }
     var hint by remember { mutableStateOf(key.hint ?: "") }
+    // 轮19.19：长按气泡的符号列表（空格分隔）——非空时覆盖内置映射
+    var popup by remember { mutableStateOf(key.popup.joinToString(" ")) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -579,6 +581,13 @@ private fun KeyEditDialog(
                     label = { Text("右上角提示（长按符号）") },
                     singleLine = true, modifier = Modifier.fillMaxWidth(),
                 )
+
+                OutlinedTextField(
+                    value = popup,
+                    onValueChange = { popup = it },
+                    label = { Text("长按气泡（空格分隔多个符号，如 （） [] 「」）") },
+                    modifier = Modifier.fillMaxWidth(),
+                )
                 Text(
                     "动作可用：select_all / cut / copy / paste / toggle_ascii / newline / caps_lock / delete_all / undo / page:symbols / page:numpad / page:emoji / preset_keys 条目名 / 任意文本",
                     fontSize = 11.sp,
@@ -603,6 +612,7 @@ private fun KeyEditDialog(
                         swipeLeft = swipeLeft.ifBlank { null },
                         swipeRight = swipeRight.ifBlank { null },
                         hint = hint.ifBlank { null },
+                        popup = popup.split(' ').map { it.trim() }.filter { it.isNotEmpty() },
                     )
                 )
             }) { Text("保存") }
