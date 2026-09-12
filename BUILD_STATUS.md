@@ -92,4 +92,4 @@
 | 0.9.27-oime | 37 | ○ 菜单去掉方案三项 / 九宫格首末列收窄中间三列加宽 / 符号网格暗色反色 + 四行排布 |
 | 0.9.26-oime | 36 | 八项修正（行 3 边缘对齐 / 呼吸正弦 3.6s / ○ 菜单瘦身 / 方案改底部悬浮栏 / {Left} 用 setSelection / 设置配色 / 语音长条波纹 / 提示按方向）+ **横屏分体键盘（L4，B 归右）** |
 
-详细逐轮记录见 [DEVLOG.md](DEVLOG.md)。
+详细逐轮记录见 [DEVLOG.md](DEVLOG.md)，阶段总结见 [PHASE_REPORT.md](PHASE_REPORT.md)。

@@ -156,4 +156,8 @@ BlackBerry 的经典交互逻辑几乎都是从这颗小球展开的。
 ## 更新说明
 
 这份 README 会**随功能改造同步更新**——新功能、新的借鉴来源、以及 ○ 圆环的新玩法
-都会在落地后补进来。逐轮开发记录见 [DEVLOG.md](DEVLOG.md)，当前状态见 [BUILD_STATUS.md](BUILD_STATUS.md)。
+都会在落地后补进来。
+
+- 逐轮开发记录：[DEVLOG.md](DEVLOG.md)
+- 当前状态：[BUILD_STATUS.md](BUILD_STATUS.md)
+- 阶段总结（耗电优化 / 交互定稿）：[PHASE_REPORT.md](PHASE_REPORT.md)
