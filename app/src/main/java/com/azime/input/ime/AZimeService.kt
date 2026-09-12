@@ -213,9 +213,14 @@ class AZimeService : InputMethodService() {
         if (!KeyboardManager.floatKeyboard()) return
         val top = KeyboardManager.floatKbdTop
         val bottom = KeyboardManager.floatKbdBottom
+        val hm = resources.displayMetrics
+        // 轮19.22：**关键**——contentTopInsets 报满屏高度，App 不会被键盘顶起/压扁，
+        // 而是整屏铺开、键盘浮在它之上（19.20/19.21 只设了 touchableRegion，App 仍被让位）
+        outInsets.contentTopInsets = hm.heightPixels
+        outInsets.visibleTopInsets = hm.heightPixels
         if (top < 0 || bottom <= top) return
         outInsets.touchableInsets = android.inputmethodservice.InputMethodService.Insets.TOUCHABLE_INSETS_REGION
-        outInsets.touchableRegion.set(0, top, resources.displayMetrics.widthPixels, bottom)
+        outInsets.touchableRegion.set(0, top, hm.widthPixels, bottom)
     }
 
     override fun onCreateInputView(): View {
@@ -481,10 +486,10 @@ class AZimeService : InputMethodService() {
             val key = text.take(80)
             if (key == lastCommittedClip) return
             if (key == dismissedClip) {
-                android.util.Log.d("OimeClip", "skip re-show (dismissed)")
+                com.azime.input.core.diag.Diag.log("Clip", "skip re-show (dismissed)")
                 return
             }
-            android.util.Log.d("OimeClip", "show clip strip: ${key.take(20)}")
+            com.azime.input.core.diag.Diag.log("Clip", "show strip: ${key.take(20)}")
             uiState.update { it.copy(clipText = key, clipAtMs = System.currentTimeMillis()) }
             recordClip(text)
         }
@@ -540,7 +545,7 @@ class AZimeService : InputMethodService() {
             val chk = ic.getExtractedText(req, 0) ?: return@runCatching false
             (chk.startOffset + chk.selectionEnd) == target
         }.getOrDefault(false)
-        android.util.Log.d("OimeCursor", "move delta=$delta setSelection=${if (moved) "ok" else "failed"}")
+        com.azime.input.core.diag.Diag.log("Cursor", "move delta=$delta setSelection=${if (moved) "ok" else "failed"}")
         if (moved) return
         val key = if (delta < 0) android.view.KeyEvent.KEYCODE_DPAD_LEFT
         else android.view.KeyEvent.KEYCODE_DPAD_RIGHT
@@ -774,7 +779,7 @@ class AZimeService : InputMethodService() {
                 // 轮19.18：复制条左右划动 → 只消亡不上屏（并记住，避免被剪贴板回调复活）
                 KeyAction.DismissClipStrip -> {
                     dismissedClip = uiState.value.clipText
-                    android.util.Log.d("OimeClip", "dismiss by swipe")
+                    com.azime.input.core.diag.Diag.log("Clip", "dismiss by swipe")
                     uiState.update { it.copy(clipText = "", clipAtMs = 0L) }
                 }
                 is KeyAction.CommitClipboard -> {
@@ -1151,7 +1156,7 @@ class AZimeService : InputMethodService() {
                 preedit = result.preeditText,
                 asciiMode = result.isAsciiMode.also { now ->
                     // 轮19.21：ascii 状态变化打点（排查「英文模式下 H 长按不出 _」）
-                    if (now != it.asciiMode) android.util.Log.d("OimeAscii", "ascii=$now")
+                    if (now != it.asciiMode) com.azime.input.core.diag.Diag.log("Ascii", "ascii=$now")
                 },
                 hasNextPage = result.hasNextPage,
                 hasPrevPage = result.hasPrevPage,

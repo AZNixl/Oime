@@ -1106,3 +1106,21 @@ Unresolved reference）；要么 import 后 `x.roundToInt()`，要么直接 `x.t
      ② UI 用 `BoxWithConstraints` 拿窗口高度，拖动时**把键盘钳制在窗口内**（任何情况都完整可见）
 4. **设置 → 关于 → 新增「恢复备份」**：文件选择器选 `Oime_backup_*.json` →
    `restoreSettings()` 按类型写回全部偏好（JSON 数字按是否整数还原 int/float），提示恢复项数
+
+# 轮19.22（0.9.35-oime vc45）：文件埋点（logcat 被系统吞了）+ 候选行居中 + 悬浮真正浮起
+
+## 0. 重要发现：本机 logcat **只放行系统日志**，第三方 App 的 Log.d 一条都读不到
+- 实测：App 进程在跑（pid/版本都对），但 `logcat -d | grep OimeXxx` 恒为 0 条
+- 结论：之前三轮"零埋点"不是代码没跑，而是**日志被 OEM 吞了** —— 诊断手段本身失效
+- 修复：新增 `com.azime.input.core.diag.Diag`——**同时写 `/sdcard/Download/oime_diag.log`**
+  （app 有 MANAGE_EXTERNAL_STORAGE；>128KB 自动清空），PC 端用 adb 直接读文件
+- 所有埋点（Sym / Cursor / Ascii / Clip）已改走 Diag
+
+## 1. 嵌入编码时候选行居中
+- 只显示候选行（编码已内嵌）时，`verticalArrangement = Arrangement.Center` → 候选在工具栏里上下居中
+
+## 2. 悬浮键盘真正浮在 App 之上（关键补漏）
+- 19.20/19.21 只设了 `touchableRegion`，**没有改 `contentTopInsets`** → App 仍被键盘"让位"（被顶起/压扁），
+  看起来不像悬浮
+- 现在 `onComputeInsets` 里把 `contentTopInsets` / `visibleTopInsets` 报成**满屏高度** ⇒
+  App 整屏铺开、键盘浮在其之上；触摸区仍限定为键盘矩形（其余穿透给 App）

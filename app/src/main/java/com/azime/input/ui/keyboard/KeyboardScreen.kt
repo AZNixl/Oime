@@ -858,6 +858,11 @@ private fun ToolbarRow(
                 .height(barHeight)
                 .background(c.bg)
                 .padding(horizontal = 6.dp, vertical = 1.dp),
+            // 轮19.22：只显示候选行（编码已内嵌到文本框）时，候选在工具栏里**上下居中**
+            verticalArrangement = if (KeyboardManager.inlineMode().let {
+                    it == KeyboardManager.INLINE_CODE || it == KeyboardManager.INLINE_INPUT
+                }
+            ) Arrangement.Center else Arrangement.Top,
         ) {
             // 轮19.4：工具栏高度固定不动，字号按可用高度收敛——原来字号调到 24~28sp 时
             // 「输入码行 + 候选行」总高超过 barHeight，文字伸出工具栏被窗口裁掉。
@@ -2568,7 +2573,7 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
     /** 气泡/松手提交：内置命令走命令分发，{Left} 后缀走文本+光标移动，其他字面上屏。 */
     fun commitLongSymbol(s: String) {
         // 轮19.21：埋点放到**提交点**（原来放在 remember{} 里，长按不会重算 → 日志永远不出现）
-        android.util.Log.d("OimeSym", "commit sym=$s ascii=${state.asciiMode}")
+        com.azime.input.core.diag.Diag.log("Sym", "commit sym=$s ascii=${state.asciiMode}")
         when {
             s == "select_all" || s == "cut" || s == "copy" || s == "paste" ->
                 onAction(KeyAction.Resolved(s))
@@ -2622,7 +2627,7 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
                 when {
                     longPressSymbols.isNotEmpty() -> {
                         // 轮19.21：长按即打点——记录本次气泡的真实列表与英文状态
-                        android.util.Log.d("OimeSym", "show code=${key.code} ascii=${state.asciiMode} list=$longPressSymbols")
+                        com.azime.input.core.diag.Diag.log("Sym", "show code=${key.code} ascii=${state.asciiMode} list=$longPressSymbols")
                         longFired = true
                         longSelIdx = 0
                         showBubble = true
