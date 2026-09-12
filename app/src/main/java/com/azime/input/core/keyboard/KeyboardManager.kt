@@ -110,16 +110,11 @@ object KeyboardManager {
 
     /** 按页面名取布局；emoji 页由 UI 层专门渲染，返回 null。 */
     /**
-     * 横屏分体主键盘（轮19.13，方案 L4）。横屏时 main 页用它，竖屏不受影响。
-     */
-    fun landscapeMainLayout(): KeyboardLayout = com.azime.input.data.keyboard.KeyboardPages.qwertyLand
-
-    /**
-     * 横屏键高：横屏可视高度只有竖屏的一半左右，按竖屏键高 72% 折算并钳位 28~40dp，
-     * 保证「工具栏 + 4 行」大约只占横屏高度的 55%。
+     * 横屏键高（轮19.17 定稿）：**废弃横屏分体布局**（qwertyLand 不再使用），
+     * 横屏仍用竖屏布局，只把键高限低——竖屏键高 × 0.75（降低 25%），钳位 26~48dp。
      */
     fun landscapeKeyHeightDp(): Int =
-        (keyHeightDp() * 0.72f).toInt().coerceIn(28, 40)
+        (keyHeightDp() * 0.75f).toInt().coerceIn(26, 48)
 
     fun layoutFor(page: String): KeyboardLayout? = when (page) {
         "main" -> mainLayout()
@@ -205,6 +200,17 @@ object KeyboardManager {
         val cur = ringApps().toMutableList()
         if (slot in cur.indices) cur[slot] = pkg
         setRingApps(cur)
+    }
+
+    // ── 复制条（轮19.17：可关闭——隐私 + 少一个剪贴板回调唤醒源） ──
+
+    private const val PREF_CLIP_STRIP = "clip_strip_enabled"
+
+    /** 复制条总开关：关闭后不注册剪贴板监听、不读剪贴板（默认开）。 */
+    fun clipStripEnabled(): Boolean = prefs.getBoolean(PREF_CLIP_STRIP, true)
+
+    fun setClipStripEnabled(v: Boolean) {
+        synchronized(lock) { prefs.edit().putBoolean(PREF_CLIP_STRIP, v).apply() }
     }
 
     // ── 工具栏高度（轮19.8：用户可微调） ─────────────────────
@@ -444,6 +450,7 @@ object KeyboardManager {
     // ── 工具栏自定义（○ 菜单键之外的可显示工具） ────────────
 
     /** 全部可选工具 id → 显示名（顺序即勾选顺序）。 */
+    // 轮19.17：按用户要求精简到 11 项（其余功能仍在 ○ 菜单 / 设置里）
     val availableToolbarTools: List<Pair<String, String>> = listOf(
         "clipboard" to "剪贴板",
         "schema" to "方案",
@@ -451,18 +458,11 @@ object KeyboardManager {
         "emoji" to "emoji",
         "symbols" to "符号",
         "settings" to "设置",
-        // 轮19.11：把输入法里已有的功能都开放给工具栏（用户自选）
         "voice" to "语音",
-        "candidates" to "候选",
-        "keyboard" to "键盘编辑",
-        "deploy" to "部署",
-        "theme" to "主题",
+        "hide" to "收起",
         "ascii" to "中英",
         "undo" to "撤回",
-        "deleteall" to "全清",
-        "hide" to "收起",
-        "float" to "悬浮窗",
-        "ring" to "O 圆环",
+        "redo" to "重做",
     )
 
     /** 工具栏两侧空间有限：最多可选 6 个（每侧 3 个）。 */

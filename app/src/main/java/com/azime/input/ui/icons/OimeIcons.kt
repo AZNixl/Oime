@@ -322,6 +322,26 @@ object OimeIcons {
         )
     }
 
+    /** 中英切换（"文 A" 造型：左侧笔画 + 右侧 A）。 */
+    val lang by lazy {
+        Icon(
+            "oime_lang",
+            // 左侧「文」：点 + 横 + 撇捺
+            P("M3.4 7.2h5.2M6 4.4v2.8M4.2 13.4c1.6-1.2 2.8-2.8 3.4-4.6M9.4 13.4c-1.2-1.2-2.2-2.8-2.8-4.4", w = 1.9f),
+            // 右侧「A」
+            P("M13.2 13.6 16.6 5.2 20 13.6M14.4 11.2h4.4", w = 2.0f),
+        )
+    }
+
+    /** 重做（顺时针箭头）。 */
+    val redo by lazy {
+        Icon(
+            "oime_redo",
+            P("M19.6 12a7.6 7.6 0 1 1-2.3-5.4"),
+            P("M19.8 4.2v3.8h-3.8"),
+        )
+    }
+
     /** 撤回（逆时针箭头）。 */
     val undo by lazy {
         Icon(
@@ -373,6 +393,8 @@ object OimeIcons {
         "ring", "oring" -> ring
         "candidates" -> candidates
         "undo" -> undo
+        "redo" -> redo
+        "ascii", "lang" -> lang
         "trash", "deleteall" -> trash
         "voice" -> mic
         "float" -> pip

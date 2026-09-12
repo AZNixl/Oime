@@ -54,6 +54,8 @@ class AZimeService : InputMethodService() {
      */
     private class UndoOp(val text: String, val isDelete: Boolean)
     private val undoStack = ArrayDeque<UndoOp>()
+    /** 轮19.17：redo 栈（撤回过的操作可重做；任何新操作都会清空它）。 */
+    private val redoStack = ArrayDeque<UndoOp>()
 
     /** 退格左滑选择态（trime2 退格脚本锚点模型）：锚点与选区活动端（UTF-16 坐标）。 */
     private var selectAnchor = -1
@@ -115,7 +117,39 @@ class AZimeService : InputMethodService() {
                 phraseItems = phraseItems.toList(),
             )
         }
-        clipboardManager.addPrimaryClipChangedListener(clipboardListener)
+        if (KeyboardManager.clipStripEnabled()) {
+            clipboardManager.addPrimaryClipChangedListener(clipboardListener)
+        }
+        // 轮19.17（省电 P0）：**引擎懒初始化**——onCreate 不再加载 librime/建会话。
+        // 依据：手机侧报告显示系统在熄屏期会反复重绑 IME（launches: 4），
+        // 每次重绑都在这里做「加载词典 + 建会话」的重活，形成熄屏 CPU（4.55 mAh）。
+        // 现在推迟到第一次 onStartInputView（键盘真要显示时）；屏幕解锁时**预热**补回首弹延迟。
+        registerUnlockPrewarm()
+    }
+
+    /** 屏幕解锁后预热引擎（把懒初始化的首弹延迟补回来）。 */
+    private fun registerUnlockPrewarm() {
+        runCatching {
+            val filter = android.content.IntentFilter(android.content.Intent.ACTION_USER_PRESENT)
+            androidx.core.content.ContextCompat.registerReceiver(
+                this,
+                object : android.content.BroadcastReceiver() {
+                    override fun onReceive(c: android.content.Context?, i: android.content.Intent?) {
+                        ensureEngineAsync()
+                    }
+                },
+                filter,
+                androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED,
+            )
+        }
+    }
+
+    @Volatile private var engineInitStarted = false
+
+    /** 懒初始化入口（可重复调用，内部只跑一次）。 */
+    private fun ensureEngineAsync() {
+        if (engineInitStarted) return
+        engineInitStarted = true
         scope.launch {
             val ok = RimeManager.ensureReady(applicationContext)
             val sessionOk = ok && RimeManager.ensureSession()
@@ -128,12 +162,8 @@ class AZimeService : InputMethodService() {
                 )
             }
             refreshState()
-        }
-        // 首次部署可能超过会话等待窗口（大词典编译），由 onKeyAction 按键重试兜底。
-        // 轮19.7：改为**有上限的退避重试**——原来是无上限 3s 轮询，引擎始终起不来时
-        // 会一直每 3 秒唤醒一次（持续耗电）。现在最多 5×3s + 15×15s ≈ 4 分钟后放弃，
-        // 之后靠按键/弹键盘时的 ensureSessionNow 兜底。
-        scope.launch {
+            // 首次部署可能超过会话等待窗口（大词典编译）：有上限的退避重试
+            //（轮19.7：无上限 3s 轮询会在引擎起不来时永久唤醒，已改上限 20 次 ≈ 4 分钟）
             var attempt = 0
             while (!RimeManager.isSessionReady() && attempt < 20) {
                 kotlinx.coroutines.delay(if (attempt < 5) 3000L else 15_000L)
@@ -196,6 +226,8 @@ class AZimeService : InputMethodService() {
             setInputView(onCreateInputView())
         }
         lastSizeSignature = sig
+        // 轮19.17：真正的引擎初始化推迟到这里（键盘第一次要显示时）
+        ensureEngineAsync()
         // 轮19.11：悬浮窗跟随光标——请求系统回传光标位置（Xime/trime2 同款做法）
         runCatching {
             getCurrentInputConnection()?.requestCursorUpdates(
@@ -380,6 +412,8 @@ class AZimeService : InputMethodService() {
     }
 
     private fun readClipboard() {
+        // 轮19.17：复制条关闭时完全不读剪贴板（隐私 + 少一个回调唤醒源）
+        if (!KeyboardManager.clipStripEnabled()) return
         val clip = runCatching { clipboardManager.primaryClip }.getOrNull() ?: return
         if (clip.itemCount == 0) return
         val item = clip.getItemAt(0)
@@ -458,18 +492,17 @@ class AZimeService : InputMethodService() {
         scope.launch {
             // 轮19.4：任意按键让工具栏「复制条」消亡（原来只有上屏才消亡，条会一直占着工具栏）。
             // 仅对真正的按键动作生效——剪贴板面板自身的操作（上屏/收藏/删除/切页）不清除。
-            // 轮19.15：白名单改**黑名单**——只有「剪贴板面板自身的操作」不清除复制条，
-            // 其余任何按键/手势动作一律消亡（白名单漏掉某个动作就会出现「打字也不消失」）。
-            val keepClip = when (action) {
-                KeyAction.ToggleClipboardPanel,
-                is KeyAction.CommitClipboard, is KeyAction.CommitClipText,
-                is KeyAction.SetClipTab, is KeyAction.ClipFav, is KeyAction.ClipDelete,
-                is KeyAction.ClipTop, is KeyAction.ClipClear, is KeyAction.ClipSplit -> true
-                else -> false
-            }
-            if (!keepClip && uiState.value.clipText.isNotBlank()) {
+            // 轮19.17（按用户要求定稿）：复制条**只有两条消亡途径**——
+            //   ① 点击复制条上屏（CommitClipboard，在别处处理）
+            //   ② **按退格键**，且**当前没有输入码/候选**（组词中按退格是删编码，不该消亡）
+            // 撤销 19.15/19.16 的「任意按键消亡 / 组词消亡」——用户明确要求打字不消亡。
+            if (action is KeyAction.Backspace &&
+                uiState.value.clipText.isNotBlank() &&
+                uiState.value.preedit.isEmpty() &&
+                uiState.value.candidates.isEmpty()
+            ) {
                 dismissedClip = uiState.value.clipText
-                android.util.Log.d("OimeClip", "dismiss by key: ${action::class.simpleName}")
+                android.util.Log.d("OimeClip", "dismiss by backspace (no composing)")
                 uiState.update { it.copy(clipText = "", clipAtMs = 0L) }
             }
             when (action) {
@@ -586,6 +619,7 @@ class AZimeService : InputMethodService() {
                 }
                 KeyAction.DeleteAll -> deleteAllText()
                 KeyAction.Undo -> undo()
+                KeyAction.Redo -> redo()
                 KeyAction.BackspaceSelectStart -> startSelectBack()
                 is KeyAction.BackspaceSelectTo -> moveSelectBack(action.charsFromAnchor)
                 KeyAction.DeleteSelection -> deleteSelection()
@@ -810,6 +844,7 @@ class AZimeService : InputMethodService() {
         if (text.isEmpty()) return
         undoStack.addLast(UndoOp(text, isDelete = false))
         while (undoStack.size > 50) undoStack.removeFirst()
+        redoStack.clear() // 新操作使 redo 失效（标准撤销语义）
     }
 
     /** 记录一次「删除」操作（撤回时恢复该文本）。 */
@@ -817,6 +852,7 @@ class AZimeService : InputMethodService() {
         if (text.isEmpty()) return
         undoStack.addLast(UndoOp(text, isDelete = true))
         while (undoStack.size > 50) undoStack.removeFirst()
+        redoStack.clear()
     }
 
     /**
@@ -827,10 +863,28 @@ class AZimeService : InputMethodService() {
         val op = undoStack.removeLastOrNull() ?: return
         val ic = currentInputConnection ?: return
         if (op.isDelete) {
+            ic.commitText(op.text, 1)      // 原操作是删除 → 撤销 = 恢复
+            redoStack.addLast(UndoOp(op.text, isDelete = false)) // 重做 = 再删掉
+        } else {
+            ic.deleteSurroundingText(op.text.length, 0)          // 原操作是插入 → 撤销 = 删除
+            redoStack.addLast(UndoOp(op.text, isDelete = true))  // 重做 = 再插入
+        }
+        while (redoStack.size > 50) redoStack.removeFirst()
+        refreshState()
+    }
+
+    /** 轮19.17：重做（与 undo 对称，反向压回 undo 栈）。 */
+    private suspend fun redo() {
+        val op = redoStack.removeLastOrNull() ?: return
+        val ic = currentInputConnection ?: return
+        if (op.isDelete) {
             ic.commitText(op.text, 1)
+            undoStack.addLast(UndoOp(op.text, isDelete = false))
         } else {
             ic.deleteSurroundingText(op.text.length, 0)
+            undoStack.addLast(UndoOp(op.text, isDelete = true))
         }
+        while (undoStack.size > 50) undoStack.removeFirst()
         refreshState()
     }
 
@@ -995,7 +1049,6 @@ class AZimeService : InputMethodService() {
     }
 
     private fun updateFromResult(result: com.kingzcheung.xime.rime.RimeProcessResult) {
-        val composingNow = result.preeditText.isNotEmpty() || result.candidates.isNotEmpty()
         uiState.update {
             it.copy(
                 candidates = result.candidates.map { c -> c.toCandidate() },
@@ -1007,14 +1060,7 @@ class AZimeService : InputMethodService() {
                 showCandidatePanel = it.showCandidatePanel && result.candidates.isNotEmpty(),
                 // 轮19.15：**打字即消亡**复制条（兜底，覆盖所有按键路径）。
                 // 反馈轮12 曾特意做成「组词不清空」，但用户明确要求「直接打字也要消失」。
-                clipText = if (composingNow) {
-                    if (it.clipText.isNotBlank()) {
-                        dismissedClip = it.clipText
-                        android.util.Log.d("OimeClip", "dismiss by composing")
-                    }
-                    ""
-                } else it.clipText,
-                clipAtMs = if (composingNow) 0L else it.clipAtMs,
+                // 轮19.17：组词**不再**消亡复制条（只有「点击上屏」与「无候选时按退格」两条途径）
             )
         }
     }

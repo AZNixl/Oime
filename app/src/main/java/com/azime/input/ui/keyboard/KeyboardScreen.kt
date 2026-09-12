@@ -147,6 +147,8 @@ sealed interface KeyAction {
     data class Resolved(val value: String) : KeyAction
     data object DeleteAll : KeyAction
     data object Undo : KeyAction
+    /** 轮19.17：重做（与撤回对称的 redo 栈）。 */
+    data object Redo : KeyAction
     /** 退格左滑（trime2 退格脚本同款锚点模型）：
      *  Start 记锚点（composing 中不进入）；To 按位移换算选区活动端；松手 DeleteSelection。 */
     data object BackspaceSelectStart : KeyAction
@@ -369,11 +371,8 @@ fun AzimeKeyboardScreen(
                 // 九宫格：5 列专用布局（左列滑动预览符号键 + 返回，中间三列数字，右列功能键）
                 NumpadPane(state = state, onAction = onAction, keyHeight = keyH)
             } else {
-                val layout = if (isLandscape && state.page == "main") {
-                    KeyboardManager.landscapeMainLayout()
-                } else {
-                    KeyboardManager.layoutFor(state.page) ?: KeyboardManager.mainLayout()
-                }
+                // 轮19.17：横屏不再用分体布局，只用同一套布局 + 横屏键高（-25%）
+                val layout = KeyboardManager.layoutFor(state.page) ?: KeyboardManager.mainLayout()
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -939,7 +938,7 @@ private fun ToolbarRow(
                             oLongFired = true
                             // 轮15：长按 ○ = 语音输入（定制工具栏入口保留在 ○ 菜单）
                             onAction(KeyAction.ToggleVoiceInput)
-                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            com.azime.input.core.haptic.HapticsManager.haptic(com.azime.input.core.haptic.HapticsManager.Type.LONG_PRESS)
                         }
                     }
                 }
@@ -988,7 +987,7 @@ private fun ToolbarRow(
                                         oLongFired = true
                                         showAppArc = true
                                         arcSel = -1
-                                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        com.azime.input.core.haptic.HapticsManager.haptic(com.azime.input.core.haptic.HapticsManager.Type.LONG_PRESS)
                                     }
                                     if (gestureDone) {
                                         // 已处理完（如下滑关栏），只等抬起
@@ -1001,13 +1000,13 @@ private fun ToolbarRow(
                                             gestureDone = true   // 不要再被后面的「下滑收键盘」分支吃掉
                                             arcSel = -1
                                             showAppArc = false
-                                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            com.azime.input.core.haptic.HapticsManager.haptic(com.azime.input.core.haptic.HapticsManager.Type.LONG_PRESS)
                                         } else if (abs(dx) > with(this@pointerInput) { 24.dp.toPx() }) {
                                             val idx = ((dx - arcFirstPx) / arcStepPx)
                                                 .roundToInt().coerceIn(0, 4)
                                             if (idx != arcSel) {
                                                 arcSel = idx
-                                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                com.azime.input.core.haptic.HapticsManager.haptic(com.azime.input.core.haptic.HapticsManager.Type.STEP)
                                             }
                                         }
                                         ringKnob = Offset.Zero
@@ -1018,13 +1017,13 @@ private fun ToolbarRow(
                                         if (!swipedDown) {
                                             swipedDown = true
                                             oLongFired = true
-                                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            com.azime.input.core.haptic.HapticsManager.haptic(com.azime.input.core.haptic.HapticsManager.Type.LONG_PRESS)
                                         }
                                     } else {
                                         if (abs(dx) > stepPx) {
                                             onAction(KeyAction.Joystick((dx / stepPx).roundToInt()))
                                             oLongFired = true // 拖动即移光标，抑制长按定制
-                                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                            com.azime.input.core.haptic.HapticsManager.haptic(com.azime.input.core.haptic.HapticsManager.Type.STEP)
                                             anchor = ch.position
                                         }
                                         // 圆环内点跟随手指，限幅：移动距离不超过圆环中心点（环半径内）
@@ -1328,7 +1327,7 @@ private fun RowScope.toolbarToolItem(id: String, state: KeyboardUiState, onActio
                     "theme" -> onAction(KeyAction.ToggleThemeMode)
                     "ascii" -> onAction(KeyAction.ToggleAscii)
                     "undo" -> onAction(KeyAction.Undo)
-                    "deleteall" -> onAction(KeyAction.DeleteAll)
+                    "redo" -> onAction(KeyAction.Redo)
                     "hide" -> onAction(KeyAction.HideKeyboard)
                     "float", "ring" -> onAction(KeyAction.OpenSettings)
                 }
@@ -2285,7 +2284,7 @@ private fun NumpadSliderKey(onAction: (KeyAction) -> Unit, modifier: Modifier) {
                         val target = (startIdx + steps).coerceIn(0, symbols.size - 1)
                         if (target != selIdx) {
                             selIdx = target
-                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            com.azime.input.core.haptic.HapticsManager.haptic(com.azime.input.core.haptic.HapticsManager.Type.STEP)
                         }
                     }
                     // 滑动选择-松手上屏（轮7回退轮6的「点击上屏」交互）；未滑动 = 直接上屏当前符号
@@ -2577,7 +2576,7 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
                                     .coerceIn(0, longPressSymbols.size - 1)
                                 if (idx != longSelIdx) {
                                     longSelIdx = idx
-                                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    com.azime.input.core.haptic.HapticsManager.haptic(com.azime.input.core.haptic.HapticsManager.Type.STEP)
                                 }
                             }
                         } else {
@@ -2590,7 +2589,7 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
                                     longFired = true
                                     swipePreview = "选择"
                                     onAction(KeyAction.BackspaceSelectStart)
-                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    com.azime.input.core.haptic.HapticsManager.haptic(com.azime.input.core.haptic.HapticsManager.Type.LONG_PRESS)
                                 }
                             } else {
                                 val dist = abs(dx) + abs(dy)
@@ -2618,7 +2617,7 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
                                             Dir.RIGHT -> KeyboardManager.hintRight()
                                         }
                                         if (hintOn) swipePreview = actionPreview(action)
-                                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        com.azime.input.core.haptic.HapticsManager.haptic(com.azime.input.core.haptic.HapticsManager.Type.LONG_PRESS)
                                     }
                                 }
                             }
@@ -2629,7 +2628,7 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
                         if (moved != lastSelectStep) {
                             onAction(KeyAction.BackspaceSelectTo(moved))
                             lastSelectStep = moved
-                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            com.azime.input.core.haptic.HapticsManager.haptic(com.azime.input.core.haptic.HapticsManager.Type.STEP)
                         }
                     }
                 }

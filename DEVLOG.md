@@ -1003,3 +1003,25 @@ Unresolved reference）；要么 import 后 `x.roundToInt()`，要么直接 `x.t
    （浅色 #E3E5E8 / 深色 #3A3A3F，与键盘功能键同色系）
 4. **工具栏「方案」悬浮栏**：背景由 `barBg @96%` 改成 **`funcKeyBg @80%`**（灰色半透明，
    与剪贴板/菜单悬浮栏同一 chrome）
+
+# 轮19.17（0.9.30-oime vc40）：耗电三项优化 + 用户三点改动
+
+## 一、按手机侧报告做的耗电优化（报告结论见 `oime-优化结论-PC侧核实.md`）
+
+| # | 优化 | 具体改动 |
+|---|---|---|
+| P0-1 | **振动统一入口 + 节流** | `HapticsManager` 新增 `haptic(Type)` 统一入口与 **70ms 节流**；`KeyboardScreen` 里 **11 处** `performHapticFeedback`（6×LongPress / 5×TextHandleMove）全部改走它 —— 顺带修掉一个 bug：**以前关了「打字振动」手势照样振** |
+| P0-2 | **引擎懒初始化 + 解锁预热** | `onCreate` 不再加载 librime/建会话（熄屏期系统重绑 IME 时会做「加载词典+建会话」重活 → 熄屏 CPU 4.55 mAh）；推迟到第一次 `onStartInputView`，并注册 `ACTION_USER_PRESENT` 广播在**解锁时预热**补回首弹延迟 |
+| P1 | **复制条开关** | 新增 `KeyboardManager.clipStripEnabled()`（默认开）；关闭时不注册剪贴板监听、`readClipboard()` 直接返回；设置 → 键盘 加开关 |
+
+未做：AudioRecord 实例复用（收益有限、有麦克风状态风险）、targetSdk 36（见结论文档：四个被限制机制我们都没用，收益≈0）。
+
+## 二、用户三点改动
+
+1. **横屏分体键盘废弃**：删掉 `landscapeMainLayout()` 的使用（qwertyLand 不再引用），
+   横屏沿用竖屏布局，**只把键高限低 25%**（`landscapeKeyHeightDp = keyHeightDp × 0.75`，钳位 26~48dp）
+2. **复制条消亡规则定稿**：只有两条途径 —— ①**点击复制条上屏** ②**按退格键**（且**当前无输入码/候选**；
+   组词中按退格是删编码，不消亡）。撤销 19.15/19.16 的「任意按键消亡 / 组词消亡」
+3. **工具栏白名单精简到 11 项**：剪贴板 / 方案 / 数字 / emoji / 符号 / 设置 / 语音 / 收起 / 中英 / **撤回** / **重做**
+   - 「中英」原来 fallback 到「方案」图标（重合）→ 新增专属 `OimeIcons.lang`（"文 A" 造型）
+   - **新增 redo**：`KeyAction.Redo` + `redoStack`（撤回时把反向操作压入 redo 栈；任何新操作清空 redo 栈）

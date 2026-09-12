@@ -1196,6 +1196,29 @@ private fun KeyHeightSliders() {
             toolH = it
             com.azime.input.core.keyboard.KeyboardManager.setToolbarHeightDp(it.toInt())
         }
+        // 轮19.17：复制条开关（关闭后不注册剪贴板监听、不读剪贴板）
+        var clipStrip by remember {
+            mutableStateOf(com.azime.input.core.keyboard.KeyboardManager.clipStripEnabled())
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("复制条（复制内容显示到工具栏）", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            Switch(
+                checked = clipStrip,
+                onCheckedChange = {
+                    clipStrip = it
+                    com.azime.input.core.keyboard.KeyboardManager.setClipStripEnabled(it)
+                },
+            )
+        }
+        Text(
+            "关闭后不再监听剪贴板、不读取剪贴板内容（隐私更干净，也少一个后台回调）",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(6.dp))
         Text(
             "工具栏 = 候选/输入码区 + ○ 菜单键与工具图标所在的那一条；改后自动重建键盘生效",
             style = MaterialTheme.typography.bodySmall,
