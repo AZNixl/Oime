@@ -270,6 +270,8 @@ class AZimeService : InputMethodService() {
         currentEditorInfo = info
         // 主题深浅色可能已切换：每次弹键刷新导航条增高区颜色
         applyWindowBarColors()
+        // 轮19.30：按输入框类型自动切页 / 切中英（登录账号常见场景）
+        applyAutoPageForEditor(info)
         selectAnchor = -1
         selectCursor = -1
         joystickAnchor = -1
@@ -477,6 +479,49 @@ class AZimeService : InputMethodService() {
             nightMask == android.content.res.Configuration.UI_MODE_NIGHT_YES,
         )
         return if (dark) 0xFF1B1D1F.toInt() else 0xFFE9EBEE.toInt()
+    }
+
+    /**
+     * 轮19.30：按 `EditorInfo.inputType` 自动切键盘页 ——
+     * - 电话 / 纯数字 / 小数 → **九宫格数字页**（登录输账号、验证码最常见）
+     * - 密码 / 邮箱 / 网址（且引擎在中文态）→ **切英文（ascii）+ 主键盘**
+     * - 其它（普通文本）→ 回主键盘
+     * 受设置「输入框类型自动切页」总开关控制。
+     */
+    private fun applyAutoPageForEditor(info: android.view.inputmethod.EditorInfo?) {
+        if (info == null) return
+        if (!KeyboardManager.autoPageByInput()) return
+        val cls = info.inputType and android.text.InputType.TYPE_MASK_CLASS
+        val variation = info.inputType and android.text.InputType.TYPE_MASK_VARIATION
+        val wantAscii = when {
+            cls == android.text.InputType.TYPE_CLASS_TEXT -> {
+                variation == android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD ||
+                    variation == android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD ||
+                    variation == android.text.InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD ||
+                    variation == android.text.InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS ||
+                    variation == android.text.InputType.TYPE_TEXT_VARIATION_WEB_EMAIL_ADDRESS ||
+                    variation == android.text.InputType.TYPE_TEXT_VARIATION_URI
+            }
+            else -> false
+        }
+        val wantNumpad = cls == android.text.InputType.TYPE_CLASS_NUMBER ||
+            cls == android.text.InputType.TYPE_CLASS_PHONE ||
+            cls == android.text.InputType.TYPE_CLASS_DATETIME
+        // 页面：数字类 → numpad；其余 → main
+        val page = if (wantNumpad) "numpad" else "main"
+        val asciiChanged = if (wantAscii && !uiState.value.asciiMode) {
+            RimeManager.setOption("ascii_mode", true); true
+        } else if (!wantAscii && wantNumpad && !uiState.value.asciiMode) {
+            // 数字页用不着拼音，顺手切英文，避免九宫格上屏变成候选
+            RimeManager.setOption("ascii_mode", true); true
+        } else false
+        if (page != uiState.value.page || asciiChanged) {
+            com.azime.input.core.diag.Diag.log(
+                "AutoPage",
+                "cls=${cls shr 24} variation=${variation shr 16} page=$page ascii=$wantAscii",
+            )
+            uiState.update { it.copy(page = page) }
+        }
     }
 
     private fun readClipboard(fromUserCopy: Boolean = false) {

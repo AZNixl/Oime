@@ -160,6 +160,18 @@ object KeyboardManager {
 
     fun spaceLabel(): String = prefs.getString(PREF_SPACE_LABEL, "") ?: ""
 
+    private const val PREF_SPACE_LABEL_OFFSET = "space_label_offset"
+
+    /**
+     * 轮19.30：空格键自定义文本的**水平偏移**（dp，-80~80，默认 0 = 居中）。
+     * 需求：自定义文本原来只能居中，现在可左右滑动微调（设置里给滑杆）。
+     */
+    fun spaceLabelOffsetDp(): Int = prefs.getInt(PREF_SPACE_LABEL_OFFSET, 0).coerceIn(-80, 80)
+
+    fun setSpaceLabelOffsetDp(v: Int) {
+        synchronized(lock) { prefs.edit().putInt(PREF_SPACE_LABEL_OFFSET, v.coerceIn(-80, 80)).apply() }
+    }
+
     /** 原样保存（反馈轮11：不再 trim——空格也是有效标签字符）。 */
     fun setSpaceLabel(v: String) {
         synchronized(lock) { prefs.edit().putString(PREF_SPACE_LABEL, v).apply() }
@@ -210,6 +222,17 @@ object KeyboardManager {
     fun setFloatKbdRect(top: Int, bottom: Int) {
         floatKbdTop = top
         floatKbdBottom = bottom
+    }
+
+    // ── 按输入框类型自动切页（轮19.30） ──
+
+    private const val PREF_AUTO_PAGE = "auto_page_by_input"
+
+    /** 是否按输入框类型自动切换键盘页（数字/电话 → 九宫格；密码/邮箱/网址 → 英文）。默认开。 */
+    fun autoPageByInput(): Boolean = prefs.getBoolean(PREF_AUTO_PAGE, true)
+
+    fun setAutoPageByInput(v: Boolean) {
+        synchronized(lock) { prefs.edit().putBoolean(PREF_AUTO_PAGE, v).apply() }
     }
 
     // ── 单手 / 悬浮模式（轮19.19） ──
@@ -511,9 +534,16 @@ object KeyboardManager {
     /** 尺寸指纹：变化时 Service 重建键盘视图（onStartInputView 检查）。 */
     fun sizeSignature(): String =
         "${keyHeightDp()}x${barHeightDp()}x${barEnabled()}x${hintLong()}" +
-            "x${hintUp()}x${hintDown()}x${hintLeft()}x${hintRight()}x${spaceLabel()}x${sliderSymbolsRaw()}" +
+            "x${hintUp()}x${hintDown()}x${hintLeft()}x${hintRight()}x${spaceLabel()}" +
+            "x${spaceLabelOffsetDp()}x${sliderSymbolsRaw()}" +
             "x${fontSizeKey()}x${fontSizeBar()}x${keyCornerDp()}x${rowGapDp()}x${colGapDp()}" +
-            "x${toolbarHeightDp()}x${handMode()}x${floatKeyboard()}x${clipSwipeDp()}" +
+            "x${toolbarHeightDp()}x${handMode()}x${floatKeyboard()}x${clipSwipeDp()}x${autoPageByInput()}" +
+            "x${com.azime.input.core.theme.KeyboardTheme.customLightOn()}" +
+            "x${com.azime.input.core.theme.KeyboardTheme.customDarkOn()}" +
+            "x${com.azime.input.core.theme.KeyboardTheme.keyBgColor(false)}" +
+            "x${com.azime.input.core.theme.KeyboardTheme.keyBgColor(true)}" +
+            "x${com.azime.input.core.theme.KeyboardTheme.funcBgColor(false)}" +
+            "x${com.azime.input.core.theme.KeyboardTheme.funcBgColor(true)}" +
             "x${floatKbdX()}x${floatKbdY()}" +
             "x${floatEnabled()}x${floatMode()}x${floatXDp()}x${floatYDp()}x${floatTextSp()}x${floatBgAlpha()}" +
             "x${bubbleXDp()}x${bubbleYExtraDp()}" +

@@ -22,6 +22,61 @@ object KeyboardTheme {
     const val MODE_LIGHT = "light"
     const val MODE_DARK = "dark"
 
+    // ── 轮19.30：亮/暗两套自定义配色 ──
+    //   组A「字母键」= 26 字母键 + 逗号 + 句号（keyBg）
+    //   组B「功能键」= Shift / 符号 / 退格 等（funcKeyBg）
+    //   组C「强调键」= 回车/高亮（accent，沿用既有 accent_light / accent_dark）
+    private const val KEY_CUSTOM_LIGHT = "custom_light_on"
+    private const val KEY_CUSTOM_DARK = "custom_dark_on"
+    private const val KEY_KEYBG_LIGHT = "keybg_light"
+    private const val KEY_FUNCBG_LIGHT = "funcbg_light"
+    private const val KEY_KEYBG_DARK = "keybg_dark"
+    private const val KEY_FUNCBG_DARK = "funcbg_dark"
+
+    /** 默认值 = 内置调色板（开启自定义但不改色时与默认外观一致）。 */
+    const val DEFAULT_KEYBG_LIGHT = 0xFFFFFFFF.toInt()
+    const val DEFAULT_FUNCBG_LIGHT = 0xFFD3D7DC.toInt()
+    const val DEFAULT_KEYBG_DARK = 0xFF2A2D2F.toInt()
+    const val DEFAULT_FUNCBG_DARK = 0xFF3C4043.toInt()
+
+    fun customLightOn(): Boolean = prefs.getBoolean(KEY_CUSTOM_LIGHT, false)
+    fun setCustomLightOn(v: Boolean) = prefs.edit().putBoolean(KEY_CUSTOM_LIGHT, v).apply()
+
+    fun customDarkOn(): Boolean = prefs.getBoolean(KEY_CUSTOM_DARK, false)
+    fun setCustomDarkOn(v: Boolean) = prefs.edit().putBoolean(KEY_CUSTOM_DARK, v).apply()
+
+    fun anyCustomOn(): Boolean = customLightOn() || customDarkOn()
+
+    /** 字母键底色（dark=true 取暗色套）。 */
+    fun keyBgColor(dark: Boolean): Int = prefs.getInt(
+        if (dark) KEY_KEYBG_DARK else KEY_KEYBG_LIGHT,
+        if (dark) DEFAULT_KEYBG_DARK else DEFAULT_KEYBG_LIGHT,
+    )
+
+    fun setKeyBgColor(dark: Boolean, v: Int) =
+        prefs.edit().putInt(if (dark) KEY_KEYBG_DARK else KEY_KEYBG_LIGHT, v).apply()
+
+    /** 功能键底色。 */
+    fun funcBgColor(dark: Boolean): Int = prefs.getInt(
+        if (dark) KEY_FUNCBG_DARK else KEY_FUNCBG_LIGHT,
+        if (dark) DEFAULT_FUNCBG_DARK else DEFAULT_FUNCBG_LIGHT,
+    )
+
+    fun setFuncBgColor(dark: Boolean, v: Int) =
+        prefs.edit().putInt(if (dark) KEY_FUNCBG_DARK else KEY_FUNCBG_LIGHT, v).apply()
+
+    /** 恢复该模式下的默认配色（含强调色）。 */
+    fun resetColors(dark: Boolean) {
+        prefs.edit()
+            .putInt(if (dark) KEY_KEYBG_DARK else KEY_KEYBG_LIGHT,
+                if (dark) DEFAULT_KEYBG_DARK else DEFAULT_KEYBG_LIGHT)
+            .putInt(if (dark) KEY_FUNCBG_DARK else KEY_FUNCBG_LIGHT,
+                if (dark) DEFAULT_FUNCBG_DARK else DEFAULT_FUNCBG_LIGHT)
+            .putInt(if (dark) KEY_ACCENT_DARK else KEY_ACCENT_LIGHT,
+                if (dark) DEFAULT_ACCENT_DARK else DEFAULT_ACCENT_LIGHT)
+            .apply()
+    }
+
     const val DEFAULT_ACCENT_LIGHT = 0xFF1A73E8.toInt()
     const val DEFAULT_ACCENT_DARK = 0xFF8AB4F8.toInt()
 

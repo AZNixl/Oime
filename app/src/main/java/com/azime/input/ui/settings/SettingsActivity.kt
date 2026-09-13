@@ -1225,6 +1225,30 @@ private fun KeyHeightSliders() {
             toolH = it
             com.azime.input.core.keyboard.KeyboardManager.setToolbarHeightDp(it.toInt())
         }
+        // 轮19.30：按输入框类型自动切页（登录输账号 → 九宫格；密码/邮箱/网址 → 英文）
+        var autoPage by remember {
+            mutableStateOf(com.azime.input.core.keyboard.KeyboardManager.autoPageByInput())
+        }
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "输入框类型自动切页",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.weight(1f),
+            )
+            Switch(
+                checked = autoPage,
+                onCheckedChange = {
+                    autoPage = it
+                    com.azime.input.core.keyboard.KeyboardManager.setAutoPageByInput(it)
+                },
+            )
+        }
+        Text(
+            "数字/电话框自动切九宫格；密码、邮箱、网址框自动切英文；普通文本框回主键盘。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(6.dp))
         Text(
             "工具栏 = 候选/输入码区 + ○ 菜单键与工具图标所在的那一条；改后自动重建键盘生效",
             style = MaterialTheme.typography.bodySmall,
@@ -1271,6 +1295,16 @@ private fun KeyHeightSliders() {
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
         )
+        // 轮19.30：空格自定义文本的水平位置（原来自定义文本只能居中）
+        var spaceOff by remember {
+            mutableStateOf(
+                com.azime.input.core.keyboard.KeyboardManager.spaceLabelOffsetDp().toFloat(),
+            )
+        }
+        XimeSlider("文本位置", "${spaceOff.toInt()}dp", spaceOff, -80f..80f) {
+            spaceOff = it
+            com.azime.input.core.keyboard.KeyboardManager.setSpaceLabelOffsetDp(it.toInt())
+        }
         Text(
             "有文字 → 空格键显示该文字；只打空格 → 只显示空格图标；留空 → 显示当前方案名称",
             style = MaterialTheme.typography.bodySmall,
@@ -1673,23 +1707,10 @@ private fun ThemeColorSettings() {
         }
         Spacer(Modifier.height(10.dp))
 
-        // 自定义 RGB（亮 / 暗共用一个自定义色）——点击自定义卡片后展开
+        // 轮19.30：自定义配色改为**亮/暗两套 + 分组 + 调色板弹窗**（原 RGB 滑杆整段替换）
         if (showCustom) {
             key(accentRev) {
-            var r by remember { mutableStateOf(((km.accentLight() shr 16) and 0xFF) / 255f) }
-            var g by remember { mutableStateOf(((km.accentLight() shr 8) and 0xFF) / 255f) }
-            var b by remember { mutableStateOf((km.accentLight() and 0xFF) / 255f) }
-            fun apply() {
-                val argb = (0xFF shl 24) or ((r * 255).toInt() shl 16) or ((g * 255).toInt() shl 8) or (b * 255).toInt()
-                km.setAccents(argb, argb)
-            }
-            Text("自定义颜色", style = MaterialTheme.typography.bodyMedium)
-            Text("红", style = MaterialTheme.typography.bodySmall)
-            Slider(value = r, onValueChange = { r = it; apply() }, valueRange = 0f..1f)
-            Text("绿", style = MaterialTheme.typography.bodySmall)
-            Slider(value = g, onValueChange = { g = it; apply() }, valueRange = 0f..1f)
-            Text("蓝", style = MaterialTheme.typography.bodySmall)
-            Slider(value = b, onValueChange = { b = it; apply() }, valueRange = 0f..1f)
+                ThemeColorGroups()
             }
         }
         Text(
@@ -1698,6 +1719,178 @@ private fun ThemeColorSettings() {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
+}
+
+/**
+ * 轮19.30：亮色 / 暗色两套自定义配色编辑器。
+ * 分组：字母键（26 字母 + 逗号句号 · 共享 keyBg）/ 功能键（Shift·符号·退格 · 共享 funcKeyBg）/ 强调键（回车高亮）。
+ */
+@Composable
+private fun ThemeColorGroups() {
+    val km = com.azime.input.core.theme.KeyboardTheme
+    var rev by remember { mutableStateOf(0) }
+    var pick by remember {
+        mutableStateOf<Triple<String, Int, (Int) -> Unit>?>(null)
+    }
+    androidx.compose.runtime.key(rev) {
+        Text("自定义配色", style = MaterialTheme.typography.bodyMedium)
+        ColorGroupSection("亮色自定义", dark = false, onPick = { pick = it }, onChanged = { rev++ })
+        Spacer(Modifier.height(8.dp))
+        ColorGroupSection("暗色自定义", dark = true, onPick = { pick = it }, onChanged = { rev++ })
+        Spacer(Modifier.height(4.dp))
+        Text(
+            "字母键 = 26 个字母键 + 逗号 + 句号（共享一色）；功能键 = Shift / 符号 / 退格（共享一色）；" +
+                "强调键 = 回车与候选高亮。支持十六进制与透明度；下次键盘弹出生效。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+    pick?.let { (title, initial, setter) ->
+        ColorPickerDialog(
+            title = title,
+            initial = initial,
+            onDismiss = { pick = null },
+            onConfirm = { setter(it); pick = null; rev++ },
+        )
+    }
+}
+
+@Composable
+private fun ColorGroupSection(
+    title: String,
+    dark: Boolean,
+    onPick: (Triple<String, Int, (Int) -> Unit>) -> Unit,
+    onChanged: () -> Unit,
+) {
+    val km = com.azime.input.core.theme.KeyboardTheme
+    var on by remember { mutableStateOf(if (dark) km.customDarkOn() else km.customLightOn()) }
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(title, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        Switch(
+            checked = on,
+            onCheckedChange = {
+                on = it
+                if (dark) km.setCustomDarkOn(it) else km.setCustomLightOn(it)
+                onChanged()
+            },
+        )
+    }
+    if (!on) return
+    val keyBg = km.keyBgColor(dark)
+    val funcBg = km.funcBgColor(dark)
+    val accent = if (dark) km.accentDark() else km.accentLight()
+    ColorRow("字母键（26 字母 + 逗号句号）", keyBg) {
+        onPick(Triple("字母键配色", keyBg) { v -> km.setKeyBgColor(dark, v) })
+    }
+    ColorRow("功能键（Shift / 符号 / 退格）", funcBg) {
+        onPick(Triple("功能键配色", funcBg) { v -> km.setFuncBgColor(dark, v) })
+    }
+    ColorRow("强调键（回车 / 高亮）", accent) {
+        onPick(Triple("强调键配色", accent) { v ->
+            if (dark) km.setAccents(km.accentLight(), v) else km.setAccents(v, km.accentDark())
+        })
+    }
+    TextButton(onClick = { km.resetColors(dark); onChanged() }) { Text("恢复默认") }
+}
+
+@Composable
+private fun ColorRow(label: String, color: Int, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+        Box(
+            modifier = Modifier
+                .size(26.dp)
+                .background(Color(color), androidx.compose.foundation.shape.RoundedCornerShape(6.dp)),
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(
+            "#" + String.format("%08X", color),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/** 轮19.30：调色板 + 十六进制 + 透明度 的取色弹窗。 */
+@Composable
+private fun ColorPickerDialog(
+    title: String,
+    initial: Int,
+    onDismiss: () -> Unit,
+    onConfirm: (Int) -> Unit,
+) {
+    var argb by remember { mutableStateOf(initial) }
+    var hex by remember { mutableStateOf(String.format("%08X", initial)) }
+    val palette = listOf(
+        0xFFFFFFFF, 0xFFF1F1F2, 0xFFD3D7DC, 0xFF9AA0A6, 0xFF5F6368, 0xFF3C4043, 0xFF26282A, 0xFF000000,
+        0xFF1A73E8, 0xFF4285F4, 0xFF8AB4F8, 0xFF34A853, 0xFF97C459, 0xFFFBBC04, 0xFFF9AB00, 0xFFEA4335,
+        0xFFE57373, 0xFFEF9F27, 0xFFBA7517, 0xFF7F77DD, 0xFFD4537E, 0xFF1D9E75, 0xFF0F6E56, 0xFF042C53,
+    ).map { it.toInt() }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(38.dp)
+                        .background(Color(argb), androidx.compose.foundation.shape.RoundedCornerShape(8.dp)),
+                )
+                Spacer(Modifier.height(8.dp))
+                palette.chunked(8).forEach { row ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        row.forEach { c ->
+                            Box(
+                                modifier = Modifier
+                                    .size(26.dp)
+                                    .background(Color(c), androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+                                    .clickable {
+                                        argb = (argb and 0xFF000000.toInt()) or (c and 0x00FFFFFF)
+                                        hex = String.format("%08X", argb)
+                                    },
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(6.dp))
+                }
+                OutlinedTextField(
+                    value = hex,
+                    onValueChange = { txt ->
+                        hex = txt.filter { it.isLetterOrDigit() }.take(8).uppercase()
+                        if (hex.length == 8) {
+                            hex.toLongOrNull(16)?.let { argb = it.toInt() }
+                        }
+                    },
+                    label = { Text("十六进制（AARRGGBB，前两位是透明度）") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "透明度 ${((argb ushr 24) and 0xFF) * 100 / 255}%",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Slider(
+                    value = ((argb ushr 24) and 0xFF) / 255f,
+                    onValueChange = { f ->
+                        val a = (f * 255).toInt().coerceIn(0, 255)
+                        argb = (argb and 0x00FFFFFF) or (a shl 24)
+                        hex = String.format("%08X", argb)
+                    },
+                    valueRange = 0f..1f,
+                )
+            }
+        },
+        confirmButton = { TextButton(onClick = { onConfirm(argb) }) { Text("确定") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+    )
 }
 
 /** 迷你键盘预览主题卡片（参考小企鹅输入法的主题选择卡）。 */

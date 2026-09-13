@@ -277,10 +277,16 @@ fun buildKeyboardColors(dark: Boolean): KeyboardColors {
         else com.azime.input.core.theme.KeyboardTheme.accentLight()
     )
     val onAccent = if (accent.luminance() > 0.5f) Color(0xFF202124) else Color.White
+    // 轮19.30：该模式下开了自定义 → 字母键 / 功能键用自定义色（强调色走 accent，本来就是自定义项）
+    val theme = com.azime.input.core.theme.KeyboardTheme
+    val customOn = if (dark) theme.customDarkOn() else theme.customLightOn()
+    val customKeyBg = if (customOn) Color(theme.keyBgColor(dark)) else null
+    val customFuncBg = if (customOn) Color(theme.funcBgColor(dark)) else null
     return if (dark) {
         KeyboardColors(
             bg = Color(0xFF1B1D1F), barBg = Color(0xFF26282A),
-            keyBg = Color(0xFF2A2D2F), funcKeyBg = Color(0xFF3C4043),
+            keyBg = customKeyBg ?: Color(0xFF2A2D2F),
+            funcKeyBg = customFuncBg ?: Color(0xFF3C4043),
             accentKeyBg = accent.copy(alpha = 0.35f).compositeOver(Color(0xFF2A2D2F)),
             accentKeyText = onAccent,
             accentActive = accent, accentActiveText = onAccent,
@@ -290,7 +296,8 @@ fun buildKeyboardColors(dark: Boolean): KeyboardColors {
     } else {
         KeyboardColors(
             bg = Color(0xFFE9EBEE), barBg = Color.White,
-            keyBg = Color.White, funcKeyBg = Color(0xFFD3D7DC),
+            keyBg = customKeyBg ?: Color.White,
+            funcKeyBg = customFuncBg ?: Color(0xFFD3D7DC),
             accentKeyBg = accent.copy(alpha = 0.28f).compositeOver(Color.White),
             accentKeyText = Color(0xFF202124),
             accentActive = accent, accentActiveText = onAccent,
@@ -2581,7 +2588,9 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
         key.code == "space" && state.page == "main" -> {
             val custom = KeyboardManager.spaceLabel()
             when {
-                custom.isNotBlank() -> custom.trim()
+                // 轮19.30：**原样返回**（不再 trim）——前后空格是给用户微调文本位置用的，
+                // 之前 trim 掉后"文本只能居中"（用户反馈）
+                custom.isNotBlank() -> custom
                 custom.isNotEmpty() -> ""   // 只打了空格 → 走图标
                 state.schemaName.isNotBlank() ->
                     // 轮19.7：remember 住（RimeManager 内部也有缓存）——原来每次重组都查一次名称
@@ -2689,12 +2698,11 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
     var longFired by remember { mutableStateOf(false) }
     // 触发前移动超过 5dp 取消长按（对齐 xime.az KeyButton，防止打字抖动误触发）
     var longCancelled by remember { mutableStateOf(false) }
-    // 轮19.24：长按动作可能改变引擎状态（如空格长按切中英）→ 手势块重启时按下态必须复位，
-    // 否则按键会卡在"按下"外观（用户反馈：再次点击才恢复）
+    // 轮19.30：长按动作可能改变引擎状态（如空格长按切中英）→ 只需要复位**按下态**。
+    // ⚠️ 绝不能复位 `longFired`：抬手判定是 `!longFired -> onKeyAction(...)`，
+    // 一旦被清掉，长按切完中英抬手就会**多输入一个空格**（19.24 引入的回归）。
     LaunchedEffect(state.asciiMode) {
         pressing = false
-        longFired = false
-        longCancelled = false
     }
     var showBubble by remember { mutableStateOf(false) }
     var showPageBubble by remember { mutableStateOf(false) }
@@ -2968,6 +2976,12 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
                 fontWeight = FontWeight.Medium,
                 color = fg,
                 maxLines = 1,
+                // 轮19.30：空格键自定义文本可按设置左右微调（默认 0 = 居中）
+                modifier = if (key.code == "space" && state.page == "main") {
+                    Modifier.offset(x = KeyboardManager.spaceLabelOffsetDp().dp)
+                } else {
+                    Modifier
+                },
             )
         }
         // 键上方气泡预览（设置「四向预览位置」选键面上方时生效）
