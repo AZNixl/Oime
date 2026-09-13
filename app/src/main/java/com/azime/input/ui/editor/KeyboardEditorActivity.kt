@@ -576,11 +576,6 @@ private fun KeyEditDialog(
                         modifier = Modifier.weight(1f),
                     )
                 }
-                OutlinedTextField(
-                    value = hint, onValueChange = { hint = it },
-                    label = { Text("右上角提示（长按符号）") },
-                    singleLine = true, modifier = Modifier.fillMaxWidth(),
-                )
 
 
                 Text(
@@ -606,7 +601,8 @@ private fun KeyEditDialog(
                         swipeDown = swipeDown.ifBlank { null },
                         swipeLeft = swipeLeft.ifBlank { null },
                         swipeRight = swipeRight.ifBlank { null },
-                        hint = hint.ifBlank { null },
+                        // 轮19.25：编辑器不再暴露「右上角提示」字段（键面只保留长按动作的提示）
+                        hint = key.hint,
                         // 轮19.24：长按动作与长按符号**合二为一**——同一个字段：
                         // 单个动作/符号 → 直接执行；空格分隔多个 → 长按气泡多选
                         popup = longClick.split(' ').map { it.trim() }.filter { it.isNotEmpty() },

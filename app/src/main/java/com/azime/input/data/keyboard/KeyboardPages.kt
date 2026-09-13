@@ -45,12 +45,15 @@ val LongPressSymbolsAscii: Map<Char, List<String>> = mapOf(
     '.' to listOf("?"),
     'b' to listOf("\""),
     'n' to listOf("'"),
-    // K 键：括号气泡换成 ASCII 括号
-    'k' to listOf("(){Left}", "[]{Left}", "{}{Left}"),
+    // K 键：括号气泡换成 ASCII 括号（与中文一样 6 对，位置一一对应）
+    'k' to listOf("{}{Left}", "<>{Left}", "(){Left}", "[]{Left}", "\"\"{Left}", "''{Left}"),
 )
 
 /** 按中英模式取长按符号列表（英文模式优先 ASCII 变体）。 */
 fun longPressSymbolsFor(code: String, ascii: Boolean): List<String> {
+    // 轮19.25：K 键特殊——长按应出**括号对**（BracketPairs / ASCII 变体）。
+    // 19.24 重构时漏了这层特判，导致中文模式弹出的是 LongPressSymbols['k'] 里的字面量「括号」。
+    if (code == "k") return if (ascii) LongPressSymbolsAscii['k'] ?: BracketPairs else BracketPairs
     val c = code.firstOrNull() ?: return emptyList()
     if (ascii) LongPressSymbolsAscii[c]?.let { return it }
     return LongPressSymbols[c] ?: emptyList()

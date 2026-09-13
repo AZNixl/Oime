@@ -794,17 +794,28 @@ class AZimeService : InputMethodService() {
                     uiState.update { it.copy(showMenuPanel = !it.showMenuPanel) }
                 // 轮19.18：复制条左右划动 → 只消亡不上屏（并记住，避免被剪贴板回调复活）
                 KeyAction.DismissClipStrip -> {
-                    dismissedClip = uiState.value.clipText
-                    com.azime.input.core.diag.Diag.log("Clip", "dismiss by swipe")
+                    val ck = uiState.value.clipText.take(80)
+                    dismissedClip = ck
+                    lastCommittedClip = ck
+                    com.azime.input.core.diag.Diag.log("Clip", "dismiss by swipe/长按")
                     uiState.update { it.copy(clipText = "", clipAtMs = 0L, clipFull = "") }
                 }
                 is KeyAction.CommitClipboard -> {
                     currentInputConnection?.commitText(action.text, 1)
                     pushUndo(action.text)
-                    lastCommittedClip = action.text
+                    // 轮19.25：**必须按 take(80) 记**——readClipboard 用的是 `text.take(80)` 比对，
+                    // 19.24 把上屏文本换成了完整长文本却直接赋给 lastCommittedClip ⇒ 长文本永远比不中，
+                    // 上屏后又被剪贴板回调塞回工具栏（用户反馈「点击上屏也不能消亡」）。
+                    val ck = action.text.take(80)
+                    lastCommittedClip = ck
+                    dismissedClip = ck
+                    com.azime.input.core.diag.Diag.log("Clip", "commit+clear len=${action.text.length}")
                     // 上屏后条目消失 + 面板收起，不干扰后续输入
                     uiState.update {
-                        it.copy(clipText = "", clipAtMs = 0L, showClipboardPanel = false, showMenuPanel = false)
+                        it.copy(
+                            clipText = "", clipAtMs = 0L, clipFull = "",
+                            showClipboardPanel = false, showMenuPanel = false,
+                        )
                     }
                 }
                 is KeyAction.SetToolbarItems -> {

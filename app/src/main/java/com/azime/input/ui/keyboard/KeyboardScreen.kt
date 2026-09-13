@@ -973,7 +973,7 @@ private fun ToolbarRow(
         // ── 剪贴板条：复制内容覆盖整条工具栏，点击直接上屏 ──
         // 轮19.18：复制条 —— 点=上屏，**左右划动=消亡**（不再需要"先上屏再删"）
         clipFresh -> {
-            val dismissPx = with(LocalDensity.current) { 40.dp.toPx() }
+            val dismissPx = with(LocalDensity.current) { 24.dp.toPx() }
             var dragAccum by remember { mutableStateOf(0f) }
             Box(
                 modifier = Modifier
@@ -2871,8 +2871,12 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
     ) {
         // 轮19.4：功能键优先渲染图标（OimeIcons）；无图标 / 滑动预览中回落文字。
         // 轮19.5：空格键例外——有文本（自定义文本或方案名称）时优先文本，文本为空才显示图标。
-        val keyIcon = if (key.icon != null && swipePreview == null) {
-            com.azime.input.ui.icons.OimeIcons.byName(key.icon)
+        // 轮19.25：第四行首键（符号/数字入口）的图标跟随设置偏好——26 键符号 ↔ 九宫格
+        val iconName = if (key.code == "symbols") {
+            if (KeyboardManager.preferredPage() == "numpad") "numpad" else "symbols"
+        } else key.icon
+        val keyIcon = if (iconName != null && swipePreview == null) {
+            com.azime.input.ui.icons.OimeIcons.byName(iconName)
         } else null
         // 轮19.6：仅主键盘空格优先文本（九宫格/符号页空格永远显示图标）
         val preferText = key.code == "space" && state.page == "main" && label.isNotBlank()
@@ -3068,6 +3072,8 @@ private fun onKeyAction(key: Key, onAction: (KeyAction) -> Unit) {
         KeyType.DELETE -> onAction(KeyAction.Backspace)
         KeyType.MODIFIER -> onAction(KeyAction.Shift)
         KeyType.FUNCTION -> when (key.code) {
+            // 轮19.25：切页沿用 ToggleSymbols（其内部已按 preferredPage 偏好：26 键符号 / 九宫格）；
+            // 键面图标在 keyIcon 处同步成对应图标
             "symbols" -> onAction(KeyAction.ToggleSymbols)
             "emoji_back" -> onAction(KeyAction.SwitchPage("main"))
             "main" -> onAction(KeyAction.SwitchPage("main"))
