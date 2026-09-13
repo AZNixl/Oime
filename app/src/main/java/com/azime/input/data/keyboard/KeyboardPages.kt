@@ -170,9 +170,10 @@ object KeyboardPages {
             row(
                 pageKey("123", width = 1.7f, icon = "symbols"), // 稍宽于 shift(1.5)，紧凑起步
                 charKey(","),
-                space(width = 4.3f),
+                // 轮19.29：空格默认宽度 4.3 → **4.5**，回车 2.0 → **1.8**（Σ 仍为 10.0，列仍对齐）
+                space(width = 4.5f),
                 charKey("."),
-                enter(width = 2f),
+                enter(width = 1.8f),
             ),
         ),
         rev = 7, // 轮19.15：横屏第 4 行补回回车键
@@ -248,9 +249,10 @@ object KeyboardPages {
                 // 轮19.2：第四行首键改为「返回」（原为切九宫格，九宫格入口已在第三行）
                 pageKey("返回", "main", width = 1.7f, icon = "back"),
                 charKey(","),
-                space(width = 4.3f),
+                // 轮19.29：与主键盘同步（空格 4.5 / 回车 1.8）
+                space(width = 4.5f),
                 charKey("."),
-                enter(width = 2f),
+                enter(width = 1.8f),
             ),
         ),
         rev = 3,

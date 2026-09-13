@@ -979,17 +979,7 @@ private fun ToolbarRow(
                 .fillMaxWidth()
                 .height(barHeight)
                 .background(c.bg)
-                // 整条长按 = 消亡（带震动）
-                .pointerInput(state.clipText) {
-                    detectTapGestures(
-                        onLongPress = {
-                            com.azime.input.core.haptic.HapticsManager.haptic(
-                                com.azime.input.core.haptic.HapticsManager.Type.DISMISS,
-                            )
-                            onAction(KeyAction.DismissClipStrip)
-                        },
-                    )
-                }
+                // 轮19.29：长按消亡实测无效 → **废弃**（只保留右侧 ✕ 按钮）
                 .padding(start = 10.dp, end = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -1058,6 +1048,9 @@ private fun ToolbarRow(
                 var eyeDx by remember { mutableStateOf(0f) }  // -1 左看 / 0 中 / 1 右看
                 var eyeDy by remember { mutableStateOf(0f) }  // -1 上看 / 0 中 / 1 下看
                 var eyeSquint by remember { mutableStateOf(false) } // 眯眼（眼睛变小）
+                // 轮19.29：新增表情所需状态
+                var eyePupil by remember { mutableStateOf(1f) }   // 瞳孔缩放（惊讶放大 / 生气缩小）
+                var eyeArc by remember { mutableStateOf(0f) }     // >0 = 笑眼弧线（0=圆点）
                 // 上滑应用弧：显示中 / 高亮槽位（-1 = 未选）
                 var showAppArc by remember { mutableStateOf(false) }
                 var arcSel by remember { mutableStateOf(-1) }
@@ -1070,7 +1063,8 @@ private fun ToolbarRow(
                     //   单次时长：看 700~2400ms，眨眼 120~260ms，眯眼 900~2600ms
                     val rnd = java.util.Random()
                     while (true) {
-                        when (rnd.nextInt(5)) {
+                        // 轮19.29：动作扩充到 10 套（原 5 套 + 惊讶 / 困倦 / 笑眼 / 转圈看 / 生气）
+                        when (rnd.nextInt(10)) {
                             0 -> { // 眨眼
                                 eyeBlink = true
                                 kotlinx.coroutines.delay(120L + rnd.nextInt(140))
@@ -1096,9 +1090,60 @@ private fun ToolbarRow(
                                 kotlinx.coroutines.delay(700L + rnd.nextInt(1700))
                                 eyeDy = 0f
                             }
-                            else -> { // 眯眼
+                            4 -> { // 眯眼
                                 eyeSquint = true
                                 kotlinx.coroutines.delay(900L + rnd.nextInt(1700))
+                                eyeSquint = false
+                            }
+                            5 -> { // 惊讶：瞳孔放大 + 上抬（睁大眼睛）
+                                eyePupil = 1.55f
+                                eyeDy = -0.6f
+                                kotlinx.coroutines.delay(500L + rnd.nextInt(500))
+                                eyePupil = 1f
+                                eyeDy = 0f
+                            }
+                            6 -> { // 困倦：半闭下沉 → 停一会儿 → 惊醒（睁大 + 上抬）
+                                eyeSquint = true
+                                eyeDy = 0.8f
+                                kotlinx.coroutines.delay(1200L + rnd.nextInt(900))
+                                eyeSquint = false
+                                eyePupil = 1.4f
+                                eyeDy = -0.5f
+                                kotlinx.coroutines.delay(260L)
+                                eyePupil = 1f
+                                eyeDy = 0f
+                            }
+                            7 -> { // 笑眼：眼睛弯成上弧 + 微微上抬
+                                eyeArc = 1f
+                                eyeDy = -0.35f
+                                kotlinx.coroutines.delay(700L + rnd.nextInt(800))
+                                eyeArc = 0f
+                                eyeDy = 0f
+                            }
+                            8 -> { // 转圈看：上 → 右 → 下 → 左
+                                val seq = listOf(0f to -1f, 1f to 0f, 0f to 1f, -1f to 0f)
+                                for ((dx, dy) in seq) {
+                                    eyeDx = dx
+                                    eyeDy = dy
+                                    kotlinx.coroutines.delay(230L)
+                                }
+                                eyeDx = 0f
+                                eyeDy = 0f
+                            }
+                            else -> { // 生气：瞳孔缩小 + 下压 + 快速抖两下
+                                eyePupil = 0.7f
+                                eyeSquint = true
+                                eyeDy = 0.7f
+                                repeat(2) {
+                                    eyeDx = 0.18f
+                                    kotlinx.coroutines.delay(70L)
+                                    eyeDx = -0.18f
+                                    kotlinx.coroutines.delay(70L)
+                                }
+                                kotlinx.coroutines.delay(500L + rnd.nextInt(600))
+                                eyeDx = 0f
+                                eyeDy = 0f
+                                eyePupil = 1f
                                 eyeSquint = false
                             }
                         }
@@ -1280,14 +1325,25 @@ private fun ToolbarRow(
                             KeyboardManager.RING_SHAPE_EYE -> {
                                 drawCircle(color = col, radius = ringR, style = Stroke(strokeW))
                                 // 双眼：圆点（睁眼）↔ 长条（闭眼）；eyeDx 左右看
-                                val eyeR = if (eyeSquint) 1.5.dp.toPx() else 2.2.dp.toPx()
+                                val eyeR = (if (eyeSquint) 1.5.dp.toPx() else 2.2.dp.toPx()) * eyePupil
                                 val sep = 3.6.dp.toPx()
                                 val dyEye = -0.4.dp.toPx() + eyeDy * 1.3.dp.toPx()
                                 val dxEye = eyeDx * 1.4.dp.toPx()
                                 for (sx in listOf(-sep, sep)) {
                                     val cxE = center.x + sx + dxEye
                                     val cyE = center.y + dyEye
-                                    if (eyeBlink) {
+                                    if (eyeArc > 0f) {
+                                        // 轮19.29 笑眼：向上弯的弧（∩），用弧线描边
+                                        drawArc(
+                                            color = col,
+                                            startAngle = 180f,
+                                            sweepAngle = 180f,
+                                            useCenter = false,
+                                            topLeft = Offset(cxE - eyeR * 1.6f, cyE - eyeR * 0.9f),
+                                            size = androidx.compose.ui.geometry.Size(eyeR * 3.2f, eyeR * 1.8f),
+                                            style = Stroke(width = 1.6.dp.toPx()),
+                                        )
+                                    } else if (eyeBlink) {
                                         drawRoundRect(
                                             color = col,
                                             topLeft = Offset(cxE - eyeR, cyE - eyeR * 0.28f),
