@@ -268,7 +268,7 @@ class AZimeService : InputMethodService() {
         lifecycleOwner.resume()
         currentEditorInfo = info
         // 主题深浅色可能已切换：每次弹键刷新导航条增高区颜色
-        runCatching { window.window?.navigationBarColor = navBarColorInt() }
+        applyWindowBarColors()
         selectAnchor = -1
         selectCursor = -1
         joystickAnchor = -1
@@ -456,6 +456,20 @@ class AZimeService : InputMethodService() {
     @Volatile private var lastCommittedClip: String? = null
 
     /** 导航条增高区颜色 = 键盘背景色（深浅色感知，与 buildKeyboardColors 的 bg 保持一致）。 */
+    /**
+     * 轮19.27：立即重刷 IME 窗口的导航栏（系统底部条）颜色。
+     * 原来只在 onStartInputView 里设过一次 → ○ 菜单切亮/暗色后，**键盘外的系统底部栏**
+     * 要等重新弹键盘才变色。切换动作里调用它即可即时跟随。
+     */
+    private fun applyWindowBarColors() {
+        runCatching {
+            window.window?.let { w ->
+                w.navigationBarColor = navBarColorInt()
+                w.isNavigationBarContrastEnforced = false
+            }
+        }
+    }
+
     private fun navBarColorInt(): Int {
         val nightMask = resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK
         val dark = com.azime.input.core.theme.KeyboardTheme.isDark(
@@ -771,6 +785,8 @@ class AZimeService : InputMethodService() {
                     }
                     com.azime.input.core.theme.KeyboardTheme.setMode(next)
                     uiState.update { it.copy(themeRev = it.themeRev + 1) }
+                    // 轮19.27：立即刷新系统底部栏颜色（否则要重开键盘才变）
+                    applyWindowBarColors()
                 }
                 KeyAction.ToggleClipboardPanel ->
                     uiState.update {

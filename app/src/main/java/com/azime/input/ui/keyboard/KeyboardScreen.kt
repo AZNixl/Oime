@@ -973,7 +973,8 @@ private fun ToolbarRow(
         // ── 剪贴板条：复制内容覆盖整条工具栏，点击直接上屏 ──
         // 轮19.18：复制条 —— 点=上屏，**左右划动=消亡**（不再需要"先上屏再删"）
         clipFresh -> {
-            val dismissPx = with(LocalDensity.current) { 24.dp.toPx() }
+            // 轮19.27：阈值可调（设置 → 键盘 → 复制条划动阈值，默认 12dp）
+            val dismissPx = with(LocalDensity.current) { KeyboardManager.clipSwipeDp().dp.toPx() }
             var dragAccum by remember { mutableStateOf(0f) }
             Box(
                 modifier = Modifier

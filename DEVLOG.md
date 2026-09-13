@@ -1210,3 +1210,12 @@ Unresolved reference）；要么 import 后 `x.roundToInt()`，要么直接 `x.t
      把 SettingsActivity 里 **16 处** Card（含 `Card { Column { … } }` 这种同行写法）全部改为
      `Card(colors = grayCardColors())` —— 不再依赖 M3 默认取色
 - 抽出的教训：**别依赖主题默认中性色**，要让 UI 一致就显式指定容器色
+
+# 轮19.27（0.9.40-oime vc50）：复制条划动阈值可调 / 亮暗切换即时刷新系统底部栏
+
+1. **复制条划动阈值做成设置项**：设置 → 键盘 → 「复制条划动阈值」滑杆（4~60dp）
+   - 默认 24dp → **12dp**（用户实测 24dp 不够灵敏，划不到就不消亡）
+   - 阈值纳入 `sizeSignature()`（改完下次弹键盘即生效）
+2. **○ 菜单切亮/暗色后，系统底部栏不跟随**：真因是导航栏颜色只在 `onStartInputView` 设过一次
+   - 新增 `applyWindowBarColors()`，**在切换动作里立即调用**，同时把 `onStartInputView` 里那行也统一走它
+   - 顺带保证 `isNavigationBarContrastEnforced = false`（避免系统再叠一层对比色）

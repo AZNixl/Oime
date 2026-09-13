@@ -501,6 +501,27 @@ fun SettingsScreen(
                     Card(colors = grayCardColors()) { Column { KeyAppearanceSettings() } }
                 }
                 item {
+                    // 轮19.27：复制条划动阈值（实测调参用）
+                    Card(colors = grayCardColors()) {
+                        Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
+                            Text("复制条划动阈值", style = MaterialTheme.typography.titleSmall)
+                            Spacer(Modifier.height(4.dp))
+                            var swipeDp by remember {
+                                mutableStateOf(com.azime.input.core.keyboard.KeyboardManager.clipSwipeDp().toFloat())
+                            }
+                            XimeSlider("阈值", "${swipeDp.toInt()}dp", swipeDp, 4f..60f) {
+                                swipeDp = it
+                                com.azime.input.core.keyboard.KeyboardManager.setClipSwipeDp(it.toInt())
+                            }
+                            Text(
+                                "复制条上左右滑动超过该距离即消亡（越小越灵敏）；下次键盘弹出生效。",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+                item {
                     Card(colors = grayCardColors()) { Column { GesturePositionSettings() } }
                 }
                 item {

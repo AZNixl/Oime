@@ -269,6 +269,18 @@ object KeyboardManager {
     /** 复制条总开关：关闭后不注册剪贴板监听、不读剪贴板（默认开）。 */
     fun clipStripEnabled(): Boolean = prefs.getBoolean(PREF_CLIP_STRIP, true)
 
+    private const val PREF_CLIP_SWIPE_DP = "clip_swipe_dp"
+
+    /**
+     * 轮19.27：复制条**左右划动消亡**的位移阈值（dp）。
+     * 默认从 24dp 调到 **12dp**（用户实测 24dp 不够灵敏、经常划不到），并开放设置可调（4~60dp）。
+     */
+    fun clipSwipeDp(): Int = prefs.getInt(PREF_CLIP_SWIPE_DP, 12).coerceIn(4, 60)
+
+    fun setClipSwipeDp(v: Int) {
+        synchronized(lock) { prefs.edit().putInt(PREF_CLIP_SWIPE_DP, v.coerceIn(4, 60)).apply() }
+    }
+
     fun setClipStripEnabled(v: Boolean) {
         synchronized(lock) { prefs.edit().putBoolean(PREF_CLIP_STRIP, v).apply() }
     }
@@ -501,7 +513,7 @@ object KeyboardManager {
         "${keyHeightDp()}x${barHeightDp()}x${barEnabled()}x${hintLong()}" +
             "x${hintUp()}x${hintDown()}x${hintLeft()}x${hintRight()}x${spaceLabel()}x${sliderSymbolsRaw()}" +
             "x${fontSizeKey()}x${fontSizeBar()}x${keyCornerDp()}x${rowGapDp()}x${colGapDp()}" +
-            "x${toolbarHeightDp()}x${handMode()}x${floatKeyboard()}" +
+            "x${toolbarHeightDp()}x${handMode()}x${floatKeyboard()}x${clipSwipeDp()}" +
             "x${floatKbdX()}x${floatKbdY()}" +
             "x${floatEnabled()}x${floatMode()}x${floatXDp()}x${floatYDp()}x${floatTextSp()}x${floatBgAlpha()}" +
             "x${bubbleXDp()}x${bubbleYExtraDp()}" +
