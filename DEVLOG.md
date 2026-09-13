@@ -1195,3 +1195,18 @@ Unresolved reference）；要么 import 后 `x.roundToInt()`，要么直接 `x.t
    （`{} <> () [] "" ''`，与中文一一对应）。
 4. **第四行首键图标跟随设置偏好**：偏好「26 键符号」显示符号网格图标、偏好「九宫格」显示数字键盘图标
    （切页逻辑 `ToggleSymbols` 本就走 `preferredPage()`，这次只补图标同步）。
+
+# 轮19.26（0.9.39-oime vc49）：设置页二级菜单的紫底 → 统一浅灰
+
+- 现象：二级页（悬浮窗等）的卡片是**淡紫底**，与主页面的浅灰不一致
+- 真因：**M3 默认配色是淡紫色系**（`lightColorScheme()` 的 surface 家族全是紫调），
+  卡片/容器会按不同角色取色（`surfaceContainerLow` / `surfaceVariant` / `surfaceContainerHighest`…），
+  19.15 只覆盖了 `surfaceContainerLow` + `surfaceContainer` 两个角色 ⇒ 其余角色仍是紫的
+- 修复（两层）：
+  1. **主题全量覆盖中性色**：`background/surface/surfaceVariant/surfaceContainerLowest/Low/High/Highest/
+     secondaryContainer/tertiaryContainer` 全部改成灰阶（浅色 #FFFFFF/#F1F1F2/#EAEAEC/#E4E4E7，
+     深色 #1B1B1F/#26262A/#2C2C31/#323238）
+  2. **设置页所有 Card 显式指定灰色**：新增 `grayCardColors()` 助手，
+     把 SettingsActivity 里 **16 处** Card（含 `Card { Column { … } }` 这种同行写法）全部改为
+     `Card(colors = grayCardColors())` —— 不再依赖 M3 默认取色
+- 抽出的教训：**别依赖主题默认中性色**，要让 UI 一致就显式指定容器色

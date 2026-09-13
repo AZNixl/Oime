@@ -141,11 +141,25 @@ class SettingsActivity : AppCompatActivity() {
             else androidx.compose.material3.lightColorScheme()
             // 轮19.15：Card 默认底色（surfaceContainerLow/surfaceContainer）统一成浅灰 →
             // 所有二级页（键盘 / 主题 / O 圆环 …）里的卡片都跟着变浅灰
+            // 轮19.26：M3 默认配色是**淡紫色系**，各卡片/容器按不同角色取色（surfaceContainerLow /
+            // surfaceVariant / surfaceContainerHighest …），只覆盖两个角色会漏 —— 用户看到的紫底就是漏网的角色。
+            // 这里把**整套中性色**统一成灰阶（浅色/深色各一套）。
             val plainGray = if (dark) Color(0xFF26262A) else Color(0xFFF1F1F2)
+            val grayHigh = if (dark) Color(0xFF2C2C31) else Color(0xFFEAEAEC)
+            val grayHighest = if (dark) Color(0xFF323238) else Color(0xFFE4E4E7)
+            val bg = if (dark) Color(0xFF1B1B1F) else Color(0xFFFFFFFF)
             MaterialTheme(
                 colorScheme = scheme.copy(
+                    background = bg,
+                    surface = bg,
+                    surfaceVariant = plainGray,
+                    surfaceContainerLowest = bg,
                     surfaceContainerLow = plainGray,
                     surfaceContainer = plainGray,
+                    surfaceContainerHigh = grayHigh,
+                    surfaceContainerHighest = grayHighest,
+                    secondaryContainer = grayHigh,
+                    tertiaryContainer = grayHigh,
                     primary = com.azime.input.ui.keyboard.keyboardAccentActiveColor(dark),
                     primaryContainer = com.azime.input.ui.keyboard.keyboardAccentKeyColor(dark),
                     onPrimaryContainer = if (dark) Color(0xFFD7E3F4) else Color(0xFF202124),
@@ -316,11 +330,11 @@ fun SettingsScreen(
             ) {
                 // 父级菜单①：方案组（组单选 → 选中组后挂「方案管理」入口 → 下方只显示已选方案）
                 item {
-                    Card { Column(Modifier.padding(vertical = 4.dp)) { SchemaList(onOpenManage = { showManage = true }, refreshRev = schemaRefreshRev) } }
+                    Card(colors = grayCardColors()) { Column(Modifier.padding(vertical = 4.dp)) { SchemaList(onOpenManage = { showManage = true }, refreshRev = schemaRefreshRev) } }
                 }
                 // 父级菜单②：导入方案
                 item {
-                    Card { Column(Modifier.padding(vertical = 4.dp)) {
+                    Card(colors = grayCardColors()) { Column(Modifier.padding(vertical = 4.dp)) {
                         Text(
                             "导入方案",
                             style = MaterialTheme.typography.titleSmall,
@@ -336,7 +350,7 @@ fun SettingsScreen(
                 }
                 // 父级菜单③：语音输入（轮19：本地模型 + 联网 API 点选；系统接口已删除）
                 item {
-                    Card { Column(Modifier.padding(vertical = 4.dp)) {
+                    Card(colors = grayCardColors()) { Column(Modifier.padding(vertical = 4.dp)) {
                         Text(
                             "语音输入",
                             style = MaterialTheme.typography.titleSmall,
@@ -466,7 +480,7 @@ fun SettingsScreen(
                 contentPadding = PaddingValues(vertical = 8.dp),
             ) {
                 item {
-                    Card {
+                    Card(colors = grayCardColors()) {
                         Column(Modifier.padding(vertical = 4.dp)) {
                             KsuItem(
                                 icon = OimeIcons.keyboard,
@@ -478,22 +492,22 @@ fun SettingsScreen(
                     }
                 }
                 item {
-                    Card { Column { KeyHeightSliders() } }
+                    Card(colors = grayCardColors()) { Column { KeyHeightSliders() } }
                 }
                 item {
-                    Card { Column { FontSizeSettings() } }
+                    Card(colors = grayCardColors()) { Column { FontSizeSettings() } }
                 }
                 item {
-                    Card { Column { KeyAppearanceSettings() } }
+                    Card(colors = grayCardColors()) { Column { KeyAppearanceSettings() } }
                 }
                 item {
-                    Card { Column { GesturePositionSettings() } }
+                    Card(colors = grayCardColors()) { Column { GesturePositionSettings() } }
                 }
                 item {
-                    Card { Column { VibrationSettings() } }
+                    Card(colors = grayCardColors()) { Column { VibrationSettings() } }
                 }
                 item {
-                    Card { Column { SymbolHintSettings() } }
+                    Card(colors = grayCardColors()) { Column { SymbolHintSettings() } }
                 }
             }
             return@Scaffold
@@ -508,7 +522,7 @@ fun SettingsScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 contentPadding = PaddingValues(vertical = 8.dp),
             ) {
-                item { Card { Column { FloatingWindowSettings() } } }
+                item { Card(colors = grayCardColors()) { Column { FloatingWindowSettings() } } }
             }
             return@Scaffold
         }
@@ -527,10 +541,10 @@ fun SettingsScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 contentPadding = PaddingValues(vertical = 8.dp),
             ) {
-                item { Card { Column { ThemeColorSettings() } } }
+                item { Card(colors = grayCardColors()) { Column { ThemeColorSettings() } } }
                 item {
                     // 字体管理入口：位于主题与配色下层
-                    Card {
+                    Card(colors = grayCardColors()) {
                         Column(Modifier.padding(vertical = 4.dp)) {
                             KsuItem(
                                 icon = OimeIcons.font,
@@ -555,7 +569,7 @@ fun SettingsScreen(
                 contentPadding = PaddingValues(vertical = 8.dp),
             ) {
                 item {
-                    Card {
+                    Card(colors = grayCardColors()) {
                         Column(Modifier.padding(vertical = 4.dp)) {
                             KsuItem(
                                 icon = OimeIcons.info,
@@ -1827,6 +1841,17 @@ private fun restoreSettings(context: android.content.Context, uri: android.net.U
     count
 }.getOrDefault(-1)
 
+/**
+ * 轮19.26：设置页统一卡片底色（浅灰）——主页面与**所有二级页**都用它，
+ * 不再依赖 M3 默认的中性色（默认偏紫）。
+ */
+@Composable
+private fun grayCardColors(): androidx.compose.material3.CardColors =
+    androidx.compose.material3.CardDefaults.cardColors(
+        containerColor = if (androidx.compose.foundation.isSystemInDarkTheme()) Color(0xFF26262A)
+        else Color(0xFFF1F1F2),
+    )
+
 @Composable
 private fun SectionLabel(text: String) {    Text(
         text = text,
@@ -1971,7 +1996,7 @@ private fun OringSettings(padding: androidx.compose.foundation.layout.PaddingVal
         contentPadding = PaddingValues(vertical = 8.dp),
     ) {
         item {
-            Card {
+            Card(colors = grayCardColors()) {
                 Column(Modifier.padding(vertical = 4.dp)) {
                     Text(
                         "圆环形状",
@@ -2013,7 +2038,7 @@ private fun OringSettings(padding: androidx.compose.foundation.layout.PaddingVal
             }
         }
         item {
-            Card {
+            Card(colors = grayCardColors()) {
                 Column(Modifier.padding(vertical = 4.dp)) {
                     Text(
                         "上滑快捷应用（5 个槽位）",
