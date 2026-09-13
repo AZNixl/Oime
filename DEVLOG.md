@@ -1219,3 +1219,17 @@ Unresolved reference）；要么 import 后 `x.roundToInt()`，要么直接 `x.t
 2. **○ 菜单切亮/暗色后，系统底部栏不跟随**：真因是导航栏颜色只在 `onStartInputView` 设过一次
    - 新增 `applyWindowBarColors()`，**在切换动作里立即调用**，同时把 `onStartInputView` 里那行也统一走它
    - 顺带保证 `isNavigationBarContrastEnforced = false`（避免系统再叠一层对比色）
+
+# 轮19.28（0.9.41-oime vc51）：复制条交互重做（按钮/长按消亡+震动）+ 修复「再次复制不显示」
+
+1. **复制条按用户要求重做**：
+   - 内容**靠左**排布（原来居中），右侧放一个 **✕ 消亡按钮**
+   - **整条长按也可消亡**（`detectTapGestures(onLongPress)`，避免 `combinedClickable` 的 OptIn 噪音）
+   - 两种消亡都**震动提示**（新增 `HapticsManager.Type.DISMISS`，固定 30ms，受总开关约束）
+   - **废弃左右划动**（连带删掉 19.27 加的「复制条划动阈值」设置项）
+   - 点内容仍 = 上屏
+2. **修复「复制一条后，再次复制不显示到工具栏」**：
+   - 真因：`readClipboard()` 的抑制规则（跳过 `lastCommittedClip` / `dismissedClip`）**对"真·复制事件"也生效**，
+     于是复制 A → 上屏/消亡后，**再复制一次 A（或内容相同）就被判定重复而静默丢弃**
+   - 修复：`readClipboard(fromUserCopy)` —— 剪贴板监听回调（真·复制）传 `true`，**永远显示**；
+     只有 `onStartInputView` 的复读才应用抑制规则（保持"上屏后不复活"的原意）

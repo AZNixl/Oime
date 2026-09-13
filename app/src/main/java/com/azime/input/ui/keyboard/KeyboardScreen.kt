@@ -1,5 +1,6 @@
 package com.azime.input.ui.keyboard
 
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -971,47 +972,58 @@ private fun ToolbarRow(
             }
         }
         // ── 剪贴板条：复制内容覆盖整条工具栏，点击直接上屏 ──
-        // 轮19.18：复制条 —— 点=上屏，**左右划动=消亡**（不再需要"先上屏再删"）
-        clipFresh -> {
-            // 轮19.27：阈值可调（设置 → 键盘 → 复制条划动阈值，默认 12dp）
-            val dismissPx = with(LocalDensity.current) { KeyboardManager.clipSwipeDp().dp.toPx() }
-            var dragAccum by remember { mutableStateOf(0f) }
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(barHeight)
-                    .background(c.bg)
-                    .pointerInput(state.clipText) {
-                        detectHorizontalDragGestures(
-                            onDragStart = { dragAccum = 0f },
-                            onHorizontalDrag = { change, delta ->
-                                change.consume() // 消费掉，避免同时触发 clickable 的上屏
-                                dragAccum += delta
-                                if (abs(dragAccum) > dismissPx) {
-                                    dragAccum = 0f
-                                    onAction(KeyAction.DismissClipStrip)
-                                }
-                            },
-                        )
-                    }
-                    // 轮19.24：上屏用**完整文本**（原来用截断显示的 clipText → 长文本只能上屏 80 字）
-                .clickable {
-                    onAction(KeyAction.CommitClipboard(state.clipFull.ifEmpty { state.clipText }))
-                },
-                contentAlignment = Alignment.Center,
-            ) {
+        // 轮19.28（按用户要求定稿）：复制条 = **内容靠左** + 右侧「✕ 消亡」按钮；
+        // 整条**长按也可消亡**；两种消亡都**震动提示**；**废弃左右划动**（原阈值设置随之失效）。
+        clipFresh -> Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(barHeight)
+                .background(c.bg)
+                // 整条长按 = 消亡（带震动）
+                .pointerInput(state.clipText) {
+                    detectTapGestures(
+                        onLongPress = {
+                            com.azime.input.core.haptic.HapticsManager.haptic(
+                                com.azime.input.core.haptic.HapticsManager.Type.DISMISS,
+                            )
+                            onAction(KeyAction.DismissClipStrip)
+                        },
+                    )
+                }
+                .padding(start = 10.dp, end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            // 内容：靠左，单行省略；点击内容 = 上屏（保持原有习惯）
             Text(
                 text = state.clipText.replace("\n", " "),
                 fontSize = KeyboardManager.fontSizeBar().sp,
                 color = c.text,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Start,
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable {
+                        onAction(KeyAction.CommitClipboard(state.clipFull.ifEmpty { state.clipText }))
+                    }
+                    .padding(vertical = 6.dp),
             )
+            // 右侧消亡按钮（点击即消亡 + 震动）
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .background(c.funcKeyBg, RoundedCornerShape(17.dp))
+                    .clickable {
+                        com.azime.input.core.haptic.HapticsManager.haptic(
+                            com.azime.input.core.haptic.HapticsManager.Type.DISMISS,
+                        )
+                        onAction(KeyAction.DismissClipStrip)
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("✕", fontSize = 15.sp, color = c.subText)
             }
         }
-        // ── 常规工具栏：工具在 ○ 两侧剩余空间内居中排列（反馈轮10，⌄ 关闭键已删除） ──
         else -> {
             val items = KeyboardManager.toolbarItems()
             val leftItems = items.take((items.size + 1) / 2)

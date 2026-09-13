@@ -97,7 +97,8 @@ class AZimeService : InputMethodService() {
     }
 
     private val clipboardListener = ClipboardManager.OnPrimaryClipChangedListener {
-        readClipboard()
+        // 轮19.28：这是**用户真的复制了一次** → 必须显示（不受"已上屏/已消亡"抑制）
+        readClipboard(fromUserCopy = true)
     }
 
     override fun onCreate() {
@@ -478,7 +479,7 @@ class AZimeService : InputMethodService() {
         return if (dark) 0xFF1B1D1F.toInt() else 0xFFE9EBEE.toInt()
     }
 
-    private fun readClipboard() {
+    private fun readClipboard(fromUserCopy: Boolean = false) {
         // 轮19.17：复制条关闭时完全不读剪贴板（隐私 + 少一个回调唤醒源）
         if (!KeyboardManager.clipStripEnabled()) return
         val clip = runCatching { clipboardManager.primaryClip }.getOrNull() ?: return
@@ -509,12 +510,18 @@ class AZimeService : InputMethodService() {
         }
         val text = item.coerceToText(this)?.toString().orEmpty()
         if (text.isNotBlank()) {
-            // 已上屏过 / 已被按键消亡过的同一段文本不再弹条（复制新内容才会重新出现）
+            // 轮19.28：抑制规则只对"弹键盘时的复读"生效——
+            // 真·复制事件（fromUserCopy）永远显示，否则「复制 A → 再复制一次」会被判定成重复而不显示
+            // （用户反馈：复制一条内容后，再次复制无法显示到工具栏）。
             val key = text.take(80)
-            if (key == lastCommittedClip) return
-            if (key == dismissedClip) {
-                com.azime.input.core.diag.Diag.log("Clip", "skip re-show (dismissed)")
-                return
+            if (!fromUserCopy) {
+                if (key == lastCommittedClip) return
+                if (key == dismissedClip) {
+                    com.azime.input.core.diag.Diag.log("Clip", "skip re-show (dismissed)")
+                    return
+                }
+            } else if (key == uiState.value.clipText) {
+                return // 已经在显示同一条了，避免重复触发
             }
             com.azime.input.core.diag.Diag.log("Clip", "show strip: ${key.take(20)}")
             // 轮19.24：clipText 只存前 80 字用于显示；clipFull 存完整文本供上屏

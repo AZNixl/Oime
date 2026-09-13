@@ -61,16 +61,21 @@ object HapticsManager {
      * `performHapticFeedback(...)`——**绕过「打字振动」总开关**，用户关了振动手势照样振。
      * 现在全部走这里，统一受总开关 + 节流约束。
      */
-    enum class Type { PRESS, RELEASE, LONG_PRESS, STEP }
+    enum class Type { PRESS, RELEASE, LONG_PRESS, STEP, DISMISS }
 
     /** 统一入口：所有振动都必须经过这里（总开关 + 节流 + 合并）。 */
     fun haptic(type: Type) {
         if (!enabled()) return
+        // 消亡提示：固定 30ms（比按键振感更明确），不受 press/release 子开关影响
+        if (type == Type.DISMISS) {
+            vibrate(forceMs = 30)
+            return
+        }
         when (type) {
             Type.PRESS -> if (!pressEnabled()) return
             Type.RELEASE -> if (!releaseEnabled()) return
-            // 长按/步进类：不单独开关，但同样受总开关与节流约束
-            Type.LONG_PRESS, Type.STEP -> Unit
+            // 长按/步进/消亡提示：不单独开关，但同样受总开关与节流约束
+            Type.LONG_PRESS, Type.STEP, Type.DISMISS -> Unit
         }
         vibrate()
     }
@@ -81,13 +86,13 @@ object HapticsManager {
     /** 抬起按键。 */
     fun release() = haptic(Type.RELEASE)
 
-    private fun vibrate() {
+    private fun vibrate(forceMs: Int = 0) {
         // 轮19.17：节流——报告实测 18.5h 内振动 7168 次 / 166s，其中大量是
         // 拖动类「每跨一步振一次」。70ms 窗口把重复事件合并，人手感知无差别。
         val now = android.os.SystemClock.uptimeMillis()
         if (now - lastVibrateAt < THROTTLE_MS) return
         lastVibrateAt = now
-        val ms = if (mode() == "custom") customMs() else DEFAULT_MS
+        val ms = if (forceMs > 0) forceMs else if (mode() == "custom") customMs() else DEFAULT_MS
         val vib = vibrator ?: AZimeApplication.instance
             .getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
         vib?.let { vibrator = it } ?: return
