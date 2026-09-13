@@ -487,9 +487,6 @@ fun SettingsScreen(
                     Card { Column { KeyAppearanceSettings() } }
                 }
                 item {
-                    Card { Column { ResponseTimingSettings() } }
-                }
-                item {
                     Card { Column { GesturePositionSettings() } }
                 }
                 item {
@@ -1214,115 +1211,6 @@ private fun KeyHeightSliders() {
             toolH = it
             com.azime.input.core.keyboard.KeyboardManager.setToolbarHeightDp(it.toInt())
         }
-        // 轮19.20：嵌入式编辑——把编码/候选**内嵌到应用文本框**（带下划线）
-        var inlineMode by remember {
-            mutableStateOf(com.azime.input.core.keyboard.KeyboardManager.inlineMode())
-        }
-        Text("嵌入式编辑（内嵌到文本框）", style = MaterialTheme.typography.bodyMedium)
-        listOf(
-            com.azime.input.core.keyboard.KeyboardManager.INLINE_FIRST to "首选（只内嵌首选候选）",
-            com.azime.input.core.keyboard.KeyboardManager.INLINE_CODE to "编码（只内嵌编码）",
-            com.azime.input.core.keyboard.KeyboardManager.INLINE_INPUT to "输入码（编码 + 首选候选）",
-            com.azime.input.core.keyboard.KeyboardManager.INLINE_NONE to "无（默认，编码与候选只显示在工具栏）",
-        ).forEach { (id, label) ->
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable {
-                        inlineMode = id
-                        com.azime.input.core.keyboard.KeyboardManager.setInlineMode(id)
-                    }
-                    .padding(vertical = 2.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                RadioButton(selected = inlineMode == id, onClick = {
-                    inlineMode = id
-                    com.azime.input.core.keyboard.KeyboardManager.setInlineMode(id)
-                })
-                Spacer(Modifier.width(6.dp))
-                Text(label, style = MaterialTheme.typography.bodySmall)
-            }
-        }
-        Text(
-            "内嵌内容以 composing text（带下划线）写进输入框，选词时被替换；默认关闭。",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.height(6.dp))
-
-        // 轮19.19：单手模式（关 / 左手 / 右手）
-        var handMode by remember {
-            mutableStateOf(com.azime.input.core.keyboard.KeyboardManager.handMode())
-        }
-        Text("单手模式", style = MaterialTheme.typography.bodyMedium)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf(
-                com.azime.input.core.keyboard.KeyboardManager.HAND_OFF to "关闭",
-                com.azime.input.core.keyboard.KeyboardManager.HAND_LEFT to "左手",
-                com.azime.input.core.keyboard.KeyboardManager.HAND_RIGHT to "右手",
-            ).forEach { (id, label) ->
-                val on = handMode == id
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .background(
-                            if (on) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
-                            androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
-                        )
-                        .clickable {
-                            handMode = id
-                            com.azime.input.core.keyboard.KeyboardManager.setHandMode(id)
-                        }
-                        .padding(vertical = 8.dp),
-                    contentAlignment = Alignment.Center,
-                ) { Text(label, style = MaterialTheme.typography.bodySmall) }
-            }
-        }
-        Spacer(Modifier.height(6.dp))
-
-        // 轮19.19：悬浮键盘（整体可拖动）
-        var floatKbd by remember {
-            mutableStateOf(com.azime.input.core.keyboard.KeyboardManager.floatKeyboard())
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("悬浮键盘（拖动顶部横条移动）", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-            Switch(
-                checked = floatKbd,
-                onCheckedChange = {
-                    floatKbd = it
-                    com.azime.input.core.keyboard.KeyboardManager.setFloatKeyboard(it)
-                    if (!it) com.azime.input.core.keyboard.KeyboardManager.resetFloatKbdPos()
-                },
-            )
-        }
-        Spacer(Modifier.height(6.dp))
-
-        // 轮19.17：复制条开关（关闭后不注册剪贴板监听、不读剪贴板）
-        var clipStrip by remember {
-            mutableStateOf(com.azime.input.core.keyboard.KeyboardManager.clipStripEnabled())
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("复制条（复制内容显示到工具栏）", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-            Switch(
-                checked = clipStrip,
-                onCheckedChange = {
-                    clipStrip = it
-                    com.azime.input.core.keyboard.KeyboardManager.setClipStripEnabled(it)
-                },
-            )
-        }
-        Text(
-            "关闭后不再监听剪贴板、不读取剪贴板内容（隐私更干净，也少一个后台回调）",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.height(6.dp))
         Text(
             "工具栏 = 候选/输入码区 + ○ 菜单键与工具图标所在的那一条；改后自动重建键盘生效",
             style = MaterialTheme.typography.bodySmall,
@@ -1457,37 +1345,6 @@ private fun XimeSlider(
                     .border(1.dp, Color(0x33000000), RoundedCornerShape(4.dp)),
             )
         }
-    }
-}
-
-/** 按键响应时间（反馈轮10）：长按/连发/滑动阈值微调，键盘内即时读取。 */
-@Composable
-private fun ResponseTimingSettings() {
-    val km = com.azime.input.core.keyboard.KeyboardManager
-    var longPress by remember { mutableStateOf(km.longPressMs().toFloat()) }
-    var repeatStart by remember { mutableStateOf(km.repeatStartMs().toFloat()) }
-    var repeatInterval by remember { mutableStateOf(km.repeatIntervalMs().toFloat()) }
-    var swipe by remember { mutableStateOf(km.swipeThresholdDp().toFloat()) }
-    Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
-        Text("按键响应", style = MaterialTheme.typography.titleSmall)
-        Spacer(Modifier.height(6.dp))
-        XimeSlider("长按触发", "${longPress.toInt()}ms", longPress, 100f..800f) {
-            longPress = it; km.setLongPressMs(it.toInt())
-        }
-        XimeSlider("连发起动", "${repeatStart.toInt()}ms", repeatStart, 50f..500f) {
-            repeatStart = it; km.setRepeatStartMs(it.toInt())
-        }
-        XimeSlider("连发间隔", "${repeatInterval.toInt()}ms", repeatInterval, 20f..200f) {
-            repeatInterval = it; km.setRepeatIntervalMs(it.toInt())
-        }
-        XimeSlider("滑动触发距离", "${swipe.toInt()}dp", swipe, 10f..80f) {
-            swipe = it; km.setSwipeThresholdDp(it.toInt())
-        }
-        Text(
-            "长按 = 按住多久触发长按符号；连发 = 长按退格的起动延时与每字间隔；滑动 = 手势触发距离。下次键盘弹出即生效。",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
 }
 

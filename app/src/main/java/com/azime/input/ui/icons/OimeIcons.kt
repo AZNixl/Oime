@@ -333,6 +333,19 @@ object OimeIcons {
         )
     }
 
+    /** 悬浮键盘（可移动键盘：圆角框 + 四向箭头）。 */
+    val floatKbd by lazy {
+        Icon(
+            "oime_floatkbd",
+            // 键盘外框
+            P("M3.6 7.2h16.8a1.4 1.4 0 0 1 1.4 1.4v7.2a1.4 1.4 0 0 1-1.4 1.4H3.6a1.4 1.4 0 0 1-1.4-1.4V8.6a1.4 1.4 0 0 1 1.4-1.4z", w = 1.8f),
+            // 键格
+            P("M6 10.6h2.4M10.8 10.6h2.4M15.6 10.6h2.4M8.4 14h7.2", w = 1.6f),
+            // 四向箭头（表示可移动）
+            P("M12 2.2v3M12 18.8v3M2.2 12h3M18.8 12h3", w = 1.7f),
+        )
+    }
+
     /** 单手模式（手机 + 拇指 + 左右切换箭头）。 */
     val oneHand by lazy {
         Icon(
@@ -409,6 +422,7 @@ object OimeIcons {
         "trash", "deleteall" -> trash
         "voice" -> mic
         "float" -> pip
+        "floatkbd" -> floatKbd
         "lua" -> code
         "theme" -> palette
         "deploy" -> refresh

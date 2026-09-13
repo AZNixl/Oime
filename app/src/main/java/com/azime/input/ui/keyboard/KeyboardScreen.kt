@@ -233,6 +233,8 @@ data class KeyboardUiState(
     val showCandidatePanel: Boolean = false,
     /** 轮19.11：方案快捷面板。 */
     val showSchemaPanel: Boolean = false,
+    /** 轮19.24：复制条**完整文本**（clipText 只存前 80 字用于显示，上屏必须用完整文本）。 */
+    val clipFull: String = "",
     /** 轮19.19：布局版本号（单手/悬浮等只改 prefs 的动作靠它触发重组）。 */
     val layoutRev: Int = 0,
     /** 轮19.11：光标屏幕坐标（悬浮窗跟随光标用；-1 表示未知）。 */
@@ -657,6 +659,8 @@ private fun ClipboardPanel(state: KeyboardUiState, onAction: (KeyAction) -> Unit
     val c = keyboardColors()
     val isPhrase = state.clipTab == "phrase"
     val items = if (isPhrase) state.phraseItems else state.clipHistory
+    // 轮19.24：︙ 菜单改为**横向悬浮栏**，出现时**覆盖面板的功能键区**（原来是 DropdownMenu 弹窗）
+    var menuTarget by remember { mutableStateOf<Pair<String, Int>?>(null) }
 
     Box(
         modifier = Modifier
@@ -687,11 +691,55 @@ private fun ClipboardPanel(state: KeyboardUiState, onAction: (KeyAction) -> Unit
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     items.forEachIndexed { index, text ->
-                        ClipCard(index = index, text = text, tab = state.clipTab, onAction = onAction)
+                        ClipCard(
+                            index = index, text = text, tab = state.clipTab, onAction = onAction,
+                            onMenu = { t, i -> menuTarget = t to i },
+                        )
                     }
                     // 底部留白避开悬浮栏
                     Spacer(Modifier.height(56.dp))
                 }
+            }
+        }
+        // 轮19.24：︙ 横向悬浮栏——覆盖在面板功能键区上方（点条目 ︙ 呼出）
+        menuTarget?.let { (targetText, targetIndex) ->
+            Row(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 6.dp)
+                    .background(c.funcKeyBg.copy(alpha = 0.95f), RoundedCornerShape(22.dp))
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                val actions: List<Pair<String, () -> Unit>> = buildList {
+                    if (state.clipTab == "clipboard") {
+                        add("收藏" to { onAction(KeyAction.ClipFav(targetText)) })
+                    }
+                    add("分词" to { onAction(KeyAction.ClipSplit(targetText)) })
+                    add("置顶" to { onAction(KeyAction.ClipTop(state.clipTab, targetIndex)) })
+                    add("删除" to { onAction(KeyAction.ClipDelete(state.clipTab, targetIndex)) })
+                    add(if (state.clipTab == "clipboard") "全清历史" to { onAction(KeyAction.ClipClear(state.clipTab)) }
+                    else "全清收藏" to { onAction(KeyAction.ClipClear(state.clipTab)) })
+                }
+                actions.forEach { (label, act) ->
+                    Box(
+                        modifier = Modifier
+                            .background(c.keyBg, RoundedCornerShape(14.dp))
+                            .clickable {
+                                act()
+                                menuTarget = null
+                            }
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                    ) { Text(label, fontSize = 13.sp, color = c.text, maxLines = 1) }
+                }
+                Box(
+                    modifier = Modifier
+                        .background(c.keyBg, RoundedCornerShape(14.dp))
+                        .clickable { menuTarget = null }
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                ) { Text("✕", fontSize = 13.sp, color = c.subText) }
             }
         }
         // 底部悬浮栏（反馈轮9，参考 PiliPlus）：返回键 + 选项卡；轮10 半透明 + 同心圆角（外R22 内R18）
@@ -739,9 +787,14 @@ private fun ClipTabLabel(text: String, selected: Boolean, c: KeyboardColors, onC
 
 /** 条目卡片：序号 + 文本（最多 3 行）+ 标签行（英文/电话/网址等，横向滑动点选）+ ︙ 菜单。 */
 @Composable
-private fun ClipCard(index: Int, text: String, tab: String, onAction: (KeyAction) -> Unit) {
+private fun ClipCard(
+    index: Int,
+    text: String,
+    tab: String,
+    onAction: (KeyAction) -> Unit,
+    onMenu: (String, Int) -> Unit,
+) {
     val c = keyboardColors()
-    var menuOpen by remember { mutableStateOf(false) }
     // 标签（jqb.lua 风格）：英文单词 / 电话号码 / 网址，常驻词条下方，左右滑动快速点选
     val tags = remember(text) {
         val urls = Regex("""(https?://\S+|www\.\S+)""").findAll(text).map { it.value }
@@ -783,41 +836,13 @@ private fun ClipCard(index: Int, text: String, tab: String, onAction: (KeyAction
                 }
             }
         }
-        Box {
-            Text(
-                "︙",
-                fontSize = 16.sp,
-                color = c.subText,
-                modifier = Modifier
-                    .clickable { menuOpen = true }
-                    .padding(4.dp),
-            )
-            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                if (tab == "clipboard") {
-                    DropdownMenuItem(
-                        text = { Text("收藏") },
-                        onClick = { menuOpen = false; onAction(KeyAction.ClipFav(text)) },
-                    )
-                }
-                // 轮19.1：分词（拆成词条入历史，便于逐词取用）
-                DropdownMenuItem(
-                    text = { Text("分词") },
-                    onClick = { menuOpen = false; onAction(KeyAction.ClipSplit(text)) },
-                )
-                DropdownMenuItem(
-                    text = { Text("置顶") },
-                    onClick = { menuOpen = false; onAction(KeyAction.ClipTop(tab, index)) },
-                )
-                DropdownMenuItem(
-                    text = { Text("删除") },
-                    onClick = { menuOpen = false; onAction(KeyAction.ClipDelete(tab, index)) },
-                )
-                // 轮19.1：全清（清空当前列表：剪贴板历史 / 收藏短语）
-                DropdownMenuItem(
-                    text = { Text(if (tab == "clipboard") "全清（历史）" else "全清（收藏）") },
-                    onClick = { menuOpen = false; onAction(KeyAction.ClipClear(tab)) },
-                )
-            }
+        // 轮19.24：︙ 交给父级弹出**横向悬浮栏**（覆盖面板功能键区）
+        Box(
+            modifier = Modifier
+                .clickable { onMenu(text, index) }
+                .padding(4.dp),
+        ) {
+            Text("︙", fontSize = 16.sp, color = c.subText)
         }
     }
 }
@@ -865,11 +890,7 @@ private fun ToolbarRow(
                 .height(barHeight)
                 .background(c.bg)
                 .padding(horizontal = 6.dp, vertical = 1.dp),
-            // 轮19.22：只显示候选行（编码已内嵌到文本框）时，候选在工具栏里**上下居中**
-            verticalArrangement = if (KeyboardManager.inlineMode().let {
-                    it == KeyboardManager.INLINE_CODE || it == KeyboardManager.INLINE_INPUT
-                }
-            ) Arrangement.Center else Arrangement.Top,
+            verticalArrangement = Arrangement.Center,
         ) {
             // 轮19.4：工具栏高度固定不动，字号按可用高度收敛——原来字号调到 24~28sp 时
             // 「输入码行 + 候选行」总高超过 barHeight，文字伸出工具栏被窗口裁掉。
@@ -881,11 +902,7 @@ private fun ToolbarRow(
             // 轮19.11：悬浮窗生效时，前三码交给悬浮窗显示，工具栏只显示余下的
             val floatOn = KeyboardManager.floatEnabled() && state.preedit.isNotEmpty()
             val preeditForBar = if (floatOn) state.preedit.drop(3) else state.preedit
-            // 轮19.21：嵌入式已把编码内嵌到文本框（编码/输入码模式）→ 工具栏只留候选，不再重复显示编码
-            val inlineShowsCode = KeyboardManager.inlineMode().let {
-                it == KeyboardManager.INLINE_CODE || it == KeyboardManager.INLINE_INPUT
-            }
-            if (preeditForBar.isNotEmpty() && !inlineShowsCode) {
+            if (preeditForBar.isNotEmpty()) {
                 Text(
                     text = preeditForBar,
                     // 轮18.2：输入码小字随候选字号缩放；轮19.4：随工具栏可用高度收敛
@@ -976,7 +993,10 @@ private fun ToolbarRow(
                             },
                         )
                     }
-                    .clickable { onAction(KeyAction.CommitClipboard(state.clipText)) },
+                    // 轮19.24：上屏用**完整文本**（原来用截断显示的 clipText → 长文本只能上屏 80 字）
+                .clickable {
+                    onAction(KeyAction.CommitClipboard(state.clipFull.ifEmpty { state.clipText }))
+                },
                 contentAlignment = Alignment.Center,
             ) {
             Text(
@@ -2568,14 +2588,12 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
             !key.longClick.isNullOrBlank() -> listOf(key.longClick!!)
             else -> emptyList()
         }
-        val base = when {
+        when {
             state.page == "symbols" || key.type != KeyType.CHARACTER -> emptyList()
             custom.isNotEmpty() -> custom
-            key.code == "k" -> BracketPairs
-            else -> LongPressSymbols[key.code.firstOrNull()] ?: emptyList()
+            // 轮19.24：随中英自动切换（K 键括号表也有 ASCII 变体）
+            else -> com.azime.input.data.keyboard.longPressSymbolsFor(key.code, state.asciiMode)
         }
-        if (!state.asciiMode) base
-        else base.filter { sym -> sym.isNotEmpty() && sym.all { it.code in 32..126 } }.ifEmpty { base }
     }
     // 轮19.23（H 键英文不出 `_` 的真因）：手势块是 pointerInput(code, longClick, page)——
     // **asciiMode 不在 key 里**，切换中英后手势闭包不重建，提交时读到的仍是旧 state
@@ -2602,6 +2620,13 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
     var longFired by remember { mutableStateOf(false) }
     // 触发前移动超过 5dp 取消长按（对齐 xime.az KeyButton，防止打字抖动误触发）
     var longCancelled by remember { mutableStateOf(false) }
+    // 轮19.24：长按动作可能改变引擎状态（如空格长按切中英）→ 手势块重启时按下态必须复位，
+    // 否则按键会卡在"按下"外观（用户反馈：再次点击才恢复）
+    LaunchedEffect(state.asciiMode) {
+        pressing = false
+        longFired = false
+        longCancelled = false
+    }
     var showBubble by remember { mutableStateOf(false) }
     var showPageBubble by remember { mutableStateOf(false) }
     var swipePreview by remember { mutableStateOf<String?>(null) }
@@ -2698,7 +2723,7 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
     if (hasGestures) {
         // 手势闭包内读取最新 state（preedit 等会随打字频繁变化）
         val currentState by rememberUpdatedState(state)
-        baseModifier = baseModifier.pointerInput(key.code, key.longClick, state.page, state.asciiMode) {
+        baseModifier = baseModifier.pointerInput(key.code, key.longClick, state.page) {
             awaitEachGesture {
                 val down = awaitFirstDown(requireUnconsumed = false)
                 longFired = false
@@ -2890,7 +2915,8 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
             }
         }
         // 键面右上角长按符号提示（受设置「长按符号提示」开关控制）
-        val hintText = key.hint ?: longPressHint(key.code)
+        // 轮19.24：键面符号随中英切换（英文模式显示该键的 ASCII 长按符号）
+        val hintText = key.hint ?: com.azime.input.data.keyboard.longPressHint(key.code, state.asciiMode)
         if (swipePreview == null && KeyboardManager.hintLong() && hintText != null && key.type == KeyType.CHARACTER) {
             Text(
                 text = hintText,

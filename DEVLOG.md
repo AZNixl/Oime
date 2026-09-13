@@ -1147,3 +1147,33 @@ Unresolved reference）；要么 import 后 `x.roundToInt()`，要么直接 `x.t
 会被系统覆盖回来 ⇒ 窗口只有键盘那么高，拖动范围自然被限制在小半屏。
 **修复**：让**内容自己占满屏幕高度**（`Modifier.height(screenHeightDp - 48dp)`）→ 窗口随之变高
 → 拖动范围＝整屏（配合已有的 `contentTopInsets` 满屏 + `touchableRegion` 限定键盘矩形，App 不会被顶起）
+
+# 轮19.24（0.9.37-oime vc47）：十一项修正（手感/符号/剪贴板/精简）
+
+1. **空格长按切中英后按键卡在"按下态"** —— 真因是**我上一轮引入的**：
+   为修 H 键把 `state.asciiMode` 加进了 `pointerInput` 的 key，长按切换 ascii 时手势块被
+   **中途取消重启**，抬起分支不再执行 ⇒ `pressing` 永远为 true。
+   现在：从 key 里移除 `asciiMode`（`rememberUpdatedState` 已足够）+ 加 `LaunchedEffect(asciiMode)`
+   复位 `pressing/longFired/longCancelled` 双保险。
+2. **悬浮模式图标更换**：新增 `OimeIcons.floatKbd`（可移动键盘：圆角框 + 四向箭头），
+   工具栏 `floatkbd` 映射到它（原来复用 pip）。
+3. **全部符号加「中文符号」「英文符号」两类**，放最左（常用→中文→英文→引号→数学→箭头→货币…）。
+4. **键面长按符号随中英自动切换**（对齐 trime2 `26键.lua` 的 `ascii = { long_click = ... }` 语义）：
+   新增 `LongPressSymbolsAscii`（h→`_`、m→`:`、`,`→`!`、`.`→`?`、b/n 引号、k→ASCII 括号气泡），
+   键面提示与长按气泡都按 `asciiMode` 取对应的那一套。
+5. **编辑器：长按动作与长按符号合二为一**——只保留一个「长按」输入框
+   （单个=直接执行；空格分隔多个=长按气泡），保存时同步写入 `longClick` + `popup`。
+6. **打字粘滞感（性能）**：
+   - 引擎调用改为**单线程串行**（`Dispatchers.Default.limitedParallelism(1)`）：原来多线程并发打 librime，
+     而 librime 内部有全局锁 ⇒ 互相等待 + 顺序错乱 = 手感粘滞；与 trime2 的 RimeDispatcher 同思路
+   - `updateFromResult` 内容无变化时**不发射新状态**（避免每次按键都整棵键盘重组）
+   - 触感节流 **70ms → 40ms**（70ms 会在快速打字时丢振动，手感"不清脆"）
+7. **剪贴板**：
+   - ︙ 菜单改为**横向悬浮栏**，呼出时**覆盖面板的功能键区**（原来是 DropdownMenu 弹窗）
+   - **长文本上屏不全**的真因：显示用的是 `clipText = text.take(80)`，**上屏也用它** ✗
+     → 新增 `clipFull` 保存完整文本，显示仍用截断值，**上屏用完整文本**
+8. **去除嵌入式编辑**（用户确认不要）：删掉设置项 + `applyInlineComposing` + 工具栏的 inline 分支，
+   工具栏恢复恒定显示"输入码 + 候选"。
+9. **设置 → 键盘：删掉「单手模式 / 悬浮模式 / 复制条」三个设置项**（功能保留，仍由工具栏工具切换）。
+10. **去除「按键响应」设置项**（长按/连发/滑动阈值面板整段删除，阈值仍用默认值）。
+11. 记录并推送（手机未连接，装机待指令）。

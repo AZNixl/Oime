@@ -51,7 +51,9 @@ object HapticsManager {
     // ── 触发（轮19.17：统一入口 + 节流）──
 
     /** 节流窗口：两次振动最小间隔（ms）。打字快时合并，避免"每键两振/每步一振"。 */
-    private const val THROTTLE_MS = 70L
+    /** 轮19.24：70ms → **40ms**。70ms 会在快速打字时丢掉振动（实测手感"粘滞不清脆"），
+     *  40ms 仍能合并同一按键的重复事件，但保住了快打时的触感。 */
+    private const val THROTTLE_MS = 40L
     private var lastVibrateAt = 0L
 
     /**

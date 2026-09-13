@@ -516,7 +516,7 @@ private fun KeyEditDialog(
     var swipeRight by remember { mutableStateOf(key.swipeRight ?: "") }
     var hint by remember { mutableStateOf(key.hint ?: "") }
     // 轮19.19：长按气泡的符号列表（空格分隔）——非空时覆盖内置映射
-    var popup by remember { mutableStateOf(key.popup.joinToString(" ")) }
+    // 轮19.24：长按动作/符号合并——编辑端口径统一走 longClick，保存时同步写入 popup
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -582,12 +582,7 @@ private fun KeyEditDialog(
                     singleLine = true, modifier = Modifier.fillMaxWidth(),
                 )
 
-                OutlinedTextField(
-                    value = popup,
-                    onValueChange = { popup = it },
-                    label = { Text("长按气泡（空格分隔多个符号，如 （） [] 「」）") },
-                    modifier = Modifier.fillMaxWidth(),
-                )
+
                 Text(
                     "动作可用：select_all / cut / copy / paste / toggle_ascii / newline / caps_lock / delete_all / undo / page:symbols / page:numpad / page:emoji / preset_keys 条目名 / 任意文本",
                     fontSize = 11.sp,
@@ -612,7 +607,9 @@ private fun KeyEditDialog(
                         swipeLeft = swipeLeft.ifBlank { null },
                         swipeRight = swipeRight.ifBlank { null },
                         hint = hint.ifBlank { null },
-                        popup = popup.split(' ').map { it.trim() }.filter { it.isNotEmpty() },
+                        // 轮19.24：长按动作与长按符号**合二为一**——同一个字段：
+                        // 单个动作/符号 → 直接执行；空格分隔多个 → 长按气泡多选
+                        popup = longClick.split(' ').map { it.trim() }.filter { it.isNotEmpty() },
                     )
                 )
             }) { Text("保存") }

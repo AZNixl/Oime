@@ -33,16 +33,43 @@ val BracketPairs: List<String> = listOf(
     "{}{Left}", "〈〉{Left}", "(){Left}", "《》{Left}", "[]{Left}", "【】{Left}",
 )
 
-/** 长按符号的键面提示文本（命令 identifier 转中文）。 */
-fun longPressHint(code: String): String? {
-    val list = LongPressSymbols[code.firstOrNull() ?: ' '] ?: return null
+/**
+ * 轮19.24：**英文（ASCII）模式下的长按符号变体**——键面符号与长按气泡随中英自动切换。
+ * 语义对齐 trime2 `26键.lua` 的 `ascii = { long_click = ... }` 子表：
+ * 中文标点 ↔ ASCII，其余（数字、- @ # + = 等命令）两模式一致。
+ */
+val LongPressSymbolsAscii: Map<Char, List<String>> = mapOf(
+    'h' to listOf("_"),
+    'm' to listOf(":"),
+    ',' to listOf("!"),
+    '.' to listOf("?"),
+    'b' to listOf("\""),
+    'n' to listOf("'"),
+    // K 键：括号气泡换成 ASCII 括号
+    'k' to listOf("(){Left}", "[]{Left}", "{}{Left}"),
+)
+
+/** 按中英模式取长按符号列表（英文模式优先 ASCII 变体）。 */
+fun longPressSymbolsFor(code: String, ascii: Boolean): List<String> {
+    val c = code.firstOrNull() ?: return emptyList()
+    if (ascii) LongPressSymbolsAscii[c]?.let { return it }
+    return LongPressSymbols[c] ?: emptyList()
+}
+
+/** 长按符号的键面提示文本（命令 identifier 转中文；随中英模式切换）。 */
+fun longPressHint(code: String, ascii: Boolean = false): String? {
+    val list = when {
+        code == "k" -> if (ascii) LongPressSymbolsAscii['k'] else BracketPairs
+        ascii && code.length == 1 -> LongPressSymbolsAscii[code.first()] ?: LongPressSymbols[code.first()]
+        else -> LongPressSymbols[code.firstOrNull() ?: ' ']
+    } ?: return null
     val first = list.firstOrNull() ?: return null
     return when (first) {
         "select_all" -> "全选"
         "cut" -> "剪切"
         "copy" -> "复制"
         "paste" -> "粘贴"
-        else -> first
+        else -> first.removeSuffix("{Left}")
     }
 }
 

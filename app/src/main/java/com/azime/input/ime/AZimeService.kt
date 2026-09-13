@@ -40,7 +40,14 @@ import java.io.File
 class AZimeService : InputMethodService() {
 
     private val lifecycleOwner = ImeLifecycleOwner()
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    /**
+     * 轮19.24（打字手感）：引擎调用**单线程串行**执行。
+     * 原来用 `Dispatchers.Default`（多线程池）→ 每次按键各起一个协程并发打 librime，
+     * 而 librime 内部有全局锁，多线程只会互相等待、还可能出现处理顺序错乱 ⇒ 快速打字时
+     * 表现为"粘滞、跟不上手速"。单线程（FIFO）与 trime2 的 RimeDispatcher 同思路。
+     */
+    private val engineDispatcher = Dispatchers.Default.limitedParallelism(1)
+    private val scope = CoroutineScope(SupervisorJob() + engineDispatcher)
     private val uiState = MutableStateFlow(KeyboardUiState())
 
     /** 语音输入 RMS（dB）：高频回调独立 State，只供声纹 Canvas 读取，不走 uiState 重组链。 */
@@ -474,7 +481,13 @@ class AZimeService : InputMethodService() {
                         target.outputStream().use { output -> input.copyTo(output) }
                     }
                     if (target.length() > 0) {
-                        uiState.update { it.copy(clipText = "🖼 [图片 ${target.length() / 1024}KB]", clipAtMs = System.currentTimeMillis()) }
+                        uiState.update {
+                            it.copy(
+                                clipText = "🖼 [图片 ${target.length() / 1024}KB]",
+                                clipAtMs = System.currentTimeMillis(),
+                                clipFull = target.absolutePath,
+                            )
+                        }
                     }
                 }
             }
@@ -490,7 +503,10 @@ class AZimeService : InputMethodService() {
                 return
             }
             com.azime.input.core.diag.Diag.log("Clip", "show strip: ${key.take(20)}")
-            uiState.update { it.copy(clipText = key, clipAtMs = System.currentTimeMillis()) }
+            // 轮19.24：clipText 只存前 80 字用于显示；clipFull 存完整文本供上屏
+            uiState.update {
+                it.copy(clipText = key, clipAtMs = System.currentTimeMillis(), clipFull = text)
+            }
             recordClip(text)
         }
     }
@@ -780,7 +796,7 @@ class AZimeService : InputMethodService() {
                 KeyAction.DismissClipStrip -> {
                     dismissedClip = uiState.value.clipText
                     com.azime.input.core.diag.Diag.log("Clip", "dismiss by swipe")
-                    uiState.update { it.copy(clipText = "", clipAtMs = 0L) }
+                    uiState.update { it.copy(clipText = "", clipAtMs = 0L, clipFull = "") }
                 }
                 is KeyAction.CommitClipboard -> {
                     currentInputConnection?.commitText(action.text, 1)
@@ -1149,10 +1165,16 @@ class AZimeService : InputMethodService() {
     }
 
     private fun updateFromResult(result: com.kingzcheung.xime.rime.RimeProcessResult) {
-        applyInlineComposing(result)
+        // 轮19.24：内容完全一致时**不发射新状态**（StateFlow 值相等即跳过，避免整棵键盘白重组）
+        val newList = result.candidates.map { c -> c.toCandidate() }
+        val cur = uiState.value
+        if (cur.candidates == newList && cur.preedit == result.preeditText &&
+            cur.asciiMode == result.isAsciiMode && cur.hasNextPage == result.hasNextPage &&
+            cur.hasPrevPage == result.hasPrevPage
+        ) return
         uiState.update {
             it.copy(
-                candidates = result.candidates.map { c -> c.toCandidate() },
+                candidates = newList,
                 preedit = result.preeditText,
                 asciiMode = result.isAsciiMode.also { now ->
                     // 轮19.21：ascii 状态变化打点（排查「英文模式下 H 长按不出 _」）
@@ -1167,44 +1189,6 @@ class AZimeService : InputMethodService() {
                 // 轮19.17：组词**不再**消亡复制条（只有「点击上屏」与「无候选时按退格」两条途径）
             )
         }
-    }
-
-    /** 轮19.20：嵌入式编辑——把「编码 / 首选候选」作为 composing text 内嵌进文本框。 */
-    @Volatile private var inlineActive = false
-
-    private fun applyInlineComposing(result: com.kingzcheung.xime.rime.RimeProcessResult) {
-        val mode = KeyboardManager.inlineMode()
-        val ic = currentInputConnection
-        if (mode == KeyboardManager.INLINE_NONE) {
-            if (inlineActive) {
-                runCatching { ic?.finishComposingText() }
-                inlineActive = false
-            }
-            return
-        }
-        if (ic == null) return
-        val preedit = result.preeditText
-        val first = result.candidates.firstOrNull()?.text.orEmpty()
-        val text = when (mode) {
-            KeyboardManager.INLINE_FIRST -> first
-            KeyboardManager.INLINE_CODE -> preedit
-            KeyboardManager.INLINE_INPUT -> when {
-                preedit.isEmpty() -> first
-                first.isEmpty() -> preedit
-                else -> "$preedit $first"
-            }
-            else -> ""
-        }
-        if (text.isEmpty()) {
-            // 组合结束（无编码无候选）：收尾 composing
-            if (inlineActive) {
-                runCatching { ic.finishComposingText() }
-                inlineActive = false
-            }
-            return
-        }
-        runCatching { ic.setComposingText(text, 1) }
-        inlineActive = true
     }
 
     private suspend fun refreshState() {
