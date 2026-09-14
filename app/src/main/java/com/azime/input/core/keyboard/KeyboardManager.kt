@@ -538,6 +538,8 @@ object KeyboardManager {
             "x${spaceLabelOffsetDp()}x${sliderSymbolsRaw()}" +
             "x${fontSizeKey()}x${fontSizeBar()}x${keyCornerDp()}x${rowGapDp()}x${colGapDp()}" +
             "x${toolbarHeightDp()}x${handMode()}x${floatKeyboard()}x${clipSwipeDp()}x${autoPageByInput()}" +
+            "x${com.azime.input.core.theme.KeyboardTheme.uiStyle()}" +
+            "x${com.azime.input.core.theme.KeyboardTheme.accentPure()}" +
             "x${com.azime.input.core.theme.KeyboardTheme.customLightOn()}" +
             "x${com.azime.input.core.theme.KeyboardTheme.customDarkOn()}" +
             "x${com.azime.input.core.theme.KeyboardTheme.keyBgColor(false)}" +

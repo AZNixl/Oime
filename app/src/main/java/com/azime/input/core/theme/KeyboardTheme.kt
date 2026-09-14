@@ -22,6 +22,30 @@ object KeyboardTheme {
     const val MODE_LIGHT = "light"
     const val MODE_DARK = "dark"
 
+    // ── 轮19.31：界面风格 + 强调色原色 ──
+    //   风格影响：键盘调色板（MIUI 中性灰阶）/ 设置页卡片与容器色 / 键圆角
+    //   原色影响：强调键与强调容器是否**直接用纯色**（不再 alpha 混合冲淡）
+    private const val KEY_UI_STYLE = "ui_style"
+    private const val KEY_ACCENT_PURE = "accent_pure"
+
+    const val STYLE_MATERIAL = "material"
+    const val STYLE_MIUIX = "miuix"
+
+    fun uiStyle(): String = prefs.getString(KEY_UI_STYLE, STYLE_MATERIAL) ?: STYLE_MATERIAL
+
+    fun setUiStyle(v: String) = prefs.edit().putString(KEY_UI_STYLE, v).apply()
+
+    fun isMiuix(): Boolean = uiStyle() == STYLE_MIUIX
+
+    /** 强调色是否用**原色**（不做半透明混合）。自定义配色开启时强制为真。 */
+    fun accentPure(): Boolean = prefs.getBoolean(KEY_ACCENT_PURE, false)
+
+    fun setAccentPure(v: Boolean) = prefs.edit().putBoolean(KEY_ACCENT_PURE, v).apply()
+
+    /** 实际生效：开了原色开关，或当前模式用了自定义配色（自定义就该原样呈现）。 */
+    fun accentPureEffective(dark: Boolean): Boolean =
+        accentPure() || (if (dark) customDarkOn() else customLightOn())
+
     // ── 轮19.30：亮/暗两套自定义配色 ──
     //   组A「字母键」= 26 字母键 + 逗号 + 句号（keyBg）
     //   组B「功能键」= Shift / 符号 / 退格 等（funcKeyBg）

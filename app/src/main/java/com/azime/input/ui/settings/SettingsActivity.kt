@@ -144,10 +144,32 @@ class SettingsActivity : AppCompatActivity() {
             // 轮19.26：M3 默认配色是**淡紫色系**，各卡片/容器按不同角色取色（surfaceContainerLow /
             // surfaceVariant / surfaceContainerHighest …），只覆盖两个角色会漏 —— 用户看到的紫底就是漏网的角色。
             // 这里把**整套中性色**统一成灰阶（浅色/深色各一套）。
-            val plainGray = if (dark) Color(0xFF26262A) else Color(0xFFF1F1F2)
-            val grayHigh = if (dark) Color(0xFF2C2C31) else Color(0xFFEAEAEC)
-            val grayHighest = if (dark) Color(0xFF323238) else Color(0xFFE4E4E7)
-            val bg = if (dark) Color(0xFF1B1B1F) else Color(0xFFFFFFFF)
+            // 轮19.31：界面风格 —— miuix 用 MIUI 扁平灰阶（页面浅灰 + 卡片纯白），material 用中性灰
+            val miuix = com.azime.input.core.theme.KeyboardTheme.isMiuix()
+            val plainGray = when {
+                miuix && dark -> Color(0xFF2C2C2E)
+                miuix -> Color(0xFFFFFFFF)
+                dark -> Color(0xFF26262A)
+                else -> Color(0xFFF1F1F2)
+            }
+            val grayHigh = when {
+                miuix && dark -> Color(0xFF333335)
+                miuix -> Color(0xFFF7F8FA)
+                dark -> Color(0xFF2C2C31)
+                else -> Color(0xFFEAEAEC)
+            }
+            val grayHighest = when {
+                miuix && dark -> Color(0xFF3A3A3C)
+                miuix -> Color(0xFFE8EAED)
+                dark -> Color(0xFF323238)
+                else -> Color(0xFFE4E4E7)
+            }
+            val bg = when {
+                miuix && dark -> Color(0xFF191919)
+                miuix -> Color(0xFFF2F3F5)
+                dark -> Color(0xFF1B1B1F)
+                else -> Color(0xFFFFFFFF)
+            }
             MaterialTheme(
                 colorScheme = scheme.copy(
                     background = bg,
@@ -1687,6 +1709,61 @@ private fun ThemeColorSettings() {
         }
 
         // 反馈轮9：樱粉右侧加「自定义」卡片，点击才展开下方自定义颜色调整
+        // 轮19.31：界面风格（Material / Miuix）——键盘与设置页一起变
+        var uiStyle by remember { mutableStateOf(km.uiStyle()) }
+        var accentPure by remember { mutableStateOf(km.accentPure()) }
+        var styleRev by remember { mutableStateOf(0) }
+        androidx.compose.runtime.key(styleRev) {
+            Text("界面风格", style = MaterialTheme.typography.bodyMedium)
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                listOf(km.STYLE_MATERIAL to "Material", km.STYLE_MIUIX to "Miuix").forEach { (id, label) ->
+                    val on = uiStyle == id
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .background(
+                                if (on) MaterialTheme.colorScheme.primaryContainer
+                                else MaterialTheme.colorScheme.surfaceVariant,
+                                androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                            )
+                            .clickable {
+                                uiStyle = id
+                                km.setUiStyle(id)
+                                styleRev++
+                            }
+                            .padding(vertical = 10.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            label,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (on) MaterialTheme.colorScheme.onPrimaryContainer
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("强调色用原色", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        "关闭时强调色会与键底做半透明混合（观感柔和，但颜色会被冲淡）；" +
+                            "开启后严格按你选的颜色呈现。自定义配色开启时自动按原色。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(
+                    checked = accentPure,
+                    onCheckedChange = {
+                        accentPure = it
+                        km.setAccentPure(it)
+                        styleRev++
+                    },
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+        }
         val presets = km.accentPresets
         val isCustomSelected = presets.none { (_, l, d) -> currentLight == l && currentDark == d }
         var showCustom by remember { mutableStateOf(false) }
@@ -2039,11 +2116,18 @@ private fun restoreSettings(context: android.content.Context, uri: android.net.U
  * 不再依赖 M3 默认的中性色（默认偏紫）。
  */
 @Composable
-private fun grayCardColors(): androidx.compose.material3.CardColors =
-    androidx.compose.material3.CardDefaults.cardColors(
-        containerColor = if (androidx.compose.foundation.isSystemInDarkTheme()) Color(0xFF26262A)
-        else Color(0xFFF1F1F2),
-    )
+private fun grayCardColors(): androidx.compose.material3.CardColors {
+    // 轮19.31：Miuix 风格用纯白卡（浅色）/ 深灰卡（暗色）；Material 保持浅灰
+    val dark = androidx.compose.foundation.isSystemInDarkTheme()
+    val miuix = com.azime.input.core.theme.KeyboardTheme.isMiuix()
+    val bg = when {
+        miuix && dark -> Color(0xFF2C2C2E)
+        miuix -> Color(0xFFFFFFFF)
+        dark -> Color(0xFF26262A)
+        else -> Color(0xFFF1F1F2)
+    }
+    return androidx.compose.material3.CardDefaults.cardColors(containerColor = bg)
+}
 
 @Composable
 private fun SectionLabel(text: String) {    Text(
