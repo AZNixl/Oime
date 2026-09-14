@@ -357,7 +357,9 @@ fun AzimeKeyboardScreen(
     // 轮19.31：Miuix 风格键面更圆（+6dp，上限 24）
     val keyCorner = (KeyboardManager.keyCornerDp() +
         if (com.azime.input.core.theme.KeyboardTheme.isMiuix()) 6 else 0).coerceAtMost(24).dp
-    val rowGap = KeyboardManager.rowGapDp().dp
+    // 轮19.32：Miuix 风格行距 +2dp（键更大间隔，观感更扁平）
+    val rowGap = (KeyboardManager.rowGapDp() +
+        if (com.azime.input.core.theme.KeyboardTheme.isMiuix()) 2 else 0).coerceAtMost(16).dp
     val colGap = KeyboardManager.colGapDp().dp
     // 主键盘区标准总高（4 行 + 3 道行距 + 2dp 底留白，顶留白为 0）；emoji/候选/菜单面板统一与此等高。
     // 轮19.6：原为 keyH*4 + rowGap*5（对应旧的上下各 rowGap 留白），底部留白改 2dp 后

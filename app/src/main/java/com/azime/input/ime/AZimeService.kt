@@ -1,5 +1,6 @@
 package com.azime.input.ime
 
+import androidx.compose.ui.graphics.toArgb
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
@@ -473,12 +474,17 @@ class AZimeService : InputMethodService() {
         }
     }
 
+    /**
+     * 轮19.32：导航栏（键盘下方那条系统增高区）颜色**直接取键盘底色**——
+     * 这样界面风格（Material / Miuix）、亮暗、以及任何外观调整都会一起跟随，
+     * 不会再出现"键盘换了皮、底部条还是旧色"的割裂感。
+     */
     private fun navBarColorInt(): Int {
         val nightMask = resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK
         val dark = com.azime.input.core.theme.KeyboardTheme.isDark(
             nightMask == android.content.res.Configuration.UI_MODE_NIGHT_YES,
         )
-        return if (dark) 0xFF1B1D1F.toInt() else 0xFFE9EBEE.toInt()
+        return com.azime.input.ui.keyboard.buildKeyboardColors(dark).bg.toArgb()
     }
 
     /**

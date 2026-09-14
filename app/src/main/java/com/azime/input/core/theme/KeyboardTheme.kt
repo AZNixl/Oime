@@ -37,8 +37,12 @@ object KeyboardTheme {
 
     fun isMiuix(): Boolean = uiStyle() == STYLE_MIUIX
 
-    /** 强调色是否用**原色**（不做半透明混合）。自定义配色开启时强制为真。 */
-    fun accentPure(): Boolean = prefs.getBoolean(KEY_ACCENT_PURE, false)
+    /**
+     * 强调色是否用**原色**（不做半透明混合）。
+     * 轮19.32：**默认改为 true**——用户要的是"选了什么色就显示什么色"，
+     * 柔和混合（把颜色冲淡）改为需要主动关闭原色才会出现。
+     */
+    fun accentPure(): Boolean = prefs.getBoolean(KEY_ACCENT_PURE, true)
 
     fun setAccentPure(v: Boolean) = prefs.edit().putBoolean(KEY_ACCENT_PURE, v).apply()
 

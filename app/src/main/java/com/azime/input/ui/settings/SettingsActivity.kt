@@ -352,11 +352,11 @@ fun SettingsScreen(
             ) {
                 // 父级菜单①：方案组（组单选 → 选中组后挂「方案管理」入口 → 下方只显示已选方案）
                 item {
-                    Card(colors = grayCardColors()) { Column(Modifier.padding(vertical = 4.dp)) { SchemaList(onOpenManage = { showManage = true }, refreshRev = schemaRefreshRev) } }
+                    Card(colors = grayCardColors(), shape = settingsCardShape()) { Column(Modifier.padding(vertical = 4.dp)) { SchemaList(onOpenManage = { showManage = true }, refreshRev = schemaRefreshRev) } }
                 }
                 // 父级菜单②：导入方案
                 item {
-                    Card(colors = grayCardColors()) { Column(Modifier.padding(vertical = 4.dp)) {
+                    Card(colors = grayCardColors(), shape = settingsCardShape()) { Column(Modifier.padding(vertical = 4.dp)) {
                         Text(
                             "导入方案",
                             style = MaterialTheme.typography.titleSmall,
@@ -372,7 +372,7 @@ fun SettingsScreen(
                 }
                 // 父级菜单③：语音输入（轮19：本地模型 + 联网 API 点选；系统接口已删除）
                 item {
-                    Card(colors = grayCardColors()) { Column(Modifier.padding(vertical = 4.dp)) {
+                    Card(colors = grayCardColors(), shape = settingsCardShape()) { Column(Modifier.padding(vertical = 4.dp)) {
                         Text(
                             "语音输入",
                             style = MaterialTheme.typography.titleSmall,
@@ -502,7 +502,7 @@ fun SettingsScreen(
                 contentPadding = PaddingValues(vertical = 8.dp),
             ) {
                 item {
-                    Card(colors = grayCardColors()) {
+                    Card(colors = grayCardColors(), shape = settingsCardShape()) {
                         Column(Modifier.padding(vertical = 4.dp)) {
                             KsuItem(
                                 icon = OimeIcons.keyboard,
@@ -514,22 +514,22 @@ fun SettingsScreen(
                     }
                 }
                 item {
-                    Card(colors = grayCardColors()) { Column { KeyHeightSliders() } }
+                    Card(colors = grayCardColors(), shape = settingsCardShape()) { Column { KeyHeightSliders() } }
                 }
                 item {
-                    Card(colors = grayCardColors()) { Column { FontSizeSettings() } }
+                    Card(colors = grayCardColors(), shape = settingsCardShape()) { Column { FontSizeSettings() } }
                 }
                 item {
-                    Card(colors = grayCardColors()) { Column { KeyAppearanceSettings() } }
+                    Card(colors = grayCardColors(), shape = settingsCardShape()) { Column { KeyAppearanceSettings() } }
                 }
                 item {
-                    Card(colors = grayCardColors()) { Column { GesturePositionSettings() } }
+                    Card(colors = grayCardColors(), shape = settingsCardShape()) { Column { GesturePositionSettings() } }
                 }
                 item {
-                    Card(colors = grayCardColors()) { Column { VibrationSettings() } }
+                    Card(colors = grayCardColors(), shape = settingsCardShape()) { Column { VibrationSettings() } }
                 }
                 item {
-                    Card(colors = grayCardColors()) { Column { SymbolHintSettings() } }
+                    Card(colors = grayCardColors(), shape = settingsCardShape()) { Column { SymbolHintSettings() } }
                 }
             }
             return@Scaffold
@@ -544,7 +544,7 @@ fun SettingsScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 contentPadding = PaddingValues(vertical = 8.dp),
             ) {
-                item { Card(colors = grayCardColors()) { Column { FloatingWindowSettings() } } }
+                item { Card(colors = grayCardColors(), shape = settingsCardShape()) { Column { FloatingWindowSettings() } } }
             }
             return@Scaffold
         }
@@ -563,10 +563,10 @@ fun SettingsScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 contentPadding = PaddingValues(vertical = 8.dp),
             ) {
-                item { Card(colors = grayCardColors()) { Column { ThemeColorSettings() } } }
+                item { Card(colors = grayCardColors(), shape = settingsCardShape()) { Column { ThemeColorSettings() } } }
                 item {
                     // 字体管理入口：位于主题与配色下层
-                    Card(colors = grayCardColors()) {
+                    Card(colors = grayCardColors(), shape = settingsCardShape()) {
                         Column(Modifier.padding(vertical = 4.dp)) {
                             KsuItem(
                                 icon = OimeIcons.font,
@@ -591,7 +591,7 @@ fun SettingsScreen(
                 contentPadding = PaddingValues(vertical = 8.dp),
             ) {
                 item {
-                    Card(colors = grayCardColors()) {
+                    Card(colors = grayCardColors(), shape = settingsCardShape()) {
                         Column(Modifier.padding(vertical = 4.dp)) {
                             KsuItem(
                                 icon = OimeIcons.info,
@@ -1950,19 +1950,17 @@ private fun ColorPickerDialog(
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.height(6.dp))
-                Text(
-                    "透明度 ${((argb ushr 24) and 0xFF) * 100 / 255}%",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                Slider(
+                // 轮19.32：滑杆改用设置内同款 XimeSlider（原来用的 Material Slider，样式不一致）
+                XimeSlider(
+                    title = "透明度",
+                    valueText = "${((argb ushr 24) and 0xFF) * 100 / 255}%",
                     value = ((argb ushr 24) and 0xFF) / 255f,
-                    onValueChange = { f ->
-                        val a = (f * 255).toInt().coerceIn(0, 255)
-                        argb = (argb and 0x00FFFFFF) or (a shl 24)
-                        hex = String.format("%08X", argb)
-                    },
-                    valueRange = 0f..1f,
-                )
+                    range = 0f..1f,
+                ) { f ->
+                    val a = (f * 255).toInt().coerceIn(0, 255)
+                    argb = (argb and 0x00FFFFFF) or (a shl 24)
+                    hex = String.format("%08X", argb)
+                }
             }
         },
         confirmButton = { TextButton(onClick = { onConfirm(argb) }) { Text("确定") } },
@@ -2110,6 +2108,13 @@ private fun restoreSettings(context: android.content.Context, uri: android.net.U
     }
     count
 }.getOrDefault(-1)
+
+/** 轮19.32：卡片形状按风格区分 —— Miuix 16dp（更圆），Material 12dp。 */
+@Composable
+private fun settingsCardShape(): androidx.compose.foundation.shape.RoundedCornerShape =
+    androidx.compose.foundation.shape.RoundedCornerShape(
+        if (com.azime.input.core.theme.KeyboardTheme.isMiuix()) 16.dp else 12.dp,
+    )
 
 /**
  * 轮19.26：设置页统一卡片底色（浅灰）——主页面与**所有二级页**都用它，
@@ -2273,7 +2278,7 @@ private fun OringSettings(padding: androidx.compose.foundation.layout.PaddingVal
         contentPadding = PaddingValues(vertical = 8.dp),
     ) {
         item {
-            Card(colors = grayCardColors()) {
+            Card(colors = grayCardColors(), shape = settingsCardShape()) {
                 Column(Modifier.padding(vertical = 4.dp)) {
                     Text(
                         "圆环形状",
@@ -2315,7 +2320,7 @@ private fun OringSettings(padding: androidx.compose.foundation.layout.PaddingVal
             }
         }
         item {
-            Card(colors = grayCardColors()) {
+            Card(colors = grayCardColors(), shape = settingsCardShape()) {
                 Column(Modifier.padding(vertical = 4.dp)) {
                     Text(
                         "上滑快捷应用（5 个槽位）",
