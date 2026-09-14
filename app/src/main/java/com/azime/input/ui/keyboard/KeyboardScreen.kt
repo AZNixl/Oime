@@ -289,7 +289,7 @@ fun buildKeyboardColors(dark: Boolean): KeyboardColors {
         val baseKey = customKeyBg ?: if (miuix) Color(0xFF2C2C2E) else Color(0xFF2A2D2F)
         KeyboardColors(
             bg = if (miuix) Color(0xFF191919) else Color(0xFF1B1D1F),
-            barBg = if (miuix) Color(0xFF191919) else Color(0xFF26282A),
+            barBg = if (miuix) Color(0xFF1F1F1F) else Color(0xFF26282A),
             keyBg = baseKey,
             funcKeyBg = customFuncBg ?: if (miuix) Color(0xFF3A3A3C) else Color(0xFF3C4043),
             // 原色模式直接用强调色；柔和模式仍与键底做半透明混合（默认观感）
@@ -304,7 +304,7 @@ fun buildKeyboardColors(dark: Boolean): KeyboardColors {
         val baseKey = customKeyBg ?: Color.White
         KeyboardColors(
             bg = if (miuix) Color(0xFFF2F3F5) else Color(0xFFE9EBEE),
-            barBg = if (miuix) Color(0xFFF2F3F5) else Color.White,
+            barBg = if (miuix) Color(0xFFFFFFFF) else Color.White,
             keyBg = baseKey,
             funcKeyBg = customFuncBg ?: if (miuix) Color(0xFFE8EAED) else Color(0xFFD3D7DC),
             accentKeyBg = if (pureAccent) accent else accent.copy(alpha = 0.28f).compositeOver(baseKey),
@@ -354,12 +354,9 @@ fun AzimeKeyboardScreen(
     else KeyboardManager.keyHeightDp()).dp
     val barH = KeyboardManager.barHeightDp().dp
     // 反馈轮9：按键圆角/行距/列距可调（默认 8dp / 4dp / 4dp）
-    // 轮19.31：Miuix 风格键面更圆（+6dp，上限 24）
-    val keyCorner = (KeyboardManager.keyCornerDp() +
-        if (com.azime.input.core.theme.KeyboardTheme.isMiuix()) 6 else 0).coerceAtMost(24).dp
-    // 轮19.32：Miuix 风格行距 +2dp（键更大间隔，观感更扁平）
-    val rowGap = (KeyboardManager.rowGapDp() +
-        if (com.azime.input.core.theme.KeyboardTheme.isMiuix()) 2 else 0).coerceAtMost(16).dp
+    // 轮19.33：界面风格**只改配色**，不再动几何参数（用户调好的键高/行距/圆角必须原样保留）
+    val keyCorner = KeyboardManager.keyCornerDp().dp
+    val rowGap = KeyboardManager.rowGapDp().dp
     val colGap = KeyboardManager.colGapDp().dp
     // 主键盘区标准总高（4 行 + 3 道行距 + 2dp 底留白，顶留白为 0）；emoji/候选/菜单面板统一与此等高。
     // 轮19.6：原为 keyH*4 + rowGap*5（对应旧的上下各 rowGap 留白），底部留白改 2dp 后

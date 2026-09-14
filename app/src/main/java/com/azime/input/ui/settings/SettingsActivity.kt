@@ -2109,12 +2109,13 @@ private fun restoreSettings(context: android.content.Context, uri: android.net.U
     count
 }.getOrDefault(-1)
 
-/** 轮19.32：卡片形状按风格区分 —— Miuix 16dp（更圆），Material 12dp。 */
+/**
+ * 轮19.33：卡片形状**不再跟随风格**（风格只改配色）。
+ * 保持固定 12dp，避免"一切风格版式就变"的观感断裂。
+ */
 @Composable
 private fun settingsCardShape(): androidx.compose.foundation.shape.RoundedCornerShape =
-    androidx.compose.foundation.shape.RoundedCornerShape(
-        if (com.azime.input.core.theme.KeyboardTheme.isMiuix()) 16.dp else 12.dp,
-    )
+    androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
 
 /**
  * 轮19.26：设置页统一卡片底色（浅灰）——主页面与**所有二级页**都用它，
