@@ -46,6 +46,17 @@ object KeyboardTheme {
 
     fun setAccentPure(v: Boolean) = prefs.edit().putBoolean(KEY_ACCENT_PURE, v).apply()
 
+    private const val KEY_GEOMETRY_FOLLOWS = "geometry_follows_style"
+
+    /**
+     * 轮19.35：**几何是否跟随风格**（键圆角）。
+     * 默认 false —— 用户的键高/行距/列距/圆角一律保留（19.33 教训）；
+     * 想要"整套风格"的用户可以打开它。
+     */
+    fun geometryFollowsStyle(): Boolean = prefs.getBoolean(KEY_GEOMETRY_FOLLOWS, false)
+
+    fun setGeometryFollowsStyle(v: Boolean) = prefs.edit().putBoolean(KEY_GEOMETRY_FOLLOWS, v).apply()
+
     /** 实际生效：开了原色开关，或当前模式用了自定义配色（自定义就该原样呈现）。 */
     fun accentPureEffective(dark: Boolean): Boolean =
         accentPure() || (if (dark) customDarkOn() else customLightOn())

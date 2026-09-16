@@ -1838,33 +1838,55 @@ private fun ThemeColorSettings() {
         var styleRev by remember { mutableStateOf(0) }
         androidx.compose.runtime.key(styleRev) {
             Text("界面风格", style = MaterialTheme.typography.bodyMedium)
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                listOf(km.STYLE_MATERIAL to "Material", km.STYLE_MIUIX to "Miuix").forEach { (id, label) ->
-                    val on = uiStyle == id
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .background(
-                                if (on) MaterialTheme.colorScheme.primaryContainer
-                                else MaterialTheme.colorScheme.surfaceVariant,
-                                androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+            // 轮19.35：6 种风格（token 表驱动）——键盘与设置页一起变
+            com.azime.input.core.theme.UiStyles.selectable.chunked(3).forEach { row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    row.forEach { st ->
+                        val on = uiStyle == st.id
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .background(
+                                    if (on) MaterialTheme.colorScheme.primaryContainer
+                                    else MaterialTheme.colorScheme.surfaceVariant,
+                                    androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                                )
+                                .clickable { uiStyle = st.id; km.setUiStyle(st.id); styleRev++ }
+                                .padding(vertical = 9.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                st.label,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (on) MaterialTheme.colorScheme.onPrimaryContainer
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                            .clickable {
-                                uiStyle = id
-                                km.setUiStyle(id)
-                                styleRev++
-                            }
-                            .padding(vertical = 10.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            label,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = if (on) MaterialTheme.colorScheme.onPrimaryContainer
-                            else MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                        }
                     }
+                    repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
                 }
+                Spacer(Modifier.height(6.dp))
+            }
+            Text(
+                "风格只改配色/边框/字重；键高、行距、圆角仍按你自己的设置。" +
+                    "（Material You 在 Android 12+ 会从壁纸取色）",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            var geoFollow by remember { mutableStateOf(km.geometryFollowsStyle()) }
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("几何也跟随风格", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        "开启后键面圆角用该风格的建议值（会覆盖你的圆角设置），关闭则始终用你自己的。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(
+                    checked = geoFollow,
+                    onCheckedChange = { geoFollow = it; km.setGeometryFollowsStyle(it); styleRev++ },
+                )
             }
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {

@@ -1,5 +1,7 @@
 package com.azime.input.ui.keyboard
 
+import androidx.compose.foundation.border
+import androidx.compose.ui.draw.shadow
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -270,6 +272,15 @@ data class KeyboardColors(
     val text: Color,
     val subText: Color,
     val joystick: Color,
+    // ── 轮19.35：界面风格视觉 token（边框/阴影/字重/等宽）──
+    /** 键面描边（null = 无描边）。 */
+    val keyBorder: Color? = null,
+    /** 键面阴影 dp（0 = 无）。 */
+    val keyShadowDp: Int = 0,
+    /** 键面字重是否加粗（One UI）。 */
+    val keyBold: Boolean = false,
+    /** 键面是否用等宽字体（Nothing OS）。 */
+    val monoFont: Boolean = false,
 )
 
 /** 按深浅色 + 当前主题强调色构建配色。 */
@@ -284,37 +295,47 @@ fun buildKeyboardColors(dark: Boolean): KeyboardColors {
     val customOn = if (dark) theme.customDarkOn() else theme.customLightOn()
     val customKeyBg = if (customOn) Color(theme.keyBgColor(dark)) else null
     val customFuncBg = if (customOn) Color(theme.funcBgColor(dark)) else null
-    // 轮19.31：界面风格（material / miuix）影响中性色阶；原色开关影响强调色是否被 alpha 冲淡
-    val miuix = theme.isMiuix()
+    // 轮19.35：风格 token 表（材质/Miuix/One UI/iOS/Nothing/Material You）
+    val tokens = com.azime.input.core.theme.UiStyles.ofCurrent()
+    val dynamic = if (tokens.dynamicColor) runCatching {
+        com.azime.input.core.theme.DynamicPalette.get(
+            com.azime.input.AZimeApplication.instance, dark,
+        )
+    }.getOrNull() else null
+    val palette = dynamic ?: if (dark) tokens.dark else tokens.light
     val pureAccent = theme.accentPureEffective(dark)
+    val baseKey = customKeyBg ?: Color(palette.keyBg)
+    val border = if (tokens.keyBorderAlpha > 0f) Color(palette.text).copy(alpha = tokens.keyBorderAlpha) else null
     return if (dark) {
-        val baseKey = customKeyBg ?: if (miuix) Color(0xFF2C2C2E) else Color(0xFF2A2D2F)
         KeyboardColors(
-            bg = if (miuix) Color(0xFF191919) else Color(0xFF1B1D1F),
-            barBg = if (miuix) Color(0xFF1F1F1F) else Color(0xFF26282A),
+            bg = Color(palette.bg),
+            barBg = Color(palette.barBg),
             keyBg = baseKey,
-            funcKeyBg = customFuncBg ?: if (miuix) Color(0xFF3A3A3C) else Color(0xFF3C4043),
+            funcKeyBg = customFuncBg ?: Color(palette.funcKeyBg),
             // 原色模式直接用强调色；柔和模式仍与键底做半透明混合（默认观感）
             accentKeyBg = if (pureAccent) accent else accent.copy(alpha = 0.35f).compositeOver(baseKey),
             accentKeyText = onAccent,
             accentActive = accent, accentActiveText = onAccent,
-            text = if (miuix) Color(0xFFEDEDED) else Color(0xFFE8EAED),
-            subText = if (miuix) Color(0xFF9E9E9E) else Color(0xFF9AA0A6),
+            text = Color(palette.text),
+            subText = Color(palette.subText),
             joystick = Color(0xFFE57373),
+            keyBorder = border, keyShadowDp = tokens.keyShadowDp,
+            keyBold = tokens.boldKeys, monoFont = tokens.monospace,
         )
     } else {
-        val baseKey = customKeyBg ?: Color.White
         KeyboardColors(
-            bg = if (miuix) Color(0xFFF2F3F5) else Color(0xFFE9EBEE),
-            barBg = if (miuix) Color(0xFFFFFFFF) else Color.White,
+            bg = Color(palette.bg),
+            barBg = Color(palette.barBg),
             keyBg = baseKey,
-            funcKeyBg = customFuncBg ?: if (miuix) Color(0xFFE8EAED) else Color(0xFFD3D7DC),
+            funcKeyBg = customFuncBg ?: Color(palette.funcKeyBg),
             accentKeyBg = if (pureAccent) accent else accent.copy(alpha = 0.28f).compositeOver(baseKey),
             accentKeyText = onAccent,
             accentActive = accent, accentActiveText = onAccent,
-            text = if (miuix) Color(0xFF191919) else Color(0xFF202124),
-            subText = if (miuix) Color(0xFF7A7A7A) else Color(0xFF80868B),
+            text = Color(palette.text),
+            subText = Color(palette.subText),
             joystick = Color(0xFFD32F2F),
+            keyBorder = border, keyShadowDp = tokens.keyShadowDp,
+            keyBold = tokens.boldKeys, monoFont = tokens.monospace,
         )
     }
 }
@@ -356,8 +377,13 @@ fun AzimeKeyboardScreen(
     else KeyboardManager.keyHeightDp()).dp
     val barH = KeyboardManager.barHeightDp().dp
     // 反馈轮9：按键圆角/行距/列距可调（默认 8dp / 4dp / 4dp）
-    // 轮19.33：界面风格**只改配色**，不再动几何参数（用户调好的键高/行距/圆角必须原样保留）
-    val keyCorner = KeyboardManager.keyCornerDp().dp
+    // 轮19.35：几何默认沿用用户设置；仅当「几何跟随风格」开启时用风格建议圆角
+    val styleTokens = com.azime.input.core.theme.UiStyles.ofCurrent()
+    val keyCorner = (if (com.azime.input.core.theme.KeyboardTheme.geometryFollowsStyle()) {
+        styleTokens.keyCornerDp
+    } else {
+        KeyboardManager.keyCornerDp()
+    }).dp
     val rowGap = KeyboardManager.rowGapDp().dp
     val colGap = KeyboardManager.colGapDp().dp
     // 主键盘区标准总高（4 行 + 3 道行距 + 2dp 底留白，顶留白为 0）；emoji/候选/菜单面板统一与此等高。
@@ -2702,8 +2728,15 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
                         .weight(key.width)
                         .fillMaxSize()
                         .background(mapBg, RoundedCornerShape(keyCornerDp))
+                        // 轮19.36：振动/音效改到**按下瞬间**（原来在 clickable 里＝抬手才振）
+                        .pointerInput(Unit) {
+                            awaitPointerEventScope {
+                                awaitFirstDown(requireUnconsumed = false)
+                                HapticsManager.press()
+                                com.azime.input.core.sound.SoundManager.playPress()
+                            }
+                        }
                         .clickable {
-                            HapticsManager.press(); com.azime.input.core.sound.SoundManager.playPress()
                             onAction(KeyAction.Candidate(selectIndex))
                             HapticsManager.release()
                         },
@@ -2839,6 +2872,17 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
     // 有手势键用 pressing（awaitEachGesture down/up），无手势键走 InteractionSource。
     val clickSource = remember { MutableInteractionSource() }
     val clickPressed by clickSource.collectIsPressedAsState()
+    // 轮19.36：**振动/音效统一在"按下瞬间"触发**——
+    // 手势键走 awaitEachGesture 的 down 分支（按下即振）；没有手势的键（九宫格数字、符号页等）
+    // 原来挂在 clickable 上（**抬手才振**），体感与主键盘不一致。这里对齐到按下即振。
+    if (!hasGestures) {
+        LaunchedEffect(clickPressed) {
+            if (clickPressed) {
+                HapticsManager.press()
+                com.azime.input.core.sound.SoundManager.playPress()
+            }
+        }
+    }
     val pressProgress by animateFloatAsState(
         targetValue = if (pressing || clickPressed) 1f else 0f,
         animationSpec = spring(
@@ -2863,6 +2907,21 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
             scaleX = s
             scaleY = s
         }
+        // 轮19.35：风格 token —— 描边 / 阴影（One UI 的柔和阴影、Nothing OS 的细描边）
+        .then(
+            if (c.keyShadowDp > 0) {
+                Modifier.shadow(c.keyShadowDp.dp, RoundedCornerShape(keyCornerDp))
+            } else {
+                Modifier
+            },
+        )
+        .then(
+            if (c.keyBorder != null) {
+                Modifier.border(1.dp, c.keyBorder, RoundedCornerShape(keyCornerDp))
+            } else {
+                Modifier
+            },
+        )
         .background(bgAnimated, RoundedCornerShape(keyCornerDp))
     if (hasGestures) {
         // 手势闭包内读取最新 state（preedit 等会随打字频繁变化）
@@ -3040,7 +3099,9 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
                 // 反馈轮9：键面字号可调（键盘/工具栏分开设置）
                 fontSize = if (key.type == KeyType.CHARACTER) KeyboardManager.fontSizeKey().sp
                 else (KeyboardManager.fontSizeKey() * 0.7f).sp,
-                fontWeight = FontWeight.Medium,
+                // 轮19.35：字重与字体跟随风格（One UI 半粗 / Nothing OS 等宽）
+                fontWeight = if (c.keyBold) FontWeight.SemiBold else FontWeight.Medium,
+                fontFamily = if (c.monoFont && key.type == KeyType.CHARACTER) FontFamily.Monospace else null,
                 color = fg,
                 maxLines = 1,
                 // 轮19.30：空格键自定义文本可按设置左右微调（默认 0 = 居中）
