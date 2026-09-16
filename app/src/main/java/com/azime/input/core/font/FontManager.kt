@@ -100,7 +100,7 @@ object FontManager {
         if (names.isEmpty()) return null
         val signature = names.joinToString(",")
         familyCache?.let { (sig, family) -> if (sig == signature) return family }
-        val fonts = mutableListOf<Font>()
+        val fonts = mutableListOf<Font?>()
         for (name in names) {
             val file = findFontFile(name) ?: continue
             try {
@@ -108,11 +108,23 @@ object FontManager {
             } catch (_: Exception) { /* 跳过损坏文件 */ }
         }
         if (fonts.isEmpty()) return null
+        // 轮19.34：**链尾追加系统字体兜底**——用户自定义字体常常缺字形（典型的如拆字用的
+        // 部首/部件字，如 ⺮ 龸 亻 等），原来 FontFamily 只含用户字体 ⇒ 缺字变豆腐块。
+        // 追加系统 sans-serif 后，缺字形会自动回落到系统 CJK 字体。
+        systemFallbackFont()?.let { fonts.add(it) }
         return try {
-            FontFamily(fonts).also { familyCache = signature to it }
+            @Suppress("UNCHECKED_CAST")
+            FontFamily(fonts.filterNotNull()).also { familyCache = signature to it }
         } catch (_: Exception) {
             null
         }
+    }
+
+    /** 轮19.34：系统字体兜底项（Compose 设备字体名，API 26+；失败则返回 null 由调用方忽略）。 */
+    private fun systemFallbackFont(): Font? = try {
+        Font(androidx.compose.ui.text.font.DeviceFontFamilyName("sans-serif"))
+    } catch (_: Throwable) {
+        null
     }
 
     /** 字体设置变更后调用（setSelectedFonts 已自动失效，保留给外部强制刷新用）。 */

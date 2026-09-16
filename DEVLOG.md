@@ -1310,3 +1310,23 @@ Unresolved reference）；要么 import 后 `x.roundToInt()`，要么直接 `x.t
 - 修复：**风格切换只影响配色**，几何参数（键高/行距/列距/圆角/字号/工具栏高度）一律原样沿用用户设置
   - 去掉：键圆角 +6dp、行距 +2dp、设置页卡片 16dp
   - Miuix 的"风格感"改为**纯配色层次**：键盘底 `#F2F3F5` + 工具栏/键面**纯白**（暗色 `#191919` + 工具栏 `#1F1F1F` + 键 `#2C2C2E`）
+
+# 轮19.34（0.9.47-oime vc57）：原色下选中文字修复 / 空格上滑切中英 / ○菜单切输入法 / 悬浮窗增强 / 打字音效 / 拆字与字体兜底 / 风格调研报告
+
+1. **强调色原色时"方案开关"等文字看不见**（截图）：真因是选中卡片
+   `background = accentKeyBg（纯强调色）` 而 `color = accentActive`（**也是强调色**）⇒ 蓝底蓝字 ✗
+   → 全部 5 处统一改为 `accentKeyText`（on-accent），开关卡片的副标题（开关名）同样处理
+2. **空格长按切中英 → 改为上滑切中英**：`space()` 去掉 `longClick`，改 `swipeUp = toggle_ascii`
+3. **○ 菜单新增「切换输入法」**：调 `InputMethodManager.showInputMethodPicker()`
+4. **悬浮窗增强**：背景色可自定义（取色弹窗，0=跟随主题）· 首选候选加强调底色 ·
+   候选数量可调（1~9）· 候选横向/竖向可切换
+5. **打字音效**：新增 `core/sound/SoundManager`（SoundPool）——
+   总开关 + **外置文件夹**（默认 `/sdcard/Documents/Oime/sounds`）+ 目录内文件选择 + 试听 + 音量；
+   关闭时热路径零开销；按键处已挂钩
+6. **拆字支持 + 字体兜底**：
+   - 字体链**追加系统字体兜底**（`DeviceFontFamilyName("sans-serif")`）——
+     用户自定义字体常缺部首/部件字形（⺮ 龸 亻 等），原来只含用户字体 ⇒ 豆腐块
+   - 「更多候选」显示 `candidate.comment`（RIME 的拆字/编码，开 chaifen 开关后有值）
+7. **界面风格调研报告** → `UI_STYLE_RESEARCH.md`：提出 token 表骨架 + 8 种候选风格（含成本/风险）
+   + 落地顺序建议（Miuix 深化 → Material You 动态取色 → 毛玻璃 → 胶囊/One UI → 小众风格），
+   并重申「风格只改视觉、不动用户几何」的约定

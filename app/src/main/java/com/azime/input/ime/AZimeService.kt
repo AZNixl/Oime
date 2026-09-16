@@ -793,6 +793,11 @@ class AZimeService : InputMethodService() {
                     KeyboardManager.setHandMode(next)
                     uiState.update { it.copy(layoutRev = it.layoutRev + 1, statusMessage = "单手模式：" + if (next == KeyboardManager.HAND_LEFT) "左手" else "右手") }
                 }
+                // 轮19.34：唤起系统输入法选择器
+                KeyAction.SwitchIme -> runCatching {
+                    val imm = getSystemService(android.view.inputmethod.InputMethodManager::class.java)
+                    imm?.showInputMethodPicker()
+                }
                 KeyAction.ToggleFloatKeyboard -> {
                     val on = !KeyboardManager.floatKeyboard()
                     KeyboardManager.setFloatKeyboard(on)

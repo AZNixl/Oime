@@ -115,7 +115,9 @@ object KeyboardPages {
 
     private fun space(width: Float = 4f) = Key(
         label = "空格", code = "space", width = width, type = KeyType.SPACE, icon = "space",
-        longClick = KeyActions.SPACE_LONG,
+        // 轮19.34（按用户要求）：长按不再切中英，改为**上滑**切中英
+        longClick = null,
+        swipeUp = KeyActions.SPACE_LONG,   // = "toggle_ascii"
     )
 
     private fun enter(width: Float = 1.5f) = Key(

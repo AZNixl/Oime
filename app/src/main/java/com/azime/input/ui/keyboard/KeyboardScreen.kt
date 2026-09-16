@@ -159,6 +159,8 @@ sealed interface KeyAction {
     data object SwitchHandSide : KeyAction
     /** 轮19.19：悬浮模式开关（键盘整体可拖动）。 */
     data object ToggleFloatKeyboard : KeyAction
+    /** 轮19.34：唤起系统输入法选择器（切换输入法）。 */
+    data object SwitchIme : KeyAction
     /** 退格左滑（trime2 退格脚本同款锚点模型）：
      *  Start 记锚点（composing 中不进入）；To 按位移换算选区活动端；松手 DeleteSelection。 */
     data object BackspaceSelectStart : KeyAction
@@ -560,7 +562,14 @@ fun AzimeKeyboardScreen(
                 }
                 var floatH by remember { mutableStateOf(0) }
                 val hasCursor = state.cursorBottom > 0
-                val showCandidates = state.candidates.take(6)
+                // 轮19.34：候选数量可调（1~9）
+                val showCandidates = state.candidates.take(KeyboardManager.floatCandCount())
+                // 轮19.34：背景色可自定义（0 = 跟随主题）；候选可竖向排列；首选可加强调底色
+                val customFloatBg = KeyboardManager.floatBgColor()
+                val floatBg = if (customFloatBg != 0) Color(customFloatBg).copy(alpha = bgAlpha)
+                else c.barBg.copy(alpha = bgAlpha)
+                val vertical = KeyboardManager.floatOrientation() == "v"
+                val firstAccent = KeyboardManager.floatFirstAccent()
                 Popup(
                     alignment = Alignment.TopStart,
                     offset = if (hasCursor) {
@@ -579,7 +588,7 @@ fun AzimeKeyboardScreen(
                     Column(
                         modifier = Modifier
                             .onGloballyPositioned { floatH = it.size.height }
-                            .background(c.barBg.copy(alpha = bgAlpha), RoundedCornerShape(10.dp))
+                            .background(floatBg, RoundedCornerShape(10.dp))
                             .padding(horizontal = 12.dp, vertical = 7.dp),
                     ) {
                         // 输入码：只显示前三码（余下的留在工具栏）
@@ -591,14 +600,47 @@ fun AzimeKeyboardScreen(
                             maxLines = 1,
                         )
                         if (showCandidates.isNotEmpty()) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                showCandidates.forEachIndexed { i, cand ->
-                                    if (i > 0) Spacer(Modifier.width(10.dp))
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        if (i < 9) {
-                                            Text("${i + 1} ", fontSize = (fSp * 0.62f).sp, color = c.subText)
-                                        }
-                                        Text(cand.text, fontSize = fSp.sp, color = c.text, maxLines = 1)
+                            // 轮19.34：横向/竖向可调；**首选加强调色底**（原色模式下文字用 on-accent）
+                            @Composable
+                            fun CandItem(i: Int, text: String) {
+                                val emphasize = i == 0 && firstAccent
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = if (emphasize) {
+                                        Modifier
+                                            .background(c.accentKeyBg, RoundedCornerShape(6.dp))
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    } else {
+                                        Modifier
+                                    },
+                                ) {
+                                    if (i < 9) {
+                                        Text(
+                                            "${i + 1} ",
+                                            fontSize = (fSp * 0.62f).sp,
+                                            color = if (emphasize) c.accentKeyText.copy(alpha = 0.85f) else c.subText,
+                                        )
+                                    }
+                                    Text(
+                                        text,
+                                        fontSize = fSp.sp,
+                                        color = if (emphasize) c.accentKeyText else c.text,
+                                        maxLines = 1,
+                                    )
+                                }
+                            }
+                            if (vertical) {
+                                Column {
+                                    showCandidates.forEachIndexed { i, cand ->
+                                        if (i > 0) Spacer(Modifier.height(3.dp))
+                                        CandItem(i, cand.text)
+                                    }
+                                }
+                            } else {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    showCandidates.forEachIndexed { i, cand ->
+                                        if (i > 0) Spacer(Modifier.width(10.dp))
+                                        CandItem(i, cand.text)
                                     }
                                 }
                             }
@@ -649,7 +691,7 @@ fun AzimeKeyboardScreen(
                             ) {
                                 Text(
                                     name, fontSize = 14.sp, maxLines = 1,
-                                    color = if (selected) c.accentActive else c.text,
+                                    color = if (selected) c.accentKeyText else c.text,
                                     fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
                                 )
                                 if (selected) {
@@ -1763,7 +1805,7 @@ private fun MenuPanel(
                                         fontSize = 11.sp,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
-                                        color = if (selected) c.accentActive else c.text,
+                                        color = if (selected) c.accentKeyText else c.text,
                                         fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
                                     )
                                     Text(
@@ -1820,7 +1862,7 @@ private fun MenuPanel(
                                         fontSize = 11.sp,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
-                                        color = if (on) c.accentActive else c.text,
+                                        color = if (on) c.accentKeyText else c.text,
                                         fontWeight = if (on) FontWeight.Bold else FontWeight.Normal,
                                     )
                                     Text(
@@ -1872,7 +1914,7 @@ private fun MenuPanel(
                                     fontSize = 11.sp,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
-                                    color = if (selected) c.accentActive else c.text,
+                                    color = if (selected) c.accentKeyText else c.text,
                                     fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
                                 )
                             }
@@ -1927,7 +1969,7 @@ private fun MenuPanel(
                                         stateText,
                                         fontSize = 14.sp,
                                         maxLines = 1,
-                                        color = if (checked) c.accentActive else c.text,
+                                        color = if (checked) c.accentKeyText else c.text,
                                         fontWeight = if (checked) FontWeight.Bold else FontWeight.Normal,
                                     )
                                     Text(
@@ -1935,7 +1977,8 @@ private fun MenuPanel(
                                         fontSize = 10.sp,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
-                                        color = c.subText,
+                                        // 轮19.34：选中态背景是强调色，副标题必须用 on-accent（原来灰字压蓝底看不见）
+                                        color = if (checked) c.accentKeyText.copy(alpha = 0.85f) else c.subText,
                                     )
                                 }
                             }
@@ -1975,6 +2018,8 @@ private fun MenuPanel(
                                 if (themeDark) oi.sun else oi.moon,
                                 if (themeDark) "亮色" else "暗色",
                             ) { onAction(KeyAction.ToggleThemeMode) },
+                            // 轮19.34：切换输入法（唤起系统选择器）
+                            Triple(oi.keyboard, "切换输入法") { close(); onAction(KeyAction.SwitchIme) },
                         )
                         // 轮19.11b：19.11 加进 ○ 菜单的那些功能已移除——它们只出现在「定制工具栏」的可选列表里
                         menuItems.chunked(4).forEach { rowItems ->
@@ -2262,6 +2307,17 @@ private fun CandidatePanel(state: KeyboardUiState, onAction: (KeyAction) -> Unit
                                         maxLines = 1,
                                         color = c.text,
                                     )
+                                    // 轮19.34：**拆字/编码提示**——RIME 把拆字放在 candidate.comment
+                                    // （方案里开 chaifen 开关后即有），显示为候选右侧小字
+                                    if (candidate.comment.isNotBlank()) {
+                                        Spacer(Modifier.width(4.dp))
+                                        Text(
+                                            candidate.comment,
+                                            fontSize = (KeyboardManager.fontSizeBar() * 0.6f).sp,
+                                            maxLines = 1,
+                                            color = c.subText,
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -2647,7 +2703,7 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
                         .fillMaxSize()
                         .background(mapBg, RoundedCornerShape(keyCornerDp))
                         .clickable {
-                            HapticsManager.press()
+                            HapticsManager.press(); com.azime.input.core.sound.SoundManager.playPress()
                             onAction(KeyAction.Candidate(selectIndex))
                             HapticsManager.release()
                         },
@@ -2817,7 +2873,7 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
                 longFired = false
                 longCancelled = false
                 pressing = true
-                HapticsManager.press()
+                HapticsManager.press(); com.azime.input.core.sound.SoundManager.playPress()
                 val startX = down.position.x
                 val startY = down.position.y
                 // 长按取消阈值（对齐 xime.az：5dp 内移动不取消，超出即视为滑动意图）
@@ -2947,7 +3003,7 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
             interactionSource = clickSource,
             indication = null,
         ) {
-            HapticsManager.press()
+            HapticsManager.press(); com.azime.input.core.sound.SoundManager.playPress()
             onKeyAction(key, onAction)
             HapticsManager.release()
         }

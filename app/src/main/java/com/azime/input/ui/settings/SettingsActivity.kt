@@ -531,6 +531,70 @@ fun SettingsScreen(
                 item {
                     Card(colors = grayCardColors(), shape = settingsCardShape()) { Column { SymbolHintSettings() } }
                 }
+                item {
+                    // 轮19.34：打字音效（总开关 + 外置文件夹 + 自定义音效 + 音量）
+                    Card(colors = grayCardColors(), shape = settingsCardShape()) {
+                        Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
+                            var sRev by remember { mutableStateOf(0) }
+                            Text("打字音效", style = MaterialTheme.typography.titleSmall)
+                            Spacer(Modifier.height(4.dp))
+                            androidx.compose.runtime.key(sRev) {
+                                val km2 = com.azime.input.core.keyboard.KeyboardManager
+                                var on by remember { mutableStateOf(km2.soundEnabled()) }
+                                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                    Text("启用", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                                    Switch(checked = on, onCheckedChange = { on = it; km2.setSoundEnabled(it); sRev++ })
+                                }
+                                var dir by remember { mutableStateOf(km2.soundDir()) }
+                                OutlinedTextField(
+                                    value = dir,
+                                    onValueChange = { dir = it; km2.setSoundDir(it) },
+                                    label = { Text("音效文件夹") },
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                                val files = remember(dir, sRev) { com.azime.input.core.sound.SoundManager.listFiles() }
+                                if (files.isEmpty()) {
+                                    Text(
+                                        "该目录下没有音效文件（支持 mp3 / ogg / wav / m4a）；把文件放进目录后回到这里即可选。",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                } else {
+                                    Text(
+                                        "选择音效（当前：${km2.soundFile().ifBlank { files.first() }}）",
+                                        style = MaterialTheme.typography.bodySmall,
+                                    )
+                                    files.take(12).forEach { f ->
+                                        val picked = (km2.soundFile().ifBlank { files.first() }) == f
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable { km2.setSoundFile(f); sRev++ }
+                                                .padding(vertical = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            Text(
+                                                (if (picked) "● " else "○ ") + f,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                modifier = Modifier.weight(1f),
+                                            )
+                                            TextButton(onClick = {
+                                                com.azime.input.core.sound.SoundManager.preview(
+                                                    java.io.File(dir, f).absolutePath,
+                                                )
+                                            }) { Text("试听") }
+                                        }
+                                    }
+                                }
+                                var vol by remember { mutableStateOf(km2.soundVolume().toFloat()) }
+                                XimeSlider("音量", "${vol.toInt()}%", vol, 0f..100f) {
+                                    vol = it; km2.setSoundVolume(it.toInt())
+                                }
+                            }
+                        }
+                    }
+                }
             }
             return@Scaffold
         }
@@ -1548,6 +1612,65 @@ private fun FloatingWindowSettings() {
             XimeSlider("背景不透明度", "${alpha.toInt()}%", alpha, 20f..100f) {
                 alpha = it; km.setFloatBgAlpha(it.toInt())
             }
+        }
+        Spacer(Modifier.height(8.dp))
+        // 轮19.34：悬浮窗增强——背景色 / 首选强调 / 候选数量 / 排列方向
+        var floatRev by remember { mutableStateOf(0) }
+        androidx.compose.runtime.key(floatRev) {
+            var firstAccent by remember { mutableStateOf(km.floatFirstAccent()) }
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("首选候选加强调底色", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                Switch(checked = firstAccent, onCheckedChange = {
+                    firstAccent = it; km.setFloatFirstAccent(it); floatRev++
+                })
+            }
+            var candCount by remember { mutableStateOf(km.floatCandCount().toFloat()) }
+            XimeSlider("候选数量", "${candCount.toInt()}", candCount, 1f..9f) {
+                candCount = it; km.setFloatCandCount(it.toInt())
+            }
+            var orient by remember { mutableStateOf(km.floatOrientation()) }
+            Text("候选排列", style = MaterialTheme.typography.bodyMedium)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("h" to "横向", "v" to "竖向").forEach { (id, label) ->
+                    val on = orient == id
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .background(
+                                if (on) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                                androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+                            )
+                            .clickable { orient = id; km.setFloatOrientation(id); floatRev++ }
+                            .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center,
+                    ) { Text(label, style = MaterialTheme.typography.bodySmall) }
+                }
+            }
+            var showFloatColorPick by remember { mutableStateOf(false) }
+            Row(
+                modifier = Modifier.fillMaxWidth().clickable { showFloatColorPick = true }.padding(vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("悬浮窗背景色（默认跟随主题）", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                Box(
+                    modifier = Modifier
+                        .size(24.dp)
+                        .background(
+                            if (km.floatBgColor() != 0) Color(km.floatBgColor())
+                            else MaterialTheme.colorScheme.surfaceVariant,
+                            androidx.compose.foundation.shape.RoundedCornerShape(6.dp),
+                        ),
+                )
+            }
+            if (showFloatColorPick) {
+                ColorPickerDialog(
+                    title = "悬浮窗背景色",
+                    initial = if (km.floatBgColor() != 0) km.floatBgColor() else 0xFF26282A.toInt(),
+                    onDismiss = { showFloatColorPick = false },
+                    onConfirm = { v -> km.setFloatBgColor(v); showFloatColorPick = false; floatRev++ },
+                )
+            }
+            TextButton(onClick = { km.setFloatBgColor(0); floatRev++ }) { Text("背景色恢复跟随主题") }
         }
         Text(
             "参考 trime 悬浮窗：输入时在键盘上方悬浮显示当前输入码；默认样式固定位置与字号，自定义样式按上面参数渲染。下次键盘弹出即生效。",

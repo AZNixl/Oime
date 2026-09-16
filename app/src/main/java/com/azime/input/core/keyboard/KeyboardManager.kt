@@ -224,6 +224,62 @@ object KeyboardManager {
         floatKbdBottom = bottom
     }
 
+    // ── 悬浮窗增强（轮19.34）：背景色 / 首选强调 / 候选数量 / 排列方向 ──
+
+    private const val PREF_FLOAT_BG_COLOR = "float_bg_color"
+    private const val PREF_FLOAT_FIRST_ACCENT = "float_first_accent"
+    private const val PREF_FLOAT_CAND_COUNT = "float_cand_count"
+    private const val PREF_FLOAT_ORIENT = "float_orient"
+
+    /** 悬浮窗背景色（ARGB）；**0 = 跟随键盘工具栏底色**（默认）。 */
+    fun floatBgColor(): Int = prefs.getInt(PREF_FLOAT_BG_COLOR, 0)
+
+    fun setFloatBgColor(v: Int) { synchronized(lock) { prefs.edit().putInt(PREF_FLOAT_BG_COLOR, v).apply() } }
+
+    /** 首选候选是否加强调色背景（默认开）。 */
+    fun floatFirstAccent(): Boolean = prefs.getBoolean(PREF_FLOAT_FIRST_ACCENT, true)
+
+    fun setFloatFirstAccent(v: Boolean) { synchronized(lock) { prefs.edit().putBoolean(PREF_FLOAT_FIRST_ACCENT, v).apply() } }
+
+    /** 悬浮窗显示候选数量（1~9，默认 6）。 */
+    fun floatCandCount(): Int = prefs.getInt(PREF_FLOAT_CAND_COUNT, 6).coerceIn(1, 9)
+
+    fun setFloatCandCount(v: Int) { synchronized(lock) { prefs.edit().putInt(PREF_FLOAT_CAND_COUNT, v.coerceIn(1, 9)).apply() } }
+
+    /** 候选排列：h = 横向（默认）/ v = 竖向。 */
+    fun floatOrientation(): String = prefs.getString(PREF_FLOAT_ORIENT, "h") ?: "h"
+
+    fun setFloatOrientation(v: String) { synchronized(lock) { prefs.edit().putString(PREF_FLOAT_ORIENT, if (v == "v") "v" else "h").apply() } }
+
+    // ── 打字音效（轮19.34） ──
+
+    private const val PREF_SOUND_ON = "sound_on"
+    private const val PREF_SOUND_DIR = "sound_dir"
+    private const val PREF_SOUND_FILE = "sound_file"
+    private const val PREF_SOUND_VOL = "sound_vol"
+
+    const val DEFAULT_SOUND_DIR = "/sdcard/Documents/Oime/sounds"
+
+    /** 打字音效总开关（默认关：避免无谓开销）。 */
+    fun soundEnabled(): Boolean = prefs.getBoolean(PREF_SOUND_ON, false)
+
+    fun setSoundEnabled(v: Boolean) { synchronized(lock) { prefs.edit().putBoolean(PREF_SOUND_ON, v).apply() } }
+
+    /** 音效文件夹（扫描其中的 mp3/ogg/wav/m4a）。 */
+    fun soundDir(): String = prefs.getString(PREF_SOUND_DIR, DEFAULT_SOUND_DIR) ?: DEFAULT_SOUND_DIR
+
+    fun setSoundDir(v: String) { synchronized(lock) { prefs.edit().putString(PREF_SOUND_DIR, v).apply() } }
+
+    /** 选用的音效文件名（空 = 目录内第一个可用文件）。 */
+    fun soundFile(): String = prefs.getString(PREF_SOUND_FILE, "") ?: ""
+
+    fun setSoundFile(v: String) { synchronized(lock) { prefs.edit().putString(PREF_SOUND_FILE, v).apply() } }
+
+    /** 音量 0~100（默认 60）。 */
+    fun soundVolume(): Int = prefs.getInt(PREF_SOUND_VOL, 60).coerceIn(0, 100)
+
+    fun setSoundVolume(v: Int) { synchronized(lock) { prefs.edit().putInt(PREF_SOUND_VOL, v.coerceIn(0, 100)).apply() } }
+
     // ── 按输入框类型自动切页（轮19.30） ──
 
     private const val PREF_AUTO_PAGE = "auto_page_by_input"
