@@ -1379,3 +1379,15 @@ Unresolved reference）；要么 import 后 `x.roundToInt()`，要么直接 `x.t
   1. **清理历史产物**（保留最新 2 个）：释放 **2420 MB** ⇒ 剩余 65MB
   2. **工作流加 `retention-days: 3`**（+ `if-no-files-found: error`）⇒ 产物 3 天自动过期，不再堆积
 - 教训：**CI 产物不设保留期，高频构建会把配额撑爆**（我们一天能推 6+ 次、单包 33MB）。
+
+# 轮19.38（0.9.49-oime vc59）：密码框输完不恢复中文（19.30 自动切页的真 bug）
+
+- 现象：登录输密码时自动切了英文（/ 数字九宫格），**回到普通打字界面后不恢复中文** ✗
+- 真因（我 19.30 写的）：`applyAutoPageForEditor()` 里 **`setOption("ascii_mode", true)` 只设过 true，
+  从来没有设回 false** ⇒ 自动切过去就回不来了
+- 修法：引入 `autoAsciiApplied` 标记——
+  · 密码/邮箱/数字类 → 自动切英文，并**记住"是我们自动切的"**
+  · 回到普通文本框且该英文是自动切来的 → **恢复中文（ascii_mode=false）**，清除标记
+  · **用户自己手动切的英文不受影响**（只恢复自动切的那一次，避免与用户意图打架）
+- 另外补 hook：同一窗口内切换输入框时 `onStartInputView` 不一定重跑 → 增加 `onStartInput` 兜底调用
+- 埋点增强：`AutoPage` 日志增加 `restore=` / `changed=` 便于真机核对

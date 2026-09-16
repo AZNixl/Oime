@@ -265,6 +265,13 @@ class AZimeService : InputMethodService() {
         return composeView
     }
 
+    override fun onStartInput(info: EditorInfo?, restarting: Boolean) {
+        super.onStartInput(info, restarting)
+        // 轮19.38：同一窗口内切换输入框（密码框 → 普通框）时 onStartInputView 不一定重跑，
+        // 这里补一次，保证中英/页面能跟着输入框类型恢复。
+        if (!restarting) runCatching { applyAutoPageForEditor(info) }
+    }
+
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
         lifecycleOwner.resume()
@@ -494,6 +501,12 @@ class AZimeService : InputMethodService() {
      * - 其它（普通文本）→ 回主键盘
      * 受设置「输入框类型自动切页」总开关控制。
      */
+    /**
+     * 轮19.38：记录「当前英文态是**因为输入框类型自动切过去的**」。
+     * 用于回到普通文本框时恢复中文——避免与用户手动切中英打架。
+     */
+    @Volatile private var autoAsciiApplied = false
+
     private fun applyAutoPageForEditor(info: android.view.inputmethod.EditorInfo?) {
         if (info == null) return
         if (!KeyboardManager.autoPageByInput()) return
@@ -515,16 +528,31 @@ class AZimeService : InputMethodService() {
             cls == android.text.InputType.TYPE_CLASS_DATETIME
         // 页面：数字类 → numpad；其余 → main
         val page = if (wantNumpad) "numpad" else "main"
-        val asciiChanged = if (wantAscii && !uiState.value.asciiMode) {
-            RimeManager.setOption("ascii_mode", true); true
-        } else if (!wantAscii && wantNumpad && !uiState.value.asciiMode) {
-            // 数字页用不着拼音，顺手切英文，避免九宫格上屏变成候选
-            RimeManager.setOption("ascii_mode", true); true
-        } else false
+        // 轮19.38（真 bug 修复）：原实现**只会把 ascii 设成 true，从不设回 false** ⇒
+        // 输完密码/账号后回到普通文本框仍是英文（用户反馈）。现在：
+        //   · 密码/邮箱/数字类 → 自动切英文（并记住"这是我们自动切的"）
+        //   · 回到普通文本框且这个英文是自动切来的 → **恢复中文**
+        //   · 用户自己手动切的英文不受影响（只恢复自动切的那一次）
+        val numericLike = wantAscii || wantNumpad
+        var asciiChanged = false
+        if (numericLike) {
+            if (!uiState.value.asciiMode) {
+                RimeManager.setOption("ascii_mode", true)
+                asciiChanged = true
+            }
+            autoAsciiApplied = true
+        } else if (autoAsciiApplied) {
+            if (uiState.value.asciiMode) {
+                RimeManager.setOption("ascii_mode", false)
+                asciiChanged = true
+            }
+            autoAsciiApplied = false
+        }
         if (page != uiState.value.page || asciiChanged) {
             com.azime.input.core.diag.Diag.log(
                 "AutoPage",
-                "cls=${cls shr 24} variation=${variation shr 16} page=$page ascii=$wantAscii",
+                "cls=${cls shr 24} variation=${variation shr 16} page=$page " +
+                    "ascii=$wantAscii restore=${!numericLike} changed=$asciiChanged",
             )
             uiState.update { it.copy(page = page) }
         }
