@@ -1369,3 +1369,13 @@ Unresolved reference）；要么 import 后 `x.roundToInt()`，要么直接 `x.t
 修法：无手势键改用交互源 pressed 状态（`LaunchedEffect(clickPressed)`）在**按下瞬间**振；
 候选键改用 `awaitPointerEventScope { awaitFirstDown() }` 同样按下即振。
 ⇒ 三个页面的振动时点、时长、音量**完全统一**（用户要求保留振动，只对齐时机）。
+
+# 轮19.37（0.9.48-oime vc58 修补）：CI「Upload APK」失败 → 产物配额
+
+- 现象：CI 的 **Build with Gradle 成功**，但 **Upload APK 失败**，产物列表为空（重跑仍失败）
+- 真因：**GitHub Actions 产物存储配额**——仓库累积了 **99 个 app-debug 产物 = 2486 MB**，
+  远超免费账号的 **500MB** 产物额度 ⇒ 上传被拒 ✗（构建没问题，只是传不上去）
+- 处置：
+  1. **清理历史产物**（保留最新 2 个）：释放 **2420 MB** ⇒ 剩余 65MB
+  2. **工作流加 `retention-days: 3`**（+ `if-no-files-found: error`）⇒ 产物 3 天自动过期，不再堆积
+- 教训：**CI 产物不设保留期，高频构建会把配额撑爆**（我们一天能推 6+ 次、单包 33MB）。

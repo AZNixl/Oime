@@ -40,6 +40,10 @@ jobs:
       with:
         name: app-debug
         path: app/build/outputs/apk/debug/app-debug.apk
+        # 轮19.37：**产物保留 3 天**——之前累积 99 个 APK（2.4GB）撑爆免费账号的
+        # 500MB 产物配额，导致「Upload APK」步骤失败（构建本身是成功的）。
+        retention-days: 3
+        if-no-files-found: error
 
     - name: Upload build reports
       if: failure()
