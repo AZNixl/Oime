@@ -1495,3 +1495,21 @@ Unresolved reference）；要么 import 后 `x.roundToInt()`，要么直接 `x.t
   2. 工作流**恢复 `cache: gradle`**（公开仓库存储免费，构建快 1~2 分钟）
   3. 产物保留期仍保持 `retention-days: 3`（好习惯，避免无限堆积）
 - 附带效果：**产物通道不再受配额限制**，APK 可正常下载 ✓
+
+# 轮19.46（0.9.52-oime vc62）：内置默认音效 + 不再创建 lua 目录 + README 修订
+
+1. **内置默认打字音效**：把 `click.ogg`（Ogg，9.8KB）打进 APK 的 `assets/sounds/`，
+   安装后由 `StorageManager` 释放到 **`Documents/Oime/sounds/`**（该目录同时改为**安装时自动创建**）；
+   已存在的同名文件**不覆盖**，用户替换后不会被还原 ⇒ 打开音效开关即可出声 ✓
+2. **不再创建 `Documents/Oime/lua/`**：预设置（preset_keys）已去除，该目录没有保留必要 ⇒
+   去掉 `luaDir.mkdirs()`（Lua 编辑器保留，但不再随安装建目录；README 相应措辞已改）
+3. **README 修订**（用户审阅意见）：
+   · 修 `○ 圆环` 段落被截断 + `**` 未闭合（会把后文整段渲染成粗体）
+   · 修「参考项目」列表断行（trime2 少 `-`），并补回 **PiliPlus / KernelSU**（代码与设计仍在用）
+   · 修「视觉模型与语音识别的取舍」这句错误表述（DOUBAO 报告只讲 **ASR**）
+   · 新增 **隐私说明**（默认不联网 / 剪贴板本地 / 语音可离线 / 日志不外发 / QUERY_ALL_PACKAGES 用途）
+   · 音效一节写明目录路径、自动创建与内置默认音效；外部目录树同步
+   · 构建一节补充「开发期 APK 从 Actions 产物取（需登录），正式版再上 Releases」
+   · 文字规范：直引号改中文引号；「Compose 自绘键盘」改为「Compose 声明式键盘（键面与圆环手绘）」
+4. 踩坑：**Kotlin 块注释可嵌套** —— 注释里写 `assets/sounds/*` 会因 `/*` 打开嵌套注释而「Unclosed comment」，
+   必须避开在注释中出现 `/*` 字样

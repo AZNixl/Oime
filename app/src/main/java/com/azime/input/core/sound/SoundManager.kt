@@ -3,6 +3,7 @@ package com.azime.input.core.sound
 import android.media.AudioAttributes
 import android.media.SoundPool
 import com.azime.input.core.keyboard.KeyboardManager
+import com.azime.input.core.storage.StorageManager
 import java.io.File
 
 /**
@@ -20,9 +21,17 @@ object SoundManager {
     private var loadedId = 0
     private var loadedPath: String? = null
 
+    /**
+     * 音效目录：优先用设置里的路径；默认与 [StorageManager.soundsDir] 一致
+     * （安装时自动创建，并已放入 APK 内置的默认音效 click.ogg）。
+     */
+    private fun dir(): File =
+        KeyboardManager.soundDir().takeIf { it.isNotBlank() }?.let { File(it) }
+            ?: StorageManager.soundsDir
+
     /** 扫描音效目录，返回可用文件名（排序）。 */
     fun listFiles(): List<String> {
-        val dir = File(KeyboardManager.soundDir())
+        val dir = dir()
         if (!dir.isDirectory) return emptyList()
         return (dir.listFiles() ?: emptyArray())
             .filter { it.isFile && it.extension.lowercase() in exts }
@@ -32,7 +41,7 @@ object SoundManager {
 
     /** 当前生效的音效文件绝对路径（空则取目录第一个）。 */
     fun resolvePath(): String? {
-        val dir = File(KeyboardManager.soundDir())
+        val dir = dir()
         val picked = KeyboardManager.soundFile()
         if (picked.isNotBlank()) {
             val f = File(dir, picked)
