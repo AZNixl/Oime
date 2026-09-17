@@ -1478,3 +1478,20 @@ Unresolved reference）；要么 import 后 `x.roundToInt()`，要么直接 `x.t
   2. 工作流**去掉 `cache: gradle`**（单个 Gradle 缓存 600~760MB > 500MB 额度本身，
      留着它产物通道永远被顶掉）；代价是每次构建多 1~2 分钟
 - 备注：GitHub 用量计数 6~12h 才重算 ⇒ 改完仍需等一次重算，产物通道才恢复
+
+# 轮19.45（根本解决）：仓库改 **public** ⇒ GitHub Actions 分钟与存储全免费
+
+- 查证官方计费文档（docs.github.com/billing/concepts/product-billing/github-actions）：
+  · 「GitHub Actions usage is **free** for self-hosted runners and for **public repositories**
+    that use standard GitHub-hosted runners」
+  · 「The use of standard GitHub-hosted runners is free: **In public repositories** / Pages / Dependabot」
+  · 额度表（Free: artifacts 500MB · 2000 分钟 · **cache 10GB/仓库**）适用于**私有仓库**
+  · 「GitHub updates your artifact storage usage within **6 to 12 hours**」← 解释了清理后仍报配额的滞后
+  · **cache 与 artifacts 是两套独立额度** ⇒ 我们同时超了两项（artifacts 2.4GB、cache 10.4GB）
+- 实证：`AZNixl/Xime.az` 是 public → 从未被卡；`AZNixl/Oime` 是 private → 一直被卡 ✓
+- 处置：
+  1. **仓库私有一律改公开**（`PATCH /repos/AZNixl/Oime {private:false}`）⇒ 分钟 + 存储免费，配额问题消失
+     - 公开前安全检查：无 token/密钥/keystore/local.properties 入库；无 .log 入库；许可证 GPL-3.0 ✓
+  2. 工作流**恢复 `cache: gradle`**（公开仓库存储免费，构建快 1~2 分钟）
+  3. 产物保留期仍保持 `retention-days: 3`（好习惯，避免无限堆积）
+- 附带效果：**产物通道不再受配额限制**，APK 可正常下载 ✓

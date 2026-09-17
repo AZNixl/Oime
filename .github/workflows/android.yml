@@ -19,11 +19,10 @@ jobs:
       with:
         java-version: '17'
         distribution: 'temurin'
-        # 轮19.44：**不再缓存 gradle** —— setup-java 的 Gradle 缓存单个就有 600~760MB，
-        # 而 Actions 存储（artifacts + caches）免费额度只有 500MB ⇒ 缓存一写就超额，
-        # 连带把「Upload APK」也顶掉（报 Artifact storage quota has been hit）。
-        # 代价：每次构建多 1~2 分钟；收益：产物上传稳定可用。
-        # cache: gradle
+        # 轮19.45：仓库已改为 **public** ⇒ GitHub Actions 的分钟与存储**全部免费**
+        # （官方：usage is free for public repositories / standard GitHub-hosted runners），
+        # 因此把 gradle 缓存加回来，构建快 1~2 分钟。私有仓库时它曾撑爆 500MB 额度。
+        cache: gradle
 
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
