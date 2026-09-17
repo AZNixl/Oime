@@ -682,19 +682,12 @@ object KeyboardManager {
         KeyboardPages.qwerty.name -> KeyboardPages.qwerty
         KeyboardPages.symbols.name -> KeyboardPages.symbols
         KeyboardPages.numpad.name -> KeyboardPages.numpad
-        // 轮19.43：新增九键 / 十四键 / 十七键（默认仍是 26 键 = qwerty）
-        KeyboardPages.phone9.name -> KeyboardPages.phone9
-        KeyboardPages.phone14.name -> KeyboardPages.phone14
-        KeyboardPages.phone17.name -> KeyboardPages.phone17
         else -> null
     }
 
     /** 全部内置布局名（供键盘编辑器的"布局"列表展示）。 */
     fun builtinLayoutNames(): List<String> = listOf(
         KeyboardPages.qwerty.name,
-        KeyboardPages.phone9.name,
-        KeyboardPages.phone14.name,
-        KeyboardPages.phone17.name,
         KeyboardPages.symbols.name,
         KeyboardPages.numpad.name,
     )

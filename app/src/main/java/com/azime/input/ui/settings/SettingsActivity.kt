@@ -864,16 +864,6 @@ fun SettingsScreen(
             item {
                 Card(colors = plainCardColors) {
                     KsuItem(
-                        icon = OimeIcons.code,
-                        title = "预设置",
-                        subtitle = "preset_keys.lua（按键动作预设）",
-                        onClick = onEditLuaScript,
-                    )
-                }
-            }
-            item {
-                Card(colors = plainCardColors) {
-                    KsuItem(
                         icon = OimeIcons.info,
                         title = "关于",
                         subtitle = "版本 / 项目地址",
@@ -923,27 +913,33 @@ private fun StatusCard(fillWidth: Boolean = false) {
             } else Modifier
         ).let { if (fillWidth) it.fillMaxHeight() else it },
     ) {
+        Box(Modifier.fillMaxWidth()) {
+            // 轮19.47：右缘放一个**四分之一圆环**做背景装饰；
+            // 已启用 = 白色，未启用 = 黑色（用户要求）
+            androidx.compose.foundation.Canvas(Modifier.matchParentSize()) {
+                val r = size.height * 1.15f
+                val stroke = size.height * 0.13f
+                val col = if (notEnabled) Color.Black.copy(alpha = 0.30f)
+                else Color.White.copy(alpha = 0.38f)
+                drawCircle(
+                    color = col,
+                    radius = r,
+                    center = androidx.compose.ui.geometry.Offset(size.width + r * 0.36f, size.height / 2f),
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(width = stroke),
+                )
+            }
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(20.dp),
+                .padding(horizontal = 20.dp, vertical = 22.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // 轮19.2：大方块去掉 ○ logo 图标，仅保留文字（用户要求）
             Column(Modifier.weight(1f)) {
-                // 轮19.15：三行结构 —— ○输入法 / 运行状态 / 方案
-                Text(
-                    "○输入法",
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Spacer(Modifier.height(4.dp))
+                // 轮19.47：去掉「○输入法」标题，余下文本放大（用户要求）
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier = Modifier
-                            .size(8.dp)
+                            .size(11.dp)
                             .background(
                                 when {
                                     notEnabled -> Color(0xFF6B7075)
@@ -961,7 +957,9 @@ private fun StatusCard(fillWidth: Boolean = false) {
                             ready -> "运行正常"
                             else -> "引擎未就绪 / 首次部署中…"
                         },
-                        fontSize = 12.sp,
+                        // 轮19.47：字号放大（12 → 18）
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         color = if (notEnabled) Color(0xFF3C4043) else cs.onPrimaryContainer,
@@ -969,16 +967,18 @@ private fun StatusCard(fillWidth: Boolean = false) {
                 }
                 // 轮19.15：第三行 = 当前方案
                 if (ready && schema.isNotBlank()) {
-                    Spacer(Modifier.height(3.dp))
+                    Spacer(Modifier.height(4.dp))
                     Text(
                         text = "方案 · $schema",
-                        fontSize = 12.sp,
+                        // 轮19.47：字号放大（12 → 14）
+                        fontSize = 14.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         color = cs.onPrimaryContainer,
                     )
                 }
             }
+        }
         }
     }
 }

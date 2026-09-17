@@ -1823,6 +1823,7 @@ private fun MenuPanel(
                                         .weight(1f)
                                         .background(if (selected) c.accentKeyBg else c.keyBg, RoundedCornerShape(12.dp))
                                         .clickable {
+                                            com.azime.input.core.haptic.HapticsManager.press()
                                             if (!selected) onAction(KeyAction.SelectSchemaGroup(g.id))
                                         }
                                         .padding(vertical = 10.dp),
@@ -1879,6 +1880,7 @@ private fun MenuPanel(
                                         .weight(1f)
                                         .background(if (on) c.accentKeyBg else c.keyBg, RoundedCornerShape(12.dp))
                                         .clickable {
+                                            com.azime.input.core.haptic.HapticsManager.press()
                                             onAction(KeyAction.SelectSchema(id))
                                             subPage = null
                                         }
@@ -1931,6 +1933,7 @@ private fun MenuPanel(
                                     .weight(1f)
                                     .background(if (selected) c.accentKeyBg else c.keyBg, RoundedCornerShape(12.dp))
                                     .clickable {
+                                        com.azime.input.core.haptic.HapticsManager.press()
                                         if (schemaId != state.schemaName) onAction(KeyAction.SelectSchema(schemaId))
                                     }
                                     .padding(vertical = 10.dp),
@@ -1987,6 +1990,7 @@ private fun MenuPanel(
                                         .weight(1f)
                                         .background(if (checked) c.accentKeyBg else c.keyBg, RoundedCornerShape(12.dp))
                                         .clickable {
+                                            com.azime.input.core.haptic.HapticsManager.press()
                                             checked = !checked
                                             onAction(KeyAction.ToggleSwitch(sw.name))
                                         }
@@ -2060,7 +2064,10 @@ private fun MenuPanel(
                                         modifier = Modifier
                                             .weight(1f)
                                             .background(c.keyBg, RoundedCornerShape(12.dp))
-                                            .clickable { action() }
+                                            .clickable {
+                                                com.azime.input.core.haptic.HapticsManager.press()
+                                                action()
+                                            }
                                             .padding(vertical = 10.dp),
                                         horizontalAlignment = Alignment.CenterHorizontally,
                                     ) {
@@ -2094,7 +2101,10 @@ private fun MenuPanel(
                             color = c.text,
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier
-                                .clickable { close() }
+                                .clickable {
+                                    com.azime.input.core.haptic.HapticsManager.press()
+                                    close()
+                                }
                                 .padding(horizontal = 10.dp, vertical = 2.dp),
                         )
                         Text("○ 菜单", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = c.text)
@@ -2104,7 +2114,10 @@ private fun MenuPanel(
                             tint = c.text,
                             modifier = Modifier
                                 .size(20.dp)
-                                .clickable { close(); onAction(KeyAction.OpenSettings) }
+                                .clickable {
+                                    com.azime.input.core.haptic.HapticsManager.press()
+                                    close(); onAction(KeyAction.OpenSettings)
+                                }
                                 .padding(2.dp),
                         )
                     }
@@ -2162,7 +2175,10 @@ private fun MenuSubPanel(
                 color = c.text,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier
-                    .clickable { onBack() }
+                    .clickable {
+                        com.azime.input.core.haptic.HapticsManager.press()
+                        onBack()
+                    }
                     .padding(horizontal = 10.dp, vertical = 2.dp),
             )
             Text(title, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = c.text)
@@ -2200,7 +2216,10 @@ private fun ToolbarCustomizePanel(
                 fontWeight = FontWeight.Bold,
                 color = c.accentActive,
                 modifier = Modifier
-                    .clickable { onSave(selected.toList()) }
+                    .clickable {
+                        com.azime.input.core.haptic.HapticsManager.press()
+                        onSave(selected.toList())
+                    }
                     .padding(horizontal = 10.dp, vertical = 3.dp),
             )
         },
@@ -2218,6 +2237,7 @@ private fun ToolbarCustomizePanel(
                             .weight(1f)
                             .background(if (on) c.accentKeyBg else c.keyBg, RoundedCornerShape(12.dp))
                             .clickable {
+                                com.azime.input.core.haptic.HapticsManager.press()
                                 // 轮19.11：两侧空间有限，最多 6 个
                                 if (on) selected.remove(id)
                                 else if (selected.size < KeyboardManager.MAX_TOOLBAR_TOOLS) selected.add(id)
