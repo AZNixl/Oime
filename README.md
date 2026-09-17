@@ -134,7 +134,7 @@
 
 ## 内置功能（动作键值）
 
-动作不再依赖 Lua 预设置，直接用**内置功能键值**，命名对齐 RIME：
+按键动作用**内置功能键值**，命名对齐 RIME：
 
 - 编辑：`select_all`、`cut`、`copy`、`paste`、`undo`、`delete_all`
 - 上屏：`newline`（同 `return` / `enter`）、`space`、`tab`、`backspace`、`delete`
@@ -154,7 +154,6 @@
 - **首次向导 5 页**：存储权限 → 启用输入法 → 选择输入法 → 进入设置 → O 圆环快捷应用
 - **○ 圆环上滑快捷启动**：5 个应用槽位可自定义（需要 `QUERY_ALL_PACKAGES`）
 - **○ 菜单里有「切换输入法」**，一键唤起系统输入法选择器
-- **Lua 脚本**：内置 Lua 编辑器带语法校验，保存即热重载（不再随安装创建脚本目录，也不从 `lua/keyboards/` 读取布局；按键动作请用「内置功能键值」）
 - **省电**：热路径零 IO（方案显示名、方案列表都缓存或按需取）、动画降帧、键盘收起即关面板、退出时释放 librime 与语音 ONNX 会话。按手机侧归一化口径实测，UID 归因耗电较优化前下降约 68%
 - **诊断**：`Documents/Oime/` 外另写一份运行日志到 `Download/oime_diag.log`，符号、光标、剪贴板等关键路径都有埋点
 
@@ -198,7 +197,7 @@
 推送到 `main` 后，Actions 会自动出包。**开发期安装包**：仓库 Actions → 最新一次 run → 产物 `app-debug`（下载需登录 GitHub）；正式版会发布到 Releases。语音依赖 `sherpa-onnx-1.13.5.aar`（约 49MB）不入库，CI 在构建前从官方 release 下载到 `app/libs/`。
 
 - 技术栈：Kotlin 1.9.22 / AGP 8.3.0 / Gradle 8.4 / Compose BOM 2024.02.00 / JDK 17
-- 引擎：`librime_jni.so`（arm64-v8a）；Lua 用 luaj-jse；方案导入用 zip4j
+- 引擎：`librime_jni.so`（arm64-v8a）；方案导入用 zip4j
 - 项目路径含非 ASCII 字符时，需要 `gradle.properties` 里的 `android.overridePathCheck=true`
 
 ---
@@ -218,7 +217,7 @@
 - **全程 AI 协作**：本项目的代码、界面、文档（含本 README 与各阶段报告）以及 CI 排障，均由 AI 编程助手（WorkBuddy）协作完成；
   人负责提需求、给反馈、验收与调整参数——每轮改动都经过「编译校验 → 构建 → 真机验证」的闭环。
 - **AI 参考的项目**：实现过程中的思路与代码来源是上游开源项目，见参考项目（RIME 引擎与生态、trime / trime2 的方案组架构、Xime 的 JNI 绑定、sherpa-onnx 的语音模型，
-  以及若干 Lua 脚本与 UI 项目的交互设计）。所有引用到的项目版权归各自作者所有。
+  以及若干 UI 项目的交互设计）。所有引用到的项目版权归各自作者所有。
 - **代码可信度**：AI 生成的代码可能存在疏漏，欢迎通过 Issue 指出；本项目按 GPL-3.0 提供，不附加任何担保。
 
 ---

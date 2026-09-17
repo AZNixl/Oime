@@ -16,8 +16,8 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.azime.input.core.keyboard.KeyboardManager
-import com.azime.input.core.lua.LuaScriptManager
-import com.azime.input.core.lua.ResolvedAction
+import com.azime.input.core.action.ActionResolver
+import com.azime.input.core.action.ResolvedAction
 import com.azime.input.core.rime.RimeManager
 import com.azime.input.core.rime.RimeManager.KEY_BACKSPACE
 import com.azime.input.core.rime.RimeManager.KEY_RETURN
@@ -124,7 +124,6 @@ class AZimeService : InputMethodService() {
             }
         }
         KeyboardManager.initialize(applicationContext)
-        LuaScriptManager.loadScript()
         clipHistory.addAll(loadJsonList(clipHistoryFile))
         phraseItems.addAll(loadJsonList(phraseFile))
         // 轮19.1 修复：加载的剪贴板历史必须推给 uiState，否则要等下一次复制（recordClip）
@@ -776,7 +775,7 @@ class AZimeService : InputMethodService() {
 
                 // ── 扩展动作 ──
                 is KeyAction.Resolved -> {
-                    when (val resolved = LuaScriptManager.resolveAction(action.value)) {
+                    when (val resolved = ActionResolver.resolveAction(action.value)) {
                         is ResolvedAction.Commit -> {
                             val ic = currentInputConnection
                             if (ic != null) {

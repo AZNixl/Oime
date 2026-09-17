@@ -47,7 +47,6 @@ import com.azime.input.core.rime.RimeManager
 import com.azime.input.core.storage.StorageManager
 import com.azime.input.ui.editor.KeyboardEditorActivity
 import com.azime.input.ui.font.FontManagerActivity
-import com.azime.input.ui.lua.LuaEditorActivity
 import com.azime.input.utils.SchemaImporter
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.launch
@@ -222,9 +221,6 @@ class SettingsActivity : AppCompatActivity() {
                     onManageFonts = {
                         startActivity(Intent(this@SettingsActivity, FontManagerActivity::class.java))
                     },
-                    onEditLuaScript = {
-                        startActivity(Intent(this@SettingsActivity, LuaEditorActivity::class.java))
-                    },
                     onPickZip = {
                         zipPickerLauncher.launch(
                             Intent(Intent.ACTION_GET_CONTENT).apply {
@@ -252,7 +248,6 @@ fun SettingsScreen(
     onBackClick: () -> Unit,
     onOpenKeyboardEditor: () -> Unit,
     onManageFonts: () -> Unit,
-    onEditLuaScript: () -> Unit,
     onPickZip: () -> Unit,
 ) {
     val cs = MaterialTheme.colorScheme

@@ -59,12 +59,6 @@
             android:label="字体管理"
             android:theme="@style/Theme.AZime" />
 
-        <!-- Lua Script Editor Activity -->
-        <activity
-            android:name=".ui.lua.LuaEditorActivity"
-            android:exported="false"
-            android:label="Lua 脚本"
-            android:theme="@style/Theme.AZime" />
         
         <!-- Input Method Service -->
         <service

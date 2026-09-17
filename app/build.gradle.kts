@@ -12,8 +12,8 @@ android {
         applicationId = "com.oime.input"
         minSdk = 24
         targetSdk = 34
-        versionCode = 67
-        versionName = "0.9.57-oime"
+        versionCode = 68
+        versionName = "0.9.58-oime"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         
@@ -85,7 +85,6 @@ dependencies {
     implementation("com.google.code.gson:gson:2.10.1")
     
     // Lua (LuaJ)
-    implementation("org.luaj:luaj-jse:3.0.1")
     
     // Zip4j for zip handling
     implementation("net.lingala.zip4j:zip4j:2.11.5")

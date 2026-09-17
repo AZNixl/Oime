@@ -1579,3 +1579,15 @@ Unresolved reference）；要么 import 后 `x.roundToInt()`，要么直接 `x.t
      结果恒为 `schemas/<用户命名>/<方案文件>`（`flattenSingleTopFolder`，连续单目录链也会收敛）
    - 导入卡片下方新增说明：「也可以不用导入：用文件管理器把方案文件直接复制到
      Documents/Oime/schemas/ 下新建的文件夹里即可」
+
+# 轮19.51（0.9.58-oime vc68）：Lua 子系统整体移除
+
+- **删除**：`LuaEditorActivity`（19.47 起已无入口，是死界面）、`LuaScriptManager`、
+  `luaj-jse` 依赖（app/build.gradle.kts）、`StorageManager.luaDir` / `getLuaScriptFile()`、
+  Manifest 里的 Activity 声明、SettingsActivity 的 `onEditLuaScript` 参数与传参
+- **保留并改名**：动作解析 → **`core/action/ActionResolver.kt`**
+  （`resolveAction` / `ResolvedAction`：内置功能键值 + 字面文本；键盘与 Service 都在调，**不能删**）
+- 引用点同步：AZimeService（导入 + 去掉 `loadScript()` 调用）、KeyboardScreen（导入 + 全限定名）
+- 踩坑：改名后仍残留两处**旧包路径引用**（`core.lua.ResolvedAction` 的 import 与一处全限定名）
+  ⇒ 编译报 Unresolved reference，按包路径全局搜一遍才清干净
+- README：「Lua 脚本」条目、技术栈里的 luaj、参考项目里的"Lua 脚本"字样一并去掉

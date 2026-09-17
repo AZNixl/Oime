@@ -107,7 +107,8 @@ import androidx.compose.material3.OutlinedButton
 import com.azime.input.core.font.FontManager
 import com.azime.input.core.haptic.HapticsManager
 import com.azime.input.core.keyboard.KeyboardManager
-import com.azime.input.core.lua.LuaScriptManager
+import com.azime.input.core.action.ActionResolver
+import com.azime.input.core.action.ResolvedAction
 import com.azime.input.core.rime.Candidate
 import com.azime.input.core.rime.RimeManager
 import com.azime.input.data.keyboard.EmojiData
@@ -3298,9 +3299,9 @@ private fun actionPreview(action: String): String = when (action) {
     "toggle_ascii" -> "中/EN"
     "caps_lock" -> "⇪"
     else -> {
-        val resolved = LuaScriptManager.resolveAction(action)
+        val resolved = ActionResolver.resolveAction(action)
         when (resolved) {
-            is com.azime.input.core.lua.ResolvedAction.Commit -> resolved.text
+            is com.azime.input.core.action.ResolvedAction.Commit -> resolved.text
             else -> action
         }
     }
@@ -3327,7 +3328,7 @@ private fun onKeyAction(key: Key, onAction: (KeyAction) -> Unit) {
             "emoji" -> onAction(KeyAction.SwitchPage("emoji"))
             // lua 布局的自定义 FUNCTION 键：命令 / preset 引用 / 文本上屏（trime2 语义，Service 端解析）
             else -> {
-                if (LuaScriptManager.resolveAction(key.code) != null) {
+                if (ActionResolver.resolveAction(key.code) != null) {
                     onAction(KeyAction.Resolved(key.code))
                 } else {
                     onAction(KeyAction.ToggleAscii)

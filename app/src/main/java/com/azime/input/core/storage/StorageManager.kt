@@ -11,7 +11,6 @@ object StorageManager {
     private const val SCHEMA_DIR = "schemas"
     private const val SCHEMA_DIR_LEGACY = "schema"
     private const val FONTS_DIR = "fonts"
-    private const val LUA_DIR = "lua"
     private const val MODELS_DIR = "models"
     private const val SOUNDS_DIR = "sounds"
 
@@ -20,8 +19,6 @@ object StorageManager {
     lateinit var schemaDir: File
         private set
     lateinit var fontsDir: File
-        private set
-    lateinit var luaDir: File
         private set
     lateinit var modelsDir: File
         private set
@@ -41,7 +38,6 @@ object StorageManager {
         schemaDir = File(externalRootDir, SCHEMA_DIR)
         migrateLegacySchemaDir()
         fontsDir = File(externalRootDir, FONTS_DIR)
-        luaDir = File(externalRootDir, LUA_DIR)
         // 轮19：语音本地模型侧载目录（sherpa-onnx 模型不进 APK）
         modelsDir = File(externalRootDir, MODELS_DIR)
         soundsDir = File(externalRootDir, SOUNDS_DIR)
@@ -114,8 +110,4 @@ object StorageManager {
         }?.toList() ?: emptyList()
     }
 
-    /** 用户 Lua 脚本路径（轮19.49：预设表已移除，改用通用脚本名）。 */
-    fun getLuaScriptFile(): File {
-        return File(luaDir, "script.lua")
-    }
 }
