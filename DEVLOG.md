@@ -1403,3 +1403,23 @@ Unresolved reference）；要么 import 后 `x.roundToInt()`，要么直接 `x.t
 - 踩坑记录：先升到 **v5 是不够的**——`upload-artifact@v5` 的 `action.yml` 仍是 `using: node20` ⇒ 警告照旧；
   必须升到 **v7**（2026-04 发布，node24）才消除 ✓
 - 另：Xime.az 仓库**按用户要求不再改动**（该仓库后续不再更新）
+
+# 轮19.40（CI 维护）：产物配额被卡时的 Release 附件兜底
+
+- 现象：09-16 清理历史产物后（账号实际用量 **156MB** / 免费额度 500MB），
+  构建仍持续在「Upload APK」失败，原文一字未变：
+  `##[error]Failed to CreateArtifact: Artifact storage quota has been hit.
+   Unable to upload any new artifacts. Usage is recalculated every 6-12 hours.`
+- 判定：**GitHub 的用量计数器没重算**（不是我们真的超了）——
+  证据：API 实测 Oime 65.6MB + Xime.az 90.3MB = **155.9MB < 500MB**；
+  且加 `retention-days: 3` 后仍然失败（说明卡的不是保留期，是**新建产物**这个动作本身）
+- 修法（`android.yml`）：
+  1. 顶部加 `permissions: contents: write`（仓库默认 workflow 权限是 **read**，不显式声明发布不了 Release）
+  2. 「Upload APK」加 `id: upload_apk` + `continue-on-error: true`（配额卡住不再让整轮 CI 变红）
+  3. 新增兜底步骤「Publish APK to Release (fallback)」——
+     `if: steps.upload_apk.outcome == 'failure'` 时才跑，用 `gh release create` 把 APK 作为
+     **Release 附件**（`oime-<versionName>-vc<versionCode>.apk`）发布
+- 关键认知：**Release 附件不计入 Actions 产物配额** ⇒ 配额再卡也不丢包；配额恢复后兜底步骤自动不跑
+- 同轮顺带落地了 19.39 的 action 版本升级（checkout@v7 / setup-java@v6 / upload-artifact@v7 ×2）
+  ——上一轮只推了 v5，`using: node20` 警告仍在；本次推送的才是真正的 v7
+
