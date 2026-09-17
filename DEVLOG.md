@@ -1552,3 +1552,14 @@ Unresolved reference）；要么 import 后 `x.roundToInt()`，要么直接 `x.t
    · 编辑器 KDoc、`KeyboardLayout` KDoc、`LuaScriptManager` KDoc 同步改写
    · 顺手删掉**已是死代码**的预设表解析（`PresetEntry` / `presetEntries` / `parseEntries` /
      `getEntries` / `getKeyAction`），`loadScript()` 简化为"只加载用户脚本、不参与动作解析"
+
+# 轮19.49b（0.9.56-oime vc66）：preset_keys 遗留文案彻底清零
+
+继续清掉第一轮漏掉的**用户可见文案**：
+- `StorageManager.getLuaScriptFile()`：文件名 `preset_keys.lua` → **`script.lua`**（预设表已移除，改通用名）
+- `OimeIcons.kt` 图标分组注释：「预设置（Lua 代码）」→「Lua 代码」
+- `KeyboardScreen.kt` 动作分组注释：「扩展动作（preset_keys identifier / 手势）」→「（内置功能键值 / 手势）」
+- `LuaEditorActivity`：KDoc、对话框标题「预设置 (preset_keys.lua)」→「Lua 脚本 (script.lua)」、
+  空文本占位、帮助弹窗标题「预设置语法说明」→「说明」，并把「用途 / 动作取值优先级」两段说明
+  改写成当前真实语义（动作走内置功能键值），删除已无意义的 `preset_keys` 表「完整示例」段
+- 复查：`grep preset_keys|预设置` 现在只剩「已移除 / 已去除」这类**历史沿革说明** ✓

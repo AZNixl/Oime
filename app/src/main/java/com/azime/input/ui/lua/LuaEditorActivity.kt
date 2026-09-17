@@ -24,7 +24,7 @@ import androidx.compose.ui.unit.dp
 import com.azime.input.core.lua.LuaScriptManager
 
 /**
- * Lua 脚本编辑器 v1：编辑 preset_keys.lua。
+ * Lua 脚本编辑器：编辑用户 Lua 脚本（预设表 preset_keys 已移除，此处仅供自定义脚本）。
  *
  * - 打开时载入当前脚本内容；
  * - 「校验」仅编译不执行（LuaJ load），错误显示在编辑框下方；
@@ -82,7 +82,7 @@ fun LuaEditorScreen(onBackClick: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("预设置 (preset_keys.lua)") },
+                title = { Text("Lua 脚本 (script.lua)") },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
@@ -113,7 +113,7 @@ fun LuaEditorScreen(onBackClick: () -> Unit) {
                 isError = error != null,
                 supportingText = {
                     error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                        ?: Text("-- 在此编辑 preset_keys.lua；保存成功后立即热重载", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        ?: Text("-- 在此编辑用户 Lua 脚本；保存成功后立即热重载", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 },
             )
         }
@@ -122,18 +122,17 @@ fun LuaEditorScreen(onBackClick: () -> Unit) {
     if (showHelp) {
         AlertDialog(
             onDismissRequest = { showHelp = false },
-            title = { Text("预设置语法说明") },
+            title = { Text("说明") },
             text = {
                 Column(
                     modifier = Modifier
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    HelpText("用途", "preset_keys.lua 定义可被键盘按键动作引用的预设条目（兼容 trime2 格式）。键盘布局编辑器或 lua 键盘布局里的动作值先到这里查条目名。")
+                    HelpText("用途", "这里编辑用户自定义 Lua 脚本。**预设表（preset_keys）功能已移除**——键盘按键动作请直接在键盘编辑器里使用内置功能键值。")
                     HelpText("定义条目", "-- 表格式：label 显示 / send 命令或文本 / commit 直接上屏\n[\"全选\"] = { label = \"全选\", send = \"select_all\" },\n[\"日期\"] = { label = \"日期\", commit = \"2026-01-01\" },\n\n-- 字符串式：等价于直接上屏\n[\"邮箱\"] = \"me@example.com\",")
-                    HelpText("动作取值优先级", "1. preset_keys 条目名 → 取其 send/commit\n2. 内置命令 identifier → 直接执行\n3. 其他任意文本 → 直接上屏（支持 {Left}/{Right} 光标后缀，如 \"❰{Left}\"）")
+                    HelpText("动作取值优先级", "1. 内置功能键值（对齐 RIME 命名，如 escape / prior / switch_ime）→ 直接执行\n2. 其他任意文本 → 直接上屏（支持 {Left}/{Right} 光标后缀，如 \"❰{Left}\"）")
                     HelpText("内置命令", "select_all / cut / copy / paste\ntoggle_ascii（中英切换）/ newline / backspace / delete\nspace / tab / esc / left / right / up / down\npage_up / page_down / home / end\ncaps_lock / shift / delete_all / undo\npage:symbols / page:numpad / page:emoji / page:main\nchoose_page / toggle_symbols")
-                    HelpText("完整示例", "preset_keys = {\n    [\"今日日期\"] = { label = \"📅\", commit = \"2026-09-05\" },\n    [\"剪切\"] = { label = \"✂\", send = \"cut\" },\n    [\"光标跳行首\"] = { label = \"⇤\", send = \"home\" },\n}\n\nreturn preset_keys")
                     HelpText("提示", "「校验」只检查语法；「保存」成功后立即热重载，无需重启输入法。（布局不再从 lua/keyboards/ 读取，动作请用键盘编辑器里的内置功能键值。）")
                 }
             },

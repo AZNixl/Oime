@@ -88,7 +88,8 @@ object StorageManager {
         }?.toList() ?: emptyList()
     }
 
+    /** 用户 Lua 脚本路径（轮19.49：预设表已移除，改用通用脚本名）。 */
     fun getLuaScriptFile(): File {
-        return File(luaDir, "preset_keys.lua")
+        return File(luaDir, "script.lua")
     }
 }

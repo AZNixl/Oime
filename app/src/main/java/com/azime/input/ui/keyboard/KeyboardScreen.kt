@@ -148,7 +148,7 @@ sealed interface KeyAction {
     /** ○ 菜单「方案开关」：切换当前方案 schema.yaml 的 switches 开关。 */
     data class ToggleSwitch(val name: String) : KeyAction
 
-    // ── 扩展动作（preset_keys identifier / 手势） ──
+    // ── 扩展动作（内置功能键值 / 手势） ──
     /** 解析后的命令（select_all/cut/copy/paste/…）或字面提交。 */
     data class Resolved(val value: String) : KeyAction
     data object DeleteAll : KeyAction
