@@ -2265,6 +2265,7 @@ private fun ToolbarCustomizePanel(
 // ── 更多候选面板：网格展示当前页全部候选，◀▶ 翻页，点选上屏 ──
 
 @Composable
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 private fun CandidatePanel(state: KeyboardUiState, onAction: (KeyAction) -> Unit, totalHeight: androidx.compose.ui.unit.Dp) {
     val c = keyboardColors()
     val keyH = KeyboardManager.keyHeightDp().dp
@@ -2327,21 +2328,21 @@ private fun CandidatePanel(state: KeyboardUiState, onAction: (KeyAction) -> Unit
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(KeySpacing),
             ) {
-                state.candidates.chunked(5).forEach { rowItems ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(keyH),
-                        horizontalArrangement = Arrangement.spacedBy(KeySpacing),
-                    ) {
-                        rowItems.forEachIndexed { i, candidate ->
-                            val idx = base + i
+                // 轮19.48：**按内容自适应宽度 + 自动换行**（FlowRow）。
+                // 原来用「等宽 5 列网格」——注释（拆字/编码）很长时会被单元格裁掉，
+                // 看起来像"固定长度"。改为内容决定宽度后，注释能完整显示，背景自然贴合文字。
+                androidx.compose.foundation.layout.FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(KeySpacing),
+                    verticalArrangement = Arrangement.spacedBy(KeySpacing),
+                ) {
+                    run {
+                        state.candidates.forEachIndexed { idx, candidate ->
                             Box(
                                 modifier = Modifier
-                                    .weight(1f)
-                                    .fillMaxSize()
                                     .background(c.keyBg, RoundedCornerShape(8.dp))
-                                    .clickable { onAction(KeyAction.Candidate(idx)) },
+                                    .clickable { onAction(KeyAction.Candidate(idx)) }
+                                    .padding(horizontal = 10.dp, vertical = 5.dp),
                                 contentAlignment = Alignment.Center,
                             ) {
                                 // 轮19.43（按用户要求）：注释（拆字/拼音）**放到候选字上方**，
@@ -2381,9 +2382,7 @@ private fun CandidatePanel(state: KeyboardUiState, onAction: (KeyAction) -> Unit
                                 }
                             }
                         }
-                        repeat(5 - rowItems.size) { Spacer(Modifier.weight(1f)) }
                     }
-                    base += rowItems.size
                 }
             }
         }
