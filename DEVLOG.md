@@ -1434,3 +1434,19 @@ Unresolved reference）；要么 import 后 `x.roundToInt()`，要么直接 `x.t
   · 去掉为 Release 加的 `permissions: contents: write`（恢复最小权限）
 - 同时清理：删除 `ci-133` / `ci-134` 两条 CI Release（含 tag）→ Releases 归零，只等正式发版
 - 产物通道回到纯 Actions artifact（`retention-days: 3` 保留，防配额再堆积）
+
+# 轮19.42（0.9.50-oime vc60）：三个真因修复 + 风格选择改下拉
+
+1. **空格上滑切中英"没生效、仍是长按切换"**：
+   内置数据其实已改对（`space()` 的 longClick=null + swipeUp=toggle_ascii），
+   但**设备上已保存的自定义布局 JSON** 里仍是旧的 `longClick = "toggle_ascii"`，覆盖了内置定义 ✗
+   → 新增 `migrateSpaceGesture()`：加载布局时做一次无副作用迁移
+   （空格键若 longClick 是 toggle_ascii ⇒ 搬到 swipeUp，清 longClick）✓
+2. **Nothing OS 下 O 圆环看不见**：
+   圆环颜色是**写死的 `Color.White`** ⇒ 白环压白底 ✗
+   → 改为 `c.text.copy(alpha = breathAlpha)`（浅色主题=深色环，深色主题=浅色环）✓
+3. **Material You 下按键不可见、按空白无反应**：
+   `DynamicPalette` 里用了 **`color.value.toLong()`**（Compose 的 **packed ULong**，含色彩空间位），
+   而 `Color(Long)` 构造按 **ARGB** 解释 ⇒ 取到垃圾色值（透明/错色）✗
+   → 全部改用 **`toArgb()` 并强制不透明**（新增 `opaque()` 助手，13 处）✓
+4. **界面风格选择改为下拉栏**（原 3 列平铺改掉）：点一行展开 6 个风格，当前项带 ✓

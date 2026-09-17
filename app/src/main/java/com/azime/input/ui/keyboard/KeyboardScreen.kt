@@ -1394,7 +1394,9 @@ private fun ToolbarRow(
                     ) {
                         val strokeW = 3.1.dp.toPx()
                         val ringR = size.minDimension / 2f - strokeW - 1f
-                        val col = if (oPressing) c.accentActive else Color.White.copy(alpha = breathAlpha)
+                        // 轮19.42：原为**写死的 Color.White** —— 浅色主题（Nothing OS / Material You）下
+                        // 白环压白底完全看不见。改为跟随主题文字色（浅色主题=深色环，深色主题=浅色环）。
+                        val col = if (oPressing) c.accentActive else c.text.copy(alpha = breathAlpha)
                         when (ringShape) {
                             KeyboardManager.RING_SHAPE_SQUARE -> {
                                 // 圆角正方形环（边长 = 直径，圆角 ≈ 30%）

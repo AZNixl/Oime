@@ -2,6 +2,7 @@ package com.azime.input.core.theme
 
 import android.content.Context
 import android.os.Build
+import androidx.compose.ui.graphics.toArgb
 
 /**
  * 轮19.35：Material You —— 从**系统壁纸**动态取色的调色板。
@@ -11,6 +12,17 @@ import android.os.Build
  * 结果缓存，避免每次重组都做一次取色。
  */
 object DynamicPalette {
+
+    /**
+     * 轮19.42：**必须用 toArgb()**。
+     * 原来写的是 `color.value.toLong()`——那是 Compose 的 **packed ULong**（含色彩空间位），
+     * 而 `Color(Long)` 构造按 **ARGB** 解释 ⇒ 得到垃圾色值
+     * （本次 Material You「按键看不到 / 按空白无反应」的真因）。
+     * 同时强制不透明（0xFF），避免动态色带 alpha 把键盘画成透明。
+     */
+    private fun opaque(c: androidx.compose.ui.graphics.Color): Long =
+        (c.toArgb().toLong() and 0xFFFFFFFFL) or 0xFF000000L
+
 
     @Volatile private var paletteLight: StylePalette? = null
     @Volatile private var paletteDark: StylePalette? = null
@@ -24,21 +36,21 @@ object DynamicPalette {
                     runCatching {
                         val l = androidx.compose.material3.dynamicLightColorScheme(context)
                         paletteLight = StylePalette(
-                            bg = l.surfaceContainerLowest.value.toLong(),
-                            barBg = l.surfaceContainerLow.value.toLong(),
-                            keyBg = l.surfaceContainerLow.value.toLong(),
-                            funcKeyBg = l.surfaceContainerHigh.value.toLong(),
-                            text = l.onSurface.value.toLong(),
-                            subText = l.onSurfaceVariant.value.toLong(),
+                            bg = opaque(l.surfaceContainerLowest),
+                            barBg = opaque(l.surfaceContainerLow),
+                            keyBg = opaque(l.surfaceContainerLow),
+                            funcKeyBg = opaque(l.surfaceContainerHigh),
+                            text = opaque(l.onSurface),
+                            subText = opaque(l.onSurfaceVariant),
                         )
                         val d = androidx.compose.material3.dynamicDarkColorScheme(context)
                         paletteDark = StylePalette(
-                            bg = d.surfaceContainerLowest.value.toLong(),
-                            barBg = d.surfaceContainerLow.value.toLong(),
-                            keyBg = d.surfaceContainerLow.value.toLong(),
-                            funcKeyBg = d.surfaceContainerHigh.value.toLong(),
-                            text = d.onSurface.value.toLong(),
-                            subText = d.onSurfaceVariant.value.toLong(),
+                            bg = opaque(d.surfaceContainerLowest),
+                            barBg = opaque(d.surfaceContainerLow),
+                            keyBg = opaque(d.surfaceContainerLow),
+                            funcKeyBg = opaque(d.surfaceContainerHigh),
+                            text = opaque(d.onSurface),
+                            subText = opaque(d.onSurfaceVariant),
                         )
                     }
                     inited = true
@@ -54,7 +66,7 @@ object DynamicPalette {
         return runCatching {
             val c = if (dark) androidx.compose.material3.dynamicDarkColorScheme(context)
             else androidx.compose.material3.dynamicLightColorScheme(context)
-            c.primary.value.toLong()
+            opaque(c.primary)
         }.getOrNull()
     }
 }

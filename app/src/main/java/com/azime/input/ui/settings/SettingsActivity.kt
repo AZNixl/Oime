@@ -1837,35 +1837,41 @@ private fun ThemeColorSettings() {
         var accentPure by remember { mutableStateOf(km.accentPure()) }
         var styleRev by remember { mutableStateOf(0) }
         androidx.compose.runtime.key(styleRev) {
+            // 轮19.42：风格改为**下拉选择**（原 3 列平铺改掉）
             Text("界面风格", style = MaterialTheme.typography.bodyMedium)
-            // 轮19.35：6 种风格（token 表驱动）——键盘与设置页一起变
-            com.azime.input.core.theme.UiStyles.selectable.chunked(3).forEach { row ->
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    row.forEach { st ->
-                        val on = uiStyle == st.id
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .background(
-                                    if (on) MaterialTheme.colorScheme.primaryContainer
-                                    else MaterialTheme.colorScheme.surfaceVariant,
-                                    androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
-                                )
-                                .clickable { uiStyle = st.id; km.setUiStyle(st.id); styleRev++ }
-                                .padding(vertical = 9.dp),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                st.label,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = if (on) MaterialTheme.colorScheme.onPrimaryContainer
-                                else MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                    repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+            var styleMenu by remember { mutableStateOf(false) }
+            Box(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            MaterialTheme.colorScheme.surfaceVariant,
+                            androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+                        )
+                        .clickable { styleMenu = true }
+                        .padding(horizontal = 12.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        com.azime.input.core.theme.UiStyle.from(uiStyle).label,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text("▾", style = MaterialTheme.typography.bodyMedium)
                 }
-                Spacer(Modifier.height(6.dp))
+                DropdownMenu(expanded = styleMenu, onDismissRequest = { styleMenu = false }) {
+                    com.azime.input.core.theme.UiStyles.selectable.forEach { st ->
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    st.label + if (st.id == uiStyle) "   ✓" else "",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                            },
+                            onClick = { uiStyle = st.id; km.setUiStyle(st.id); styleMenu = false; styleRev++ },
+                        )
+                    }
+                }
             }
             Text(
                 "风格只改配色/边框/字重；键高、行距、圆角仍按你自己的设置。" +

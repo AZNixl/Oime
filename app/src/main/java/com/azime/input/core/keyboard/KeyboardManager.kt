@@ -96,10 +96,35 @@ object KeyboardManager {
 
     /** 当前主键盘布局：自定义覆盖优先，否则按名字回退内置，最终兜底 qwerty。 */
     fun mainLayout(): KeyboardLayout = synchronized(lock) {
-        customs[activeMain]
+        val raw = customs[activeMain]
             ?: builtinByName(activeMain)
             ?: builtinByName(DEFAULT_MAIN)
             ?: KeyboardPages.qwerty
+        migrateSpaceGesture(raw)
+    }
+
+    /**
+     * 轮19.42：**空格手势迁移**。
+     *
+     * 需求变更：空格「长按切中英」→「**上滑**切中英」。
+     * 但用户设备上已保存的**自定义布局 JSON** 里仍是旧的 `longClick = "toggle_ascii"`，
+     * 它会覆盖内置定义 ⇒ 只改内置不生效（用户反馈"仍是长按切换"）。
+     * 这里在加载时做一次无副作用迁移：空格键若 longClick 是 toggle_ascii，就搬到 swipeUp。
+     */
+    private fun migrateSpaceGesture(layout: KeyboardLayout): KeyboardLayout {
+        var changed = false
+        val rows = layout.rows.map { row ->
+            val keys = row.keys.map { k ->
+                if (k.code == "space" && k.longClick == "toggle_ascii") {
+                    changed = true
+                    k.copy(longClick = null, swipeUp = "toggle_ascii")
+                } else {
+                    k
+                }
+            }
+            if (changed) row.copy(keys = keys) else row
+        }
+        return if (changed) layout.copy(rows = rows) else layout
     }
 
     /** 符号页布局（内置；后续可扩展为自定义符号页）。 */
