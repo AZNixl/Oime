@@ -1423,3 +1423,14 @@ Unresolved reference）；要么 import 后 `x.roundToInt()`，要么直接 `x.t
 - 同轮顺带落地了 19.39 的 action 版本升级（checkout@v7 / setup-java@v6 / upload-artifact@v7 ×2）
   ——上一轮只推了 v5，`using: node20` 警告仍在；本次推送的才是真正的 v7
 
+
+# 轮19.41：撤掉 CI 的 Release 兜底（用户要求：未正式发版前不走 Releases）
+
+- 背景：19.40 曾加「Publish APK to Release (fallback)」绕开产物配额（配额 6~12h 才重算）
+- 用户要求：**未正式发版前不要用 Releases**，只在正式发版时才走 → 已撤掉该步骤
+- 具体改动（`.github/workflows/android.yml`）：
+  · 删除 `Publish APK to Release (fallback)` 步骤
+  · `Upload APK` 去掉 `continue-on-error: true` 与 `id`（恢复"失败即失败"，问题透明）
+  · 去掉为 Release 加的 `permissions: contents: write`（恢复最小权限）
+- 同时清理：删除 `ci-133` / `ci-134` 两条 CI Release（含 tag）→ Releases 归零，只等正式发版
+- 产物通道回到纯 Actions artifact（`retention-days: 3` 保留，防配额再堆积）

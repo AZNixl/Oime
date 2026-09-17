@@ -7,10 +7,6 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
-# 轮19.40：兜底发布 Release 附件需要 contents:write（仓库默认是 read）
-permissions:
-  contents: write
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -40,9 +36,6 @@ jobs:
       run: ./gradlew assembleDebug --stacktrace
 
     - name: Upload APK
-      id: upload_apk
-      # 轮19.40：配额被 GitHub 计数器卡住时不至于整轮失败 —— 下面有 Release 兜底
-      continue-on-error: true
       uses: actions/upload-artifact@v7
       with:
         name: app-debug
@@ -51,28 +44,6 @@ jobs:
         # 500MB 产物配额，导致「Upload APK」步骤失败（构建本身是成功的）。
         retention-days: 3
         if-no-files-found: error
-
-    # 轮19.40 兜底通道：Actions 产物配额是**账号级**的，且删除后 GitHub 要 6~12h
-    # 才重算计数 —— 期间任何 upload-artifact 都会被拒（构建本身没问题）。
-    # Release 附件**不计入 Actions 产物配额**，所以配额再卡也不会丢包。
-    - name: Publish APK to Release (fallback)
-      if: steps.upload_apk.outcome == 'failure'
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: |
-        set -euo pipefail
-        APK=app/build/outputs/apk/debug/app-debug.apk
-        ls -la "$APK"
-        VN=$(grep -oP 'versionName\s*=\s*"\K[^"]+' app/build.gradle.kts | head -1)
-        VC=$(grep -oP 'versionCode\s*=\s*\K[0-9]+' app/build.gradle.kts | head -1)
-        OUT="oime-${VN}-vc${VC}.apk"
-        cp "$APK" "$OUT"
-        TAG="ci-${{ github.run_number }}"
-        gh release create "$TAG" "$OUT" \
-          --title "CI ${TAG} · ${OUT}" \
-          --notes "Actions 产物配额兜底（artifact 上传被拒时自动走这里）。run ${{ github.run_id }}" \
-          --prerelease
-        echo "published release: $TAG -> $OUT"
 
     - name: Upload build reports
       if: failure()
