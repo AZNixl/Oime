@@ -80,3 +80,6 @@ jobs:
       with:
         name: build-reports
         path: app/build/reports/
+        # 轮19.39c：构建失败时该目录常不存在 → 用 ignore 消掉 "No files were found" 警告
+        if-no-files-found: ignore
+        retention-days: 3
