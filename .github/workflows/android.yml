@@ -19,7 +19,11 @@ jobs:
       with:
         java-version: '17'
         distribution: 'temurin'
-        cache: gradle
+        # 轮19.44：**不再缓存 gradle** —— setup-java 的 Gradle 缓存单个就有 600~760MB，
+        # 而 Actions 存储（artifacts + caches）免费额度只有 500MB ⇒ 缓存一写就超额，
+        # 连带把「Upload APK」也顶掉（报 Artifact storage quota has been hit）。
+        # 代价：每次构建多 1~2 分钟；收益：产物上传稳定可用。
+        # cache: gradle
 
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew

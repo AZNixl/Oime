@@ -1466,3 +1466,15 @@ Unresolved reference）；要么 import 后 `x.roundToInt()`，要么直接 `x.t
    · **动作改为「内置功能键值」**，命名对齐 RIME：`escape/clear/return/prior/next/ascii_mode` 等别名 +
      新增 `switch_ime` / `clipboard` / `menu` / `deploy`；大小写、`-`、`_` 容错
    · **键盘编辑器新增「内置功能键值清单」**（按编辑/上屏/中英/光标/翻页/组合/页面/内置分组，含中文含义）
+
+# 轮19.44：CI 产物配额问题的**真正大头**找到了 —— Gradle 缓存
+
+- 现象：清理 artifacts 后 `Upload APK` 仍报 `Artifact storage quota has been hit`
+- 复查：Actions 存储 = **artifacts + caches**，而 `setup-java` 的 `cache: gradle`
+  积累了 **15 个缓存 × 763MB ≈ 10.4 GB**（每次依赖哈希变化就新建一个，旧的不过期）✗✗
+  —— artifacts 只有 156MB，缓存才是元凶
+- 处置：
+  1. **删除 14 个旧缓存**（保留最新 1 个）：释放 **10046 MB**
+  2. 工作流**去掉 `cache: gradle`**（单个 Gradle 缓存 600~760MB > 500MB 额度本身，
+     留着它产物通道永远被顶掉）；代价是每次构建多 1~2 分钟
+- 备注：GitHub 用量计数 6~12h 才重算 ⇒ 改完仍需等一次重算，产物通道才恢复
