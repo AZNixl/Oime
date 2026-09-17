@@ -179,7 +179,7 @@
 
 ```
 /storage/emulated/0/Documents/Oime/
-├── schema/        # 输入方案组（每个子目录 = 一个完整方案包）
+├── schemas/       # 输入方案组（每个子目录 = 一个完整方案包）
 ├── fonts/         # 字体文件（键帽 / 候选可分别选用）
 ├── sounds/        # 打字音效（安装时自动创建，含内置默认音效 click.ogg）
 └── models/        # 语音模型（SenseVoice / zipformer）

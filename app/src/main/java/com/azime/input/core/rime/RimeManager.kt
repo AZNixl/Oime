@@ -168,7 +168,7 @@ object RimeManager {
 
     /**
      * 查找方案的 .schema.yaml 源文件：
-     * 轮18.2：先查当前组目录（导入组方案在 Documents/Oime/schema/<组>/），
+     * 轮18.2：先查当前组目录（导入组方案在 Documents/Oime/schemas/<组>/），
      * 再回落 shared（内置公共方案）。目录内允许子目录（walkTopDown）。
      */
     private fun schemaYamlFile(schemaId: String): File? {
@@ -302,7 +302,7 @@ object RimeManager {
     /** 公共 shared 目录（default.yaml / opencc / 内置方案，assets 同步），组目录缺资源时回落。 */
     private fun sharedDirOf(context: Context): File = File(context.filesDir, "rime/shared")
 
-    /** 指定组的 user 数据目录：内置组 → files/rime/user；导入组 → Documents/Oime/schema/<组>/。 */
+    /** 指定组的 user 数据目录：内置组 → files/rime/user；导入组 → Documents/Oime/schemas/<组>/。 */
     fun userDirForGroup(context: Context, groupId: String): File =
         if (groupId == BUILTIN_GROUP_ID) builtinUserDir(context)
         else File(com.azime.input.core.storage.StorageManager.schemaDir, groupId)
@@ -334,7 +334,7 @@ object RimeManager {
     }
 
     /**
-     * 枚举方案组：内置 + Documents/Oime/schema/ 下的目录（trime2 模式：目录原样即环境）。
+     * 枚举方案组：内置 + Documents/Oime/schemas/ 下的目录（trime2 模式：目录原样即环境）。
      * schema_id = <x>.schema.yaml 的文件名（librime 以文件名解析方案 id）。
      */
     fun schemaGroups(context: Context): List<SchemaGroup> {

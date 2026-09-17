@@ -228,13 +228,24 @@ private fun LayoutCard(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f)) {
-                Text(name, fontWeight = FontWeight.SemiBold)
+                // 轮19.50：选中行底色是强调色 ⇒ 文字/图标必须用 on 色，否则"黑压黑/蓝压蓝"看不见
+                Text(
+                    name,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (active) MaterialTheme.colorScheme.onPrimaryContainer
+                    else MaterialTheme.colorScheme.onSurface,
+                )
                 Text(subtitle, fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    color = if (active) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                    else MaterialTheme.colorScheme.onSurfaceVariant)
             }
             IconButton(onClick = onEdit) {
-                Icon(Icons.Default.Edit, contentDescription = "编辑",
-                    tint = MaterialTheme.colorScheme.primary)
+                Icon(
+                    Icons.Default.Edit, contentDescription = "编辑",
+                    // 轮19.50：选中行的铅笔原来用 primary（蓝）压在强调色底上 ⇒ 看不见
+                    tint = if (active) MaterialTheme.colorScheme.onPrimaryContainer
+                    else MaterialTheme.colorScheme.primary,
+                )
             }
             if (custom && onDelete != null) {
                 IconButton(onClick = onDelete) {

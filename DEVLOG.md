@@ -424,12 +424,12 @@ vendored RimeEngine 中 `getAvailableSchemas / getSchemaString / getSchemaList`
 | # | 需求 | 实现 |
 |---|------|------|
 | 1 | 排查「方案自己变动成别的方案」根因 | **根因确认**：旧 deployPendingImport 把所有导入方案的 schema_id 全量平铺进 default.custom.yaml（pinyin_simp 恒第一），librime 每次部署完成后激活方案回落 schema_list[0]，用户切过的方案被跳回拼音 |
-| 2 | 方案管理重做：方案组→方案 两级（参考 trime2） | RimeManager 新增方案组区块：SchemaGroup(id/name/builtin/schemaIds)、schemaGroups()（内置组 + Documents/Oime/schema/ 子目录=方案组，组内扫 *.schema.yaml）、currentGroupId/setCurrentGroup/recordGroupSchema（schema_group_prefs）；syncGroup 共用启动/切组——删上一组文件（.imported 清单，与内置资产同名从 assets 恢复）→ 拷入组文件（组覆盖层）→ 重写 default.custom.yaml（schema_list 仅含组内方案，组内上次使用置首）→ 不变化跳过；switchSchemaGroup=setCurrentGroup→syncGroup→全量维护→重建会话；删 deployPendingImport；ensureReady/deployImportedSchemas 接线 |
+| 2 | 方案管理重做：方案组→方案 两级（参考 trime2） | RimeManager 新增方案组区块：SchemaGroup(id/name/builtin/schemaIds)、schemaGroups()（内置组 + Documents/Oime/schemas/ 子目录=方案组，组内扫 *.schema.yaml）、currentGroupId/setCurrentGroup/recordGroupSchema（schema_group_prefs）；syncGroup 共用启动/切组——删上一组文件（.imported 清单，与内置资产同名从 assets 恢复）→ 拷入组文件（组覆盖层）→ 重写 default.custom.yaml（schema_list 仅含组内方案，组内上次使用置首）→ 不变化跳过；switchSchemaGroup=setCurrentGroup→syncGroup→全量维护→重建会话；删 deployPendingImport；ensureReady/deployImportedSchemas 接线 |
 | 3 | O 菜单加「方案组」大项 + 设置页同步 | KeyAction.SelectSchemaGroup + Service 处理（statusMessage「正在切换方案组…」）；SelectSchema 成功后 recordGroupSchema（组内记忆）；主菜单第 3 项「方案组」（Apps 图标）+ groups 子级 4 列卡片网格（组名 + 「N 个方案」副文本，当前组 accent 高亮，state.schemas 作刷新 key）；设置页 SchemaList 顶部方案组单选区（RadioButton + 方案数），组内方案列表保留并同样记录；导入文案改「已导入方案组，可在方案组中切换」（不自动切换，对齐 trime2 安装语义）；promptRename 重命名当前组时同步 setCurrentGroup |
 
 技术记录：
 - 修复机制：schema_list 只写当前组 + recordGroupSchema 把组内最后使用的方案置首 → 部署后 librime 回落 schema_list[0] 即回到用户方案，不再跳回
-- 旧版平滑迁移：升级后首次启动 currentGroup=内置组，syncGroup 按旧 .imported 清单删除全部导入文件（同名内置资产从 assets 恢复），源文件仍留在 Documents/Oime/schema/<组名>/ 不丢
+- 旧版平滑迁移：升级后首次启动 currentGroup=内置组，syncGroup 按旧 .imported 清单删除全部导入文件（同名内置资产从 assets 恢复），源文件仍留在 Documents/Oime/schemas/<组名>/ 不丢
 - syncAssets 顺序保持在前（组文件未动时 marker 命中即跳过，不覆盖组定制同名文件）
 - 版本 0.9.4-oime（versionCode 14）
 | 4 | 按键按下没有动画，做按下的动画反馈 | KeyboardKey 统一按下动画：有手势键复用 pressing（awaitEachGesture down/up），无手势键新增 MutableInteractionSource + collectIsPressedAsState；animateFloatAsState（spring NoBouncy StiffnessHigh）驱动 ①背景渐变 lerp(bg, 白/黑 12% compositeOver(bg))——暗色键盘按下变亮、亮色键盘按下变暗（c.barBg.luminance() 判定）②graphicsLayer 缩放 1→0.95（lambda 内 deferred read，不触发重组）；主键盘/符号/九宫格共用 KeyboardKey，一处改动全键盘生效；clickable 分支 indication=null，以自绘渐变替代 ripple |
@@ -589,7 +589,7 @@ trime 正确做法是用 JNI selectRimeSchemas() 设置启用方案，完全不�
 ## Oime 新架构（零拷贝）
 
 ```
-userDataDir    = Documents/Oime/schema/<当前组>/   （内置组 → files/rime/user）
+userDataDir    = Documents/Oime/schemas/<当前组>/   （内置组 → files/rime/user）
 sharedDataDir  = files/rime/shared（固定，assets 同步 default.yaml/opencc/内置方案）
 ```
 
@@ -611,7 +611,7 @@ sharedDataDir  = files/rime/shared（固定，assets 同步 default.yaml/opencc/
 
 ## 新/改实现
 
-- `userDirForGroup(groupId)`：内置组 → files/rime/user；导入组 → Documents/Oime/schema/<组>/
+- `userDirForGroup(groupId)`：内置组 → files/rime/user；导入组 → Documents/Oime/schemas/<组>/
 - `switchSchemaGroup`：setCurrentGroup + Runtime.exit(0)（进程重启）
 - `schemaGroups`：枚举组目录，schema_id = 文件名去 .schema.yaml 后缀
 - `deployImportedSchemas`：简化为 startMaintenance(true) + 等待完成
@@ -1563,3 +1563,19 @@ Unresolved reference）；要么 import 后 `x.roundToInt()`，要么直接 `x.t
   空文本占位、帮助弹窗标题「预设置语法说明」→「说明」，并把「用途 / 动作取值优先级」两段说明
   改写成当前真实语义（动作走内置功能键值），删除已无意义的 `preset_keys` 表「完整示例」段
 - 复查：`grep preset_keys|预设置` 现在只剩「已移除 / 已去除」这类**历史沿革说明** ✓
+
+# 轮19.50（0.9.57-oime vc67）：编辑器铅笔色 / schemas 目录改名 / 方案导入结构统一
+
+1. **编辑器选中行的铅笔看不见**：铅笔 tint 用 `primary`（强调色），而选中行底色是 `primaryContainer`
+   ⇒ 蓝压蓝 ✗（用户截图）。改为**选中时用 `onPrimaryContainer`**；顺带把方案名/副标题也改成 on 色
+   （原来 `onSurface` / `onSurfaceVariant` 压强调色底同样发暗）
+2. **目录改名 `Documents/Oime/schema/` → `schemas/`**（用户打漏了一个 s）：
+   - 常量改为 `schemas`，并新增**自动迁移**：启动时把旧 `schema/` 下的子目录搬进 `schemas/`，
+     旧目录清空后删除（已导入的方案组不必重新导入）
+   - README 目录树、RimeManager / SettingsActivity 的注释同步更新
+3. **方案导入结构统一**（用户要求）：
+   - **去掉「保持原名」** ⇒ 改为**导入前先命名文件夹**（对话框必填，重名/非法字符会拦下）
+   - **解压后拍平一层**：压缩包内是「文件夹/方案文件」还是直接「方案文件」，
+     结果恒为 `schemas/<用户命名>/<方案文件>`（`flattenSingleTopFolder`，连续单目录链也会收敛）
+   - 导入卡片下方新增说明：「也可以不用导入：用文件管理器把方案文件直接复制到
+     Documents/Oime/schemas/ 下新建的文件夹里即可」

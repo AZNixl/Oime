@@ -7,7 +7,9 @@ import java.io.File
 object StorageManager {
 
     private const val EXTERNAL_DIR = "Documents/Oime"
-    private const val SCHEMA_DIR = "schema"
+    // 轮19.50：目录名统一为复数的 schemas（旧版本是 schema，启动时自动迁移）
+    private const val SCHEMA_DIR = "schemas"
+    private const val SCHEMA_DIR_LEGACY = "schema"
     private const val FONTS_DIR = "fonts"
     private const val LUA_DIR = "lua"
     private const val MODELS_DIR = "models"
@@ -37,6 +39,7 @@ object StorageManager {
 
         // Create subdirectories
         schemaDir = File(externalRootDir, SCHEMA_DIR)
+        migrateLegacySchemaDir()
         fontsDir = File(externalRootDir, FONTS_DIR)
         luaDir = File(externalRootDir, LUA_DIR)
         // 轮19：语音本地模型侧载目录（sherpa-onnx 模型不进 APK）
@@ -59,6 +62,29 @@ object StorageManager {
 
         // 轮19.43：**去除「预设置（preset_keys）」功能** —— 不再生成预设模板文件。
         // 动作一律走「内置功能键值」（见键盘编辑器里的清单），不再依赖 Lua 预设表。
+    }
+
+    /**
+     * 轮19.50：把旧目录 `Documents/Oime/schema/` 迁移到 `Documents/Oime/schemas/` ——
+     * 用户已导入的方案组不必重新导入（把子目录逐个搬过去，再删掉旧目录）。
+     */
+    private fun migrateLegacySchemaDir() {
+        runCatching {
+            val legacy = File(externalRootDir, SCHEMA_DIR_LEGACY)
+            if (!legacy.isDirectory) return@runCatching
+            schemaDir.mkdirs()
+            legacy.listFiles().orEmpty().forEach { child ->
+                val dest = File(schemaDir, child.name)
+                if (dest.exists()) return@forEach
+                if (!child.renameTo(dest)) {
+                    // 跨设备重命名失败时退化为复制
+                    if (child.isDirectory) child.copyRecursively(dest, overwrite = false)
+                    else child.copyTo(dest, overwrite = false)
+                }
+            }
+            // 旧目录清空后删除（里面有残留文件就保留，避免误删）
+            if (legacy.listFiles().orEmpty().isEmpty()) legacy.delete()
+        }
     }
 
     /**

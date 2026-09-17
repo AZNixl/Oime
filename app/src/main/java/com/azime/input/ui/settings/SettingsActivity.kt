@@ -65,7 +65,12 @@ class SettingsActivity : AppCompatActivity() {
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
-            result.data?.data?.let { importSchema { schemaImporter.importFromZip(this, it) } }
+            result.data?.data?.let { uri ->
+                // 轮19.50：**先命名，再导入**（不再有"保持原名"）
+                promptFolderNameThenImport(displayNameOf(uri)) { name ->
+                    schemaImporter.importFromZip(this, uri, name)
+                }
+            }
         }
     }
 
@@ -78,49 +83,71 @@ class SettingsActivity : AppCompatActivity() {
         lifecycleScope.launch {
             action().onSuccess { name ->
                 RimeManager.deployImportedSchemas(applicationContext)
-                // 轮13：导入即创建方案组（Documents/Oime/schema/<名>/），不自动切换
+                // 轮13：导入即创建方案组（Documents/Oime/schemas/<名>/），不自动切换
                 Toast.makeText(this@SettingsActivity, "已导入方案组「$name」，在方案组列表点击即可切换使用", Toast.LENGTH_SHORT).show()
-                promptRename(name)
             }.onFailure { e ->
                 Toast.makeText(this@SettingsActivity, "导入失败：${e.message}", Toast.LENGTH_LONG).show()
             }
         }
     }
 
-    /** 导入成功后询问重命名（改写 schema 子文件夹名，内部 schema_id 不变）。 */
-    private fun promptRename(importedName: String) {
-        val input = EditText(this).apply {
-            setText(importedName)
-            setSelection(0, importedName.length)
+    /** 取 SAF URI 的显示名（去掉扩展名），用作文件夹名默认值。 */
+    private fun displayNameOf(uri: android.net.Uri): String = runCatching {
+        contentResolver.query(uri, null, null, null, null)?.use { c ->
+            val i = c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+            if (i >= 0 && c.moveToFirst()) c.getString(i) else null
         }
-        MaterialAlertDialogBuilder(this)
-            .setTitle("重命名方案文件夹")
-            .setMessage("可修改导入的文件夹名（Documents/Oime/schema/ 下），内部方案 ID 不变。")
+    }.getOrNull()?.substringBeforeLast('.')?.takeIf { it.isNotBlank() } ?: "新方案"
+
+    /**
+     * 轮19.50：**先命名再导入** —— 文件夹名必须由用户填写。
+     *
+     * 原来导入后弹「重命名 / 保持原名」，选保持原名会保留压缩包里的结构
+     * （`schemas/<包名>/<方案文件夹>/…`）或直接用文件名当文件夹名，落盘结构不统一 ✗
+     * 现在改为导入前命名 + 解压时拍平一层 ⇒ 结果恒为 `schemas/<名字>/<方案文件>` ✓
+     */
+    private fun promptFolderNameThenImport(
+        defaultName: String,
+        doImport: (String) -> Result<String>,
+    ) {
+        val input = android.widget.EditText(this).apply {
+            setText(defaultName)
+            setSelection(0, defaultName.length)
+        }
+        android.app.AlertDialog.Builder(this)
+            .setTitle("命名方案文件夹")
+            .setMessage(
+                "导入后会保存为 Documents/Oime/schemas/<你填写的名字>/方案文件。" +
+                    "\n（无论压缩包内是「文件夹/方案文件」还是直接「方案文件」，都会拍平到这一层）",
+            )
             .setView(input)
-            .setPositiveButton("重命名") { _, _ ->
-                val newName = input.text.toString().trim()
-                if (newName.isEmpty() || newName == importedName) return@setPositiveButton
-                if (newName.contains('/') || newName.contains('\\') || newName.contains("..")) {
-                    Toast.makeText(this, "名称含非法字符", Toast.LENGTH_SHORT).show()
-                    return@setPositiveButton
+            .setPositiveButton("导入") { _, _ ->
+                val name = input.text.toString().trim()
+                when {
+                    name.isEmpty() -> {
+                        toast("请填写文件夹名")
+                        return@setPositiveButton
+                    }
+                    name.contains('/') || name.contains('\\') || name.contains("..") -> {
+                        toast("名称含非法字符")
+                        return@setPositiveButton
+                    }
+                    java.io.File(
+                        com.azime.input.core.storage.StorageManager.schemaDir, name,
+                    ).exists() -> {
+                        toast("已存在同名方案文件夹")
+                        return@setPositiveButton
+                    }
                 }
-                val src = File(StorageManager.schemaDir, importedName)
-                val dst = File(StorageManager.schemaDir, newName)
-                if (!src.exists() || dst.exists() || !src.renameTo(dst)) {
-                    Toast.makeText(this, "重命名失败（目标文件夹已存在？）", Toast.LENGTH_LONG).show()
-                    return@setPositiveButton
-                }
-                // 轮13：重命名的正好是当前方案组时，同步更新 current_group 指向
-                if (importedName == RimeManager.currentGroupId(applicationContext)) {
-                    RimeManager.setCurrentGroup(applicationContext, newName)
-                }
-                lifecycleScope.launch {
-                    RimeManager.deployImportedSchemas(applicationContext)
-                }
-                Toast.makeText(this, "已重命名为「$newName」", Toast.LENGTH_SHORT).show()
+                importSchema { doImport(name) }
             }
-            .setNegativeButton("保持原名", null)
+            .setNegativeButton("取消", null)
             .show()
+    }
+
+    /** 轻量 Toast 封装。 */
+    private fun toast(msg: String) {
+        android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_SHORT).show()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -365,8 +392,15 @@ fun SettingsScreen(
                         KsuItem(
                             icon = Icons.Default.FileDownload,
                             title = "导入方案（ZIP）",
-                            subtitle = "兼容 GBK 文件名压缩包",
+                            subtitle = "导入时命名文件夹；兼容 GBK 文件名压缩包",
                             onClick = onPickZip,
+                        )
+                        Text(
+                            "也可以不用导入：用文件管理器把方案文件直接复制到 " +
+                                "Documents/Oime/schemas/ 下新建的文件夹里即可。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
                         )
                     } }
                 }
