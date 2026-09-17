@@ -47,22 +47,8 @@ object StorageManager {
         // Internal data directory
         internalDataDir = context.filesDir
 
-        // Create default lua script if not exists
-        createDefaultLuaScript()
-    }
-
-    private fun createDefaultLuaScript() {
-        val luaFile = File(luaDir, "preset_keys.lua")
-        if (!luaFile.exists()) {
-            val defaultContent = """-- Oime 预设置配置（preset_keys）
--- 语法说明见设置 → 高级 → 预设置 → 「说明」
-
-preset_keys = {}
-
-return preset_keys
-"""
-            luaFile.writeText(defaultContent)
-        }
+        // 轮19.43：**去除「预设置（preset_keys）」功能** —— 不再生成预设模板文件。
+        // 动作一律走「内置功能键值」（见键盘编辑器里的清单），不再依赖 Lua 预设表。
     }
 
     fun getSchemaSubdirectories(): List<File> {

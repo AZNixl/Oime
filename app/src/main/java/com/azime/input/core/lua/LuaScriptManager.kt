@@ -88,31 +88,38 @@ object LuaScriptManager {
         val v = value.trim()
         if (v.isEmpty()) return null
 
-        // 1. preset_keys 条目引用（含多级名）
-        presetEntries[v]?.let { entry ->
-            entry.send?.let { send ->
-                resolveBuiltin(send)?.let { return it }
-                return resolveLiteral(send)
-            }
-            entry.commit?.let { return ResolvedAction.Commit(it) }
-            return null
-        }
+        // 轮19.43：**已去除 preset_keys 预设功能** —— 动作只认「内置功能键值」或字面文本
+        // （原来第 1 步是查 presetEntries 预设表，现整段移除）
 
-        // 2. 内置命令
+        // 1. 内置命令
         resolveBuiltin(v)?.let { return it }
 
         // 3. 字面文本
         return resolveLiteral(v)
     }
 
+    /**
+     * 内置功能键值（轮19.43：对齐 **RIME 的内置功能**命名，兼容大小写/下划线/连字符写法）。
+     * 清单与含义会显示在键盘编辑器的「内置功能」说明里。
+     */
     private val commands = setOf(
-        "select_all", "cut", "copy", "paste",
-        "toggle_ascii", "newline", "backspace", "delete",
-        "space", "tab", "esc", "left", "right", "up", "down",
-        "page_up", "page_down", "home", "end",
-        "caps_lock", "shift", "delete_all", "undo",
+        // 编辑
+        "select_all", "cut", "copy", "paste", "undo", "delete_all",
+        // 上屏 / 删除
+        "newline", "return", "enter", "backspace", "delete", "space", "tab", "shift_tab",
+        // 中英 / 大小写
+        "toggle_ascii", "ascii_mode", "caps_lock", "shift",
+        // 光标
+        "left", "right", "up", "down", "home", "end",
+        // 翻页（RIME 约定）
+        "prior", "next", "page_up", "page_down",
+        // 组合
+        "esc", "escape", "clear",
+        // 键盘页
         "page:main", "page:symbols", "page:numpad", "page:emoji",
         "choose_page", "toggle_symbols",
+        // Oime 内置
+        "deploy", "switch_ime", "clipboard", "menu",
     )
 
     private fun resolveBuiltin(v: String): ResolvedAction? =

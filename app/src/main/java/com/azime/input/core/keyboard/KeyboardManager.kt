@@ -116,6 +116,7 @@ object KeyboardManager {
         val rows = layout.rows.map { row ->
             val keys = row.keys.map { k ->
                 if (k.code == "space" && k.longClick == "toggle_ascii") {
+                    // 旧定义（长按切中英）→ 迁到上滑；长按空出来给"连发空格"（渲染层按 KeyType.SPACE 连发）
                     changed = true
                     k.copy(longClick = null, swipeUp = "toggle_ascii")
                 } else {
@@ -681,8 +682,22 @@ object KeyboardManager {
         KeyboardPages.qwerty.name -> KeyboardPages.qwerty
         KeyboardPages.symbols.name -> KeyboardPages.symbols
         KeyboardPages.numpad.name -> KeyboardPages.numpad
+        // 轮19.43：新增九键 / 十四键 / 十七键（默认仍是 26 键 = qwerty）
+        KeyboardPages.phone9.name -> KeyboardPages.phone9
+        KeyboardPages.phone14.name -> KeyboardPages.phone14
+        KeyboardPages.phone17.name -> KeyboardPages.phone17
         else -> null
     }
+
+    /** 全部内置布局名（供键盘编辑器的"布局"列表展示）。 */
+    fun builtinLayoutNames(): List<String> = listOf(
+        KeyboardPages.qwerty.name,
+        KeyboardPages.phone9.name,
+        KeyboardPages.phone14.name,
+        KeyboardPages.phone17.name,
+        KeyboardPages.symbols.name,
+        KeyboardPages.numpad.name,
+    )
 
     // ── 自定义布局 CRUD（供设置页 / 键盘编辑器调用） ──────────
 

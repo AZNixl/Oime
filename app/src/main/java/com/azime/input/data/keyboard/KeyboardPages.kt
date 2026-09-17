@@ -115,7 +115,9 @@ object KeyboardPages {
 
     private fun space(width: Float = 4f) = Key(
         label = "空格", code = "space", width = width, type = KeyType.SPACE, icon = "space",
-        // 轮19.34（按用户要求）：长按不再切中英，改为**上滑**切中英
+        // 轮19.34：长按不再切中英，改为**上滑**切中英
+        // 轮19.43（按用户要求）：长按 = **连续输入空格**（和电脑空格键一样）——
+        // 由渲染层的 autoRepeat 判定（KeyType.SPACE 也进连发）实现，这里不设 longClick
         longClick = null,
         swipeUp = KeyActions.SPACE_LONG,   // = "toggle_ascii"
     )
@@ -295,6 +297,100 @@ object KeyboardPages {
             ),
         ),
         rev = 4,
+    )
+
+    // ══════════════════════════════════════════════════════════════════
+    // 轮19.43：新增「九键 / 十四键 / 十七键」三种主键盘布局
+    //   · 九键：T9 数字键盘（键面标字母组；上屏为数字，需方案侧做九宫格映射）
+    //   · 十四键 / 十七键：字母分组键盘 —— **点击出第一个字母，长按/上滑出第二个字母**
+    //     （自带双字母机制，不依赖方案；适合小屏与单手）
+    // ══════════════════════════════════════════════════════════════════
+
+    /** 双字母键：点击 = 首字母，长按/上滑 = 次字母；键面显示 "ab"。 */
+    private fun dualLetterKey(first: Char, second: Char, width: Float = 1f): Key = Key(
+        label = "$first$second",
+        code = first.toString(),
+        width = width,
+        type = KeyType.CHARACTER,
+        hint = second.toString(),
+        longClick = second.toString(),
+        swipeUp = second.toString(),
+    )
+
+    /** T9 数字键：键面大数字 + 字母组提示；上屏数字（九宫格方案由 schema 映射）。 */
+    private fun t9Key(digit: Int, letters: String): Key = Key(
+        label = digit.toString(),
+        code = digit.toString(),
+        width = 1f,
+        type = KeyType.CHARACTER,
+        hint = letters,
+    )
+
+    val phone9: KeyboardLayout = KeyboardLayout(
+        name = "phone9",
+        rows = listOf(
+        row(
+            t9Key(1, ""), t9Key(2, "abc"), t9Key(3, "def"),
+        ),
+        row(
+            t9Key(4, "ghi"), t9Key(5, "jkl"), t9Key(6, "mno"),
+        ),
+        row(
+            t9Key(7, "pqrs"), t9Key(8, "tuv"), t9Key(9, "wxyz"),
+        ),
+        row(
+            backspace(width = 1f),
+            Key(label = "0", code = "0", width = 1f, type = KeyType.CHARACTER, hint = "␣"),
+            enter(width = 1f),
+        ),
+        ),
+        rev = 1,
+    )
+
+    val phone14: KeyboardLayout = KeyboardLayout(
+        name = "phone14",
+        rows = listOf(
+        row(
+            dualLetterKey('a', 'b'), dualLetterKey('c', 'd'), dualLetterKey('e', 'f'),
+            dualLetterKey('g', 'h'), dualLetterKey('i', 'j'), dualLetterKey('k', 'l'),
+            dualLetterKey('m', 'n'),
+        ),
+        row(
+            dualLetterKey('o', 'p'), dualLetterKey('q', 'r'), dualLetterKey('s', 't'),
+            dualLetterKey('u', 'v'), dualLetterKey('w', 'x'), dualLetterKey('y', 'z'),
+            backspace(width = 1f),
+        ),
+        row(
+            pageKey("123", width = 1.2f, icon = "symbols"),
+            space(width = 4.6f),
+            charKey("，"),
+            enter(width = 1.6f),
+        ),
+        ),
+        rev = 1,
+    )
+
+    val phone17: KeyboardLayout = KeyboardLayout(
+        name = "phone17",
+        rows = listOf(
+        row(
+            dualLetterKey('a', 'b'), dualLetterKey('c', 'd'), dualLetterKey('e', 'f'),
+            dualLetterKey('g', 'h'), dualLetterKey('i', 'j'), dualLetterKey('k', 'l'),
+        ),
+        row(
+            dualLetterKey('m', 'n'), dualLetterKey('o', 'p'), dualLetterKey('q', 'r'),
+            dualLetterKey('s', 't'), dualLetterKey('u', 'v'), dualLetterKey('w', 'x'),
+        ),
+        row(
+            dualLetterKey('y', 'z'),
+            charKey("，"),
+            pageKey("123", width = 1.2f, icon = "symbols"),
+            space(width = 3.6f),
+            backspace(width = 1f),
+            enter(width = 1.4f),
+        ),
+        ),
+        rev = 1,
     )
 
     /** 九宫格左列滑动选符号键的符号带（上下滑动选择，松手上屏）。 */

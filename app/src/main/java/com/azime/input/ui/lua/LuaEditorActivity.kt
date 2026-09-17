@@ -134,7 +134,7 @@ fun LuaEditorScreen(onBackClick: () -> Unit) {
                     HelpText("动作取值优先级", "1. preset_keys 条目名 → 取其 send/commit\n2. 内置命令 identifier → 直接执行\n3. 其他任意文本 → 直接上屏（支持 {Left}/{Right} 光标后缀，如 \"❰{Left}\"）")
                     HelpText("内置命令", "select_all / cut / copy / paste\ntoggle_ascii（中英切换）/ newline / backspace / delete\nspace / tab / esc / left / right / up / down\npage_up / page_down / home / end\ncaps_lock / shift / delete_all / undo\npage:symbols / page:numpad / page:emoji / page:main\nchoose_page / toggle_symbols")
                     HelpText("完整示例", "preset_keys = {\n    [\"今日日期\"] = { label = \"📅\", commit = \"2026-09-05\" },\n    [\"剪切\"] = { label = \"✂\", send = \"cut\" },\n    [\"光标跳行首\"] = { label = \"⇤\", send = \"home\" },\n}\n\nreturn preset_keys")
-                    HelpText("提示", "「校验」只检查语法；「保存」成功后立即热重载，无需重启输入法。lua 键盘布局文件放在 Documents/Oime/lua/keyboards/，在键盘编辑器里导入。")
+                    HelpText("提示", "「校验」只检查语法；「保存」成功后立即热重载，无需重启输入法。（布局不再从 lua/keyboards/ 读取，动作请用键盘编辑器里的内置功能键值。）")
                 }
             },
             confirmButton = {

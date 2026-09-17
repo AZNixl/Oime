@@ -1014,10 +1014,25 @@ class AZimeService : InputMethodService() {
         }
     }
 
-    /** 执行 preset_keys / 布局动作里的内置命令。 */
-    private suspend fun runCommand(ident: String) {
+    /**
+     * 执行布局动作里的**内置功能**（轮19.43：去除 preset_keys 后，动作只走这里）。
+     * 名称对齐 RIME 内置功能；大小写/下划线/连字符容错（统一小写 + `-`→`_`）。
+     */
+    private suspend fun runCommand(rawIdent: String) {
         val ic = currentInputConnection
+        val ident = rawIdent.trim().lowercase().replace('-', '_')
         when (ident) {
+            // RIME 风格别名
+            "escape" -> runCommand("esc")
+            "clear" -> RimeManager.clearComposition()
+            "return", "enter" -> runCommand("newline")
+            "prior" -> runCommand("page_up")
+            "next" -> runCommand("page_down")
+            "ascii_mode" -> onKeyAction(KeyAction.ToggleAscii)
+            "switch_ime" -> onKeyAction(KeyAction.SwitchIme)
+            "clipboard" -> onKeyAction(KeyAction.ToggleClipboardPanel)
+            "menu" -> onKeyAction(KeyAction.ToggleMenuPanel)
+            "deploy" -> onKeyAction(KeyAction.Deploy)
             "toggle_ascii" -> onKeyAction(KeyAction.ToggleAscii)
             "newline" -> {
                 ic?.commitText("\n", 1)

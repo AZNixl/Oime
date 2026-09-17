@@ -2324,26 +2324,38 @@ private fun CandidatePanel(state: KeyboardUiState, onAction: (KeyAction) -> Unit
                                     .clickable { onAction(KeyAction.Candidate(idx)) },
                                 contentAlignment = Alignment.Center,
                             ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    if (idx < 9) {
-                                        Text("${idx + 1} ", fontSize = (KeyboardManager.fontSizeBar() * 0.65f).sp, color = c.subText)
-                                    }
-                                    Text(
-                                        candidate.text,
-                                        // 轮18.2：更多候选字号 = 工具栏候选字号 + 2（面板空间更大）
-                                        fontSize = (KeyboardManager.fontSizeBar() + 2).sp,
-                                        maxLines = 1,
-                                        color = c.text,
-                                    )
-                                    // 轮19.34：**拆字/编码提示**——RIME 把拆字放在 candidate.comment
-                                    // （方案里开 chaifen 开关后即有），显示为候选右侧小字
+                                // 轮19.43（按用户要求）：注释（拆字/拼音）**放到候选字上方**，
+                                // 并给它一个**随文字长度伸缩**的胶囊背景（原来在右侧、被裁切）
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     if (candidate.comment.isNotBlank()) {
-                                        Spacer(Modifier.width(4.dp))
+                                        Box(
+                                            modifier = Modifier
+                                                .background(c.funcKeyBg, RoundedCornerShape(5.dp))
+                                                .padding(horizontal = 5.dp, vertical = 1.dp),
+                                        ) {
+                                            Text(
+                                                candidate.comment,
+                                                fontSize = (KeyboardManager.fontSizeBar() * 0.58f).sp,
+                                                maxLines = 1,
+                                                color = c.subText,
+                                            )
+                                        }
+                                        Spacer(Modifier.height(2.dp))
+                                    }
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        if (idx < 9) {
+                                            Text(
+                                                "${idx + 1} ",
+                                                fontSize = (KeyboardManager.fontSizeBar() * 0.65f).sp,
+                                                color = c.subText,
+                                            )
+                                        }
                                         Text(
-                                            candidate.comment,
-                                            fontSize = (KeyboardManager.fontSizeBar() * 0.6f).sp,
+                                            candidate.text,
+                                            // 轮18.2：更多候选字号 = 工具栏候选字号 + 2（面板空间更大）
+                                            fontSize = (KeyboardManager.fontSizeBar() + 2).sp,
                                             maxLines = 1,
-                                            color = c.subText,
+                                            color = c.text,
                                         )
                                     }
                                 }
@@ -2794,7 +2806,8 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
     }
     val hasCustomLong = !key.longClick.isNullOrBlank()
     val isPageKey = key.type == KeyType.FUNCTION && key.code == "symbols"
-    val autoRepeat = key.type == KeyType.DELETE
+    // 轮19.43：退格键 + **空格键** 都走长按连发（空格连发 = 像电脑空格键那样连续输入）
+    val autoRepeat = key.type == KeyType.DELETE || key.type == KeyType.SPACE
 
     var pressing by remember { mutableStateOf(false) }
     var longFired by remember { mutableStateOf(false) }

@@ -121,7 +121,10 @@ private fun LayoutListScreen(
     onNew: () -> Unit,
     onDelete: (String) -> Unit,
 ) {
-    val builtins = remember(version) { listOf("qwerty", "symbols", "numpad") }
+    // 轮19.43：内置布局列表（含新增九键/十四键/十七键）
+    val builtins = remember(version) {
+        com.azime.input.core.keyboard.KeyboardManager.builtinLayoutNames()
+    }
     val customs = remember(version) { KeyboardManager.customLayoutNames() }
     var active by remember(version) { mutableStateOf(KeyboardManager.activeMainName()) }
 
@@ -579,7 +582,7 @@ private fun KeyEditDialog(
 
 
                 Text(
-                    "动作可用：select_all / cut / copy / paste / toggle_ascii / newline / caps_lock / delete_all / undo / page:symbols / page:numpad / page:emoji / preset_keys 条目名 / 任意文本",
+                    BUILTIN_ACTIONS_HELP,
                     fontSize = 11.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -622,3 +625,22 @@ private fun KeyEditDialog(
         },
     )
 }
+
+
+/**
+ * 轮19.43：**内置功能键值清单**（对齐 RIME 内置功能命名）。
+ * 已去除「预设置（preset_keys）」功能——动作只认这里的键值或字面文本。
+ */
+private val BUILTIN_ACTIONS_HELP = """
+动作可用（内置功能键值，大小写/下划线/连字符均容错）：
+
+【编辑】select_all 全选 · cut 剪切 · copy 复制 · paste 粘贴 · undo 撤销 · delete_all 清空
+【上屏】newline(=return/enter) 换行 · space 空格 · tab 制表符 · backspace 退格 · delete 删除
+【中英】toggle_ascii(=ascii_mode) 切换中英 · caps_lock 大写锁定 · shift 临时大写
+【光标】left / right / up / down / home / end
+【翻页】prior(=page_up) 上一页 · next(=page_down) 下一页
+【组合】esc(=escape) 清空输入码 · clear 同上
+【页面】page:main 主键盘 · page:symbols 符号 · page:numpad 数字 · page:emoji 表情
+【内置】deploy 部署 · switch_ime 切换输入法 · clipboard 剪贴板 · menu ○ 菜单
+其它写法按**字面文本**上屏（支持 {Left} / {Right} 光标后缀）
+""".trimIndent()
