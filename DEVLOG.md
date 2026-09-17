@@ -1391,3 +1391,14 @@ Unresolved reference）；要么 import 后 `x.roundToInt()`，要么直接 `x.t
   · **用户自己手动切的英文不受影响**（只恢复自动切的那一次，避免与用户意图打架）
 - 另外补 hook：同一窗口内切换输入框时 `onStartInputView` 不一定重跑 → 增加 `onStartInput` 兜底调用
 - 埋点增强：`AutoPage` 日志增加 `restore=` / `changed=` 便于真机核对
+
+# 轮19.39（CI 维护）：GitHub Actions 升 v5，消除 Node.js 20 弃用警告
+
+- 现象：CI 每次告警 `Node.js 20 is deprecated. ... actions/checkout@v4, actions/setup-java@v4,
+  actions/upload-artifact@v4`（被强制跑在 Node 24 上）
+- 处置：工作流 `android.yml` 内 4 处全部升级
+  · `actions/checkout@v4` → **@v5**
+  · `actions/setup-java@v4` → **@v5**
+  · `actions/upload-artifact@v4` → **@v5**（2 处：APK + build-reports）
+- 升级后不再有 Node 20 弃用警告；工作流输入参数（name/path/retention-days/if-no-files-found）与 v5 兼容
+- 另：Xime.az 仓库**按用户要求不再改动**（该仓库后续不再更新）
