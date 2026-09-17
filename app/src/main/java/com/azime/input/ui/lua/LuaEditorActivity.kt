@@ -39,7 +39,7 @@ class LuaEditorActivity : AppCompatActivity() {
         setContentView(
             ComposeView(this).apply {
                 setContent {
-                    MaterialTheme {
+                    com.azime.input.ui.theme.OimeTheme {
                         LuaEditorScreen(onBackClick = { finish() })
                     }
                 }

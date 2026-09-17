@@ -3,11 +3,11 @@ package com.azime.input.data.model
 /**
  * 键盘布局。
  *
- * 动作字段（[Key.longClick]/[Key.swipeUp]…）的取值与 trime2 preset_keys 约定兼容：
+ * 动作字段（[Key.longClick]/[Key.swipeUp]…）的取值：
  * - `select_all` / `cut` / `copy` / `paste` / `toggle_ascii` / `newline` /
  *   `caps_lock` / `delete_all` / `undo` / `page:main` / `page:symbols` /
  *   `page:numpad` / `page:emoji` / `choose_page`  等英文 identifier → 内置命令
- * - preset_keys.lua 中定义的条目名 → 引用该条目
+ * - 内置功能键值（对齐 RIME 命名，如 `escape` / `prior` / `switch_ime`…）
  * - 其他任意文本 → 直接上屏（支持 trime2 的 `{text}{Left}` 光标后缀语法）
  */
 data class KeyboardLayout(

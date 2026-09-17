@@ -42,7 +42,7 @@ class FontManagerActivity : AppCompatActivity() {
         // 轮19.10：状态栏沉浸（与设置页一致，edge-to-edge）
         enableEdgeToEdge()
         setContent {
-            MaterialTheme {
+            com.azime.input.ui.theme.OimeTheme {
                 FontManagerScreen(onBack = { finish() })
             }
         }

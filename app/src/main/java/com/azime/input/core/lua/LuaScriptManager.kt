@@ -6,18 +6,12 @@ import org.luaj.vm2.LuaTable
 import org.luaj.vm2.LuaValue
 import org.luaj.vm2.lib.jse.JsePlatform
 
-/** preset_keys 条目：trime2 表格式（label/send/commit）兼容。 */
-data class PresetEntry(
-    val label: String? = null,
-    val send: String? = null,
-    val commit: String? = null,
-)
-
 /**
  * 解析后的动作。取值来源优先级：
- * 1. preset_keys.lua 中的条目引用
- * 2. 内置命令 identifier（select_all / cut / copy / paste / …）
- * 3. 字面文本（支持 trime2 的 `{text}{Left}` 光标后缀语法）
+ * 1. **内置功能键值**（对齐 RIME 命名：select_all / escape / prior / switch_ime …）
+ * 2. 字面文本（支持 `{text}{Left}` 光标后缀语法）
+ *
+ * 说明：`preset_keys` 预设表功能**已移除**，动作不再查预设表。
  */
 sealed interface ResolvedAction {
     /** 直接上屏文本；moveLeft/moveRight 为上屏后的光标移动步数。 */
@@ -29,60 +23,29 @@ sealed interface ResolvedAction {
 object LuaScriptManager {
 
     private var globals: Globals? = null
-    private var presetEntries: Map<String, PresetEntry> = emptyMap()
 
+    /**
+     * 加载用户 Lua 脚本（若存在）——只执行脚本自身的副作用，**不参与动作解析**
+     * （预设表 preset_keys 已移除）。脚本目录如需使用请自行创建。
+     */
     fun loadScript() {
         try {
             val g = JsePlatform.standardGlobals()
             globals = g
             val scriptFile = StorageManager.getLuaScriptFile()
             if (scriptFile.exists()) {
-                val result = g.loadfile(scriptFile.absolutePath)?.call()
-                presetEntries = when {
-                    result is LuaTable -> parseEntries(result)
-                    // 也支持脚本只定义全局表 preset_keys = { ... } 不返回
-                    g.get("preset_keys") is LuaTable -> parseEntries(g.get("preset_keys") as LuaTable)
-                    else -> emptyMap()
-                }
+                g.loadfile(scriptFile.absolutePath)?.call()
             }
         } catch (e: Exception) {
             e.printStackTrace()
         }
     }
 
-    private fun parseEntries(table: LuaTable): Map<String, PresetEntry> {
-        val map = mutableMapOf<String, PresetEntry>()
-        var key = LuaValue.NIL
-        while (true) {
-            val next = table.next(key)
-            if (next.arg1().isnil()) break
-            key = next.arg1()
-            val name = key.tojstring()
-            val value = next.arg(2)
-            map[name] = when {
-                value.istable() -> PresetEntry(
-                    label = value.get("label").takeIf { it.isstring() }?.tojstring(),
-                    send = value.get("send").takeIf { it.isstring() }?.tojstring(),
-                    commit = value.get("commit").takeIf { it.isstring() }?.tojstring()
-                        ?: value.get("text").takeIf { it.isstring() }?.tojstring(),
-                )
-                value.isstring() -> PresetEntry(commit = value.tojstring())
-                else -> PresetEntry()
-            }
-        }
-        return map
-    }
-
-    fun getEntries(): Map<String, PresetEntry> = presetEntries
-
-    fun getKeyAction(key: String): PresetEntry? = presetEntries[key]
-
     // ── 动作解析 ─────────────────────────────────────────────
 
     /**
      * 把布局动作字段（longClick/swipeUp/…）解析为可执行动作。
-     * 识别内置命令 identifier；命中 preset_keys 条目时取其 send/commit；
-     * 其余按字面文本处理（trime2 `{Left}`/`{Right}` 后缀）。
+     * 识别**内置功能键值**；其余按字面文本处理（支持 `{Left}` / `{Right}` 光标后缀）。
      */
     fun resolveAction(value: String): ResolvedAction? {
         val v = value.trim()

@@ -41,7 +41,7 @@ import com.azime.input.data.model.KeyType
  * - 布局列表（内置 + 自定义）：启用 / 复制副本 / 编辑 / 删除；
  * - 网格编辑器：等比还原按键宽度，点击任意按键弹出属性对话框
  *   （标签 / code / 宽度 / 长按 / 四向滑动 / 右上角提示），支持增删键、增删行；
- * - 动作取值与 trime2 preset_keys 约定兼容（identifier / preset 引用 / 字面文本）。
+ * - 动作取值用**内置功能键值**（对齐 RIME 命名）或字面文本；`preset_keys` 预设表已移除。
  */
 class KeyboardEditorActivity : AppCompatActivity() {
 
@@ -50,7 +50,7 @@ class KeyboardEditorActivity : AppCompatActivity() {
         // 轮19.10：状态栏沉浸（与设置页一致，edge-to-edge）
         enableEdgeToEdge()
         setContent {
-            MaterialTheme {
+            com.azime.input.ui.theme.OimeTheme {
                 KeyboardEditorScreen(onBack = { finish() })
             }
         }
@@ -143,11 +143,6 @@ private fun LayoutListScreen(
                     }
                 },
             )
-        },
-        floatingActionButton = {
-            FloatingActionButton(onClick = onNew) {
-                Icon(Icons.Default.Add, contentDescription = "新建布局")
-            }
         },
     ) { padding ->
         LazyColumn(
@@ -327,7 +322,7 @@ private fun GridEditorScreen(initial: KeyboardLayout, onDone: (KeyboardLayout?) 
                 )
             }
             Text(
-                "点击按键编辑属性（长按 / 四向滑动 / 右上角提示）；动作值兼容 trime2 preset_keys。",
+                "点击按键编辑属性（长按 / 四向滑动 / 右上角提示）；动作值用内置功能键值（见下方清单）。",
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

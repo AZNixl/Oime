@@ -1538,3 +1538,17 @@ Unresolved reference）；要么 import 后 `x.roundToInt()`，要么直接 `x.t
   · 单元格**由内容决定宽度**（`padding` + 背景，无 `weight`/`fillMaxSize`/固定 height）
   · 注释胶囊**自然贴合文字**，长注释**完整显示**，一行放不下自动换行
   · 顺序与序号（1..9 前缀）不变，点击上屏不变
+
+# 轮19.49（0.9.55-oime vc65）：编辑器配色跟随主题 / 去 + 号 / 清理 preset_keys 遗留
+
+1. **键盘布局编辑器（及子级页）配色不跟随**：
+   真因：它用的是**裸 `MaterialTheme {}`**（M3 默认 → 淡紫 + 紫强调色），
+   而设置页里那套"整套中性色覆盖成灰阶 + 强调色跟随回车键"的逻辑只写在 SettingsActivity 内部 ✗
+   ⇒ 抽出**共用主题 `ui/theme/OimeTheme.kt`**（与设置页同一套规则），
+   编辑器 / 字体管理 / Lua 编辑器三个 Activity 全部换用它 ✓ 之后配色与设置页完全一致
+2. **去掉编辑器右下角的 + 号**（`FloatingActionButton` 新建布局入口）
+3. **清理 preset_keys 遗留**（功能已移除，注释还在会误导）：
+   · 编辑器可见提示：「动作值兼容 trime2 preset_keys」→「动作值用内置功能键值（见下方清单）」
+   · 编辑器 KDoc、`KeyboardLayout` KDoc、`LuaScriptManager` KDoc 同步改写
+   · 顺手删掉**已是死代码**的预设表解析（`PresetEntry` / `presetEntries` / `parseEntries` /
+     `getEntries` / `getKeyAction`），`loadScript()` 简化为"只加载用户脚本、不参与动作解析"
