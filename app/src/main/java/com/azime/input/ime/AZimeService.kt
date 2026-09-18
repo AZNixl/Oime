@@ -684,6 +684,8 @@ class AZimeService : InputMethodService() {
             when (action) {
                 is KeyAction.CharKey -> handleChar(action.c)
                 is KeyAction.DirectCommit -> {
+                    // 轮19.57：多字符 code 也可能是候选快捷键（如九宫格的自定义 code）
+                    if (handleCandidateShortcut(action.text)) return@launch
                     // 中文模式下的单字符先送 Rime（识别反查引导符，如 ` 笔画反查），
                     // 引擎未消费再直出（对齐 xime.az ImeKeyRouter 的符号键盘处理）
                     val text = action.text
@@ -1236,13 +1238,31 @@ class AZimeService : InputMethodService() {
      */
     private suspend fun handleCandidateShortcut(code: String): Boolean {
         if (code.isEmpty()) return false
-        val n = when (code) {
-            KeyboardManager.candidateKey2() -> 2
-            KeyboardManager.candidateKey3() -> 3
-            else -> return false
+        // 归一：中文标点按对应 ASCII 参与匹配（配置里写 `.` 也能命中「。」）
+        val norm = when (code) {
+            "。", "．" -> "."; "，", "、" -> ","; "；" -> ";"; "：", "：" -> ":"; "？" -> "?"; "！" -> "!"
+            else -> code
         }
-        if (uiState.value.candidates.size < n) return false
-        if (!RimeManager.selectCandidate(n - 1)) return false
+        val k2 = KeyboardManager.candidateKey2()
+        val k3 = KeyboardManager.candidateKey3()
+        val n = when {
+            k2.isNotEmpty() && (norm == k2 || code == k2) -> 2
+            k3.isNotEmpty() && (norm == k3 || code == k3) -> 3
+            else -> {
+                com.azime.input.core.diag.Diag.log(
+                    "CandKey", "no-match code=$code k2=$k2 k3=$k3",
+                )
+                return false
+            }
+        }
+        val cands = uiState.value.candidates.size
+        if (cands < n) {
+            com.azime.input.core.diag.Diag.log("CandKey", "match n=$n but candidates=$cands")
+            return false
+        }
+        val ok = RimeManager.selectCandidate(n - 1)
+        com.azime.input.core.diag.Diag.log("CandKey", "code=$code n=$n cands=$cands select=$ok")
+        if (!ok) return false
         applyResult(RimeManager.getProcessResult())
         return true
     }
