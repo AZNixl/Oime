@@ -103,6 +103,11 @@ class AZimeService : InputMethodService() {
     }
 
     override fun onCreate() {
+        // 轮19.61：**启动自愈** —— 把「候选快捷键」写进 RIME 配置（资产同步可能覆盖，这里每次补回），
+        // 引擎随后初始化/部署时即按最新配置生效。
+        runCatching {
+            com.azime.input.core.rime.RimeKeyBinder.applyCandidateBindings(applicationContext)
+        }
         super.onCreate()
         lifecycleOwner.onCreate()
         // 沉浸式圆角：IME 窗口透明，键盘顶部圆角下透出应用内容；
@@ -1256,22 +1261,13 @@ class AZimeService : InputMethodService() {
      */
     private suspend fun handleCandidateShortcut(code: String): Boolean {
         if (code.isEmpty()) return false
-        // 归一：中文标点按对应 ASCII 参与匹配（配置里写 `.` 也能命中「。」）
-        val norm = when (code) {
-            "。", "．" -> "."; "，", "、" -> ","; "；" -> ";"; "：", "：" -> ":"; "？" -> "?"; "！" -> "!"
-            else -> code
-        }
-        val k2 = KeyboardManager.candidateKey2()
-        val k3 = KeyboardManager.candidateKey3()
-        val n = when {
-            k2.isNotEmpty() && (norm == k2 || code == k2) -> 2
-            k3.isNotEmpty() && (norm == k3 || code == k3) -> 3
-            else -> {
-                com.azime.input.core.diag.Diag.log(
-                    "CandKey", "no-match code=$code k2=$k2 k3=$k3",
-                )
-                return false
-            }
+        // 轮19.60：判定逻辑抽到 KeyboardManager.candidateShortcutIndex（UI 与 Service 共用）
+        val n = KeyboardManager.candidateShortcutIndex(code)
+        if (n == 0) {
+            com.azime.input.core.diag.Diag.log(
+                "CandKey", "no-match code=$code k2=${KeyboardManager.candidateKey2()} k3=${KeyboardManager.candidateKey3()}",
+            )
+            return false
         }
         val cands = uiState.value.candidates.size
         if (cands < n) {

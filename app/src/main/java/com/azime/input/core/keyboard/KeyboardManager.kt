@@ -684,6 +684,26 @@ object KeyboardManager {
     private const val PREF_CAND_KEY2 = "candidate_key_2"
     private const val PREF_CAND_KEY3 = "candidate_key_3"
 
+    /**
+     * 轮19.60：**候选快捷键命中判定**（UI 与 Service 共用一份逻辑）。
+     * 中文标点按 ASCII 归一参与匹配（配置写 `.` 也能命中「。」）。
+     * @return 命中的候选序号（2 或 3）；未命中返回 0
+     */
+    fun candidateShortcutIndex(code: String): Int {
+        if (code.isEmpty()) return 0
+        val norm = when (code) {
+            "。", "．" -> "."; "，", "、" -> ","; "；" -> ";"; "：" -> ":"; "？" -> "?"; "！" -> "!"
+            else -> code
+        }
+        val k2 = candidateKey2()
+        val k3 = candidateKey3()
+        return when {
+            k2.isNotEmpty() && (norm == k2 || code == k2) -> 2
+            k3.isNotEmpty() && (norm == k3 || code == k3) -> 3
+            else -> 0
+        }
+    }
+
     fun candidateKey2(): String = prefs.getString(PREF_CAND_KEY2, ".") ?: "."
 
     fun setCandidateKey2(v: String) {

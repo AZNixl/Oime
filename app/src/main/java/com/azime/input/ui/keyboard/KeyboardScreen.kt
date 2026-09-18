@@ -3116,8 +3116,18 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
             interactionSource = clickSource,
             indication = null,
         ) {
+            // 轮19.60：**候选快捷键在 UI 层先判一次** —— 有布局里 . , 是 FUNCTION 键、
+            // 甚至完全不经过 Service（埋点证实过），所以这里必须也拦一道。
+            val candN = KeyboardManager.candidateShortcutIndex(key.code)
+            com.azime.input.core.diag.Diag.log(
+                "KeyUI", "code=${key.code} type=${key.type} candN=$candN cands=${state.candidates.size}",
+            )
             HapticsManager.press(); com.azime.input.core.sound.SoundManager.playPress()
-            onKeyAction(key, onAction)
+            if (candN > 0 && state.candidates.size >= candN) {
+                onAction(KeyAction.Candidate(candN - 1))
+            } else {
+                onKeyAction(key, onAction)
+            }
             HapticsManager.release()
         }
     }

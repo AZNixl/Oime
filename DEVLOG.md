@@ -1703,3 +1703,20 @@ Unresolved reference）；要么 import 后 `x.roundToInt()`，要么直接 `x.t
   函数在跑、设置读到了，但**标点键（逗号）依旧没进函数** ✗（说明还存在第三条路径）
 - 本轮加**全量按键埋点**（tag `Key`）：记录每个动作的类名与关键字段（CharKey.c / DirectCommit.text /
   Resolved.value / Candidate.index / SwitchPage.page）⇒ 按一次标点键即可确定它属于哪类动作，再精准拦
+
+# 轮19.61（0.9.67-oime vc77）：候选快捷键**改为写入 RIME 配置 + 保存热重载**（用户建议方案）
+
+**换思路的原因**：埋点证明有的标点键**根本不经过 Service**（全量 `[Key]` 日志里没有逗号键的任何记录），
+在 App 层拦截不可靠 ✗ ⇒ 采用用户建议：**把设置写进 `default.custom.yaml` 的 key_binder`，保存后重部署**，
+由 **RIME 引擎自己选候选** ⇒ 与按键路径无关 ✓
+
+## 实现
+- 新增 `core/rime/RimeKeyBinder.kt`：
+  · `applyCandidateBindings()`：读取 `files/rime/shared/default.custom.yaml`，
+    **先删掉所有生效中的 `send: 2/3` 候选绑定**，再按设置写入新行
+    （字符 → `accept: "，"`；`shift` → `Shift_L`；`symbols` 等非 RIME 键不写、由 App 层兜）
+  · `applyAndDeploy()`：写配置 + `RimeManager.deployImportedSchemas()` = **保存即热重载** ✓
+- **设置项搬到子级菜单**（用户要求）：键盘设置页只留一个入口「候选快捷键（当前：…）▸」，
+  子页里同时有第二/第三候选下拉 + 自定义 code + **「保存并重载」** 按钮 ✓
+- **启动自愈**：`AZimeService.onCreate` 每次补写一次（防止资产同步把配置覆盖回去）✓
+- App 层拦截**保留**作为兜底（UI 层 + Service 层都拦一道），但不再是唯一依赖 ✓

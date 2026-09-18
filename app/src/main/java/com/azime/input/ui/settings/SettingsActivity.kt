@@ -558,7 +558,7 @@ fun SettingsScreen(
                     Card(colors = grayCardColors(), shape = settingsCardShape()) { Column { KeyAppearanceSettings() } }
                 }
                 item {
-                    Card(colors = grayCardColors(), shape = settingsCardShape()) { Column { CandidateKeySettings(onOpenCustom = { subPage = "candkeys" }) } }
+                    Card(colors = grayCardColors(), shape = settingsCardShape()) { Column { CandidateKeySettings(onOpen = { subPage = "candkeys" }) } }
                 }
                 item {
                     Card(colors = grayCardColors(), shape = settingsCardShape()) { Column { VibrationSettings() } }
@@ -2647,96 +2647,49 @@ private fun AppPickerDialog(
 
 
 /**
- * 候选快捷键（轮19.56）：第二 / 第三候选用**下拉栏**选择。
- *
- * 选项：无（= 从按键上解除，打字时不触发）/ 句号 / 逗号 / Shift / 符号键 / 自定义（值）*
- * 默认：第二候选 = 句号，第三候选 = 符号键（与现状一致）。
+ * 候选快捷键入口卡片（轮19.61）：改到**子级菜单**里设置（参照用户建议）。
+ * 子页里同时有第二 / 第三候选与自定义 code，**保存时写入 RIME 配置并热重载部署**。
  */
 @Composable
-private fun CandidateKeySettings(onOpenCustom: () -> Unit) {
+private fun CandidateKeySettings(onOpen: () -> Unit) {
     val km = com.azime.input.core.keyboard.KeyboardManager
-    var k2 by remember { mutableStateOf(km.candidateKey2()) }
-    var k3 by remember { mutableStateOf(km.candidateKey3()) }
     Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
         Text("候选快捷键", style = MaterialTheme.typography.titleSmall)
         Spacer(Modifier.height(2.dp))
         Text(
-            "把「第 2 / 第 3 个候选」绑到某个键：候选数足够时按下即上屏该候选，否则按键按原行为走。" +
-                "「无」= 解除绑定，打字时不再触发。",
+            "当前：第二候选 = ${nameOfCandidateKey(km.candidateKey2())}，" +
+                "第三候选 = ${nameOfCandidateKey(km.candidateKey3())}",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Spacer(Modifier.height(6.dp))
-
-        @Composable
-        fun Picker(title: String, value: String, onChange: (String) -> Unit) {
-            val preset = listOf(
-                "" to "无", "." to "句号", "," to "逗号",
-                "shift" to "Shift", "symbols" to "符号键",
-            )
-            val known = preset.any { it.first == value }
-            val label = when {
-                value.isEmpty() -> "无"
-                known -> preset.first { it.first == value }.second
-                else -> "自定义（$value）"
-            }
-            var open by remember { mutableStateOf(false) }
-            Text(title, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 6.dp))
-            Box(Modifier.fillMaxWidth()) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.surfaceVariant, androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
-                        .clickable { open = true }
-                        .padding(horizontal = 12.dp, vertical = 11.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                    Text("▾", style = MaterialTheme.typography.bodyMedium)
-                }
-                DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-                    preset.forEach { (code, name) ->
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    name + if (code == value) "   ✓" else "",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                )
-                            },
-                            onClick = { onChange(code); open = false },
-                        )
-                    }
-                    if (!known && value.isNotEmpty()) {
-                        DropdownMenuItem(
-                            text = { Text("自定义（$value）   ✓", style = MaterialTheme.typography.bodyMedium) },
-                            onClick = { open = false },
-                        )
-                    }
-                }
-            }
-        }
-
-        Picker("第二候选", k2) { k2 = it; km.setCandidateKey2(it) }
-        Picker("第三候选", k3) { k3 = it; km.setCandidateKey3(it) }
-
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(4.dp))
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { onOpenCustom() }
+                .clickable { onOpen() }
                 .padding(vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("自定义候选键", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            Text("设置候选快捷键", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
             Text("▸", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
+}
+
+private fun nameOfCandidateKey(code: String): String = when (code.lowercase()) {
+    "" -> "无"
+    "." -> "句号"
+    "," -> "逗号"
+    "shift" -> "Shift"
+    "symbols" -> "符号键"
+    else -> "自定义（$code）"
 }
 
 /** 自定义候选键子页面（轮19.56）：分别填第二/第三候选的触发 code，保存后回到上一级下拉栏选择。 */
 @Composable
 private fun CandidateKeyEditorPage(padding: androidx.compose.foundation.layout.PaddingValues, onDone: () -> Unit) {
     val km = com.azime.input.core.keyboard.KeyboardManager
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
     var k2 by remember { mutableStateOf(km.candidateKey2()) }
     var k3 by remember { mutableStateOf(km.candidateKey3()) }
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -2772,9 +2725,14 @@ private fun CandidateKeyEditorPage(padding: androidx.compose.foundation.layout.P
             Button(onClick = {
                 km.setCandidateKey2(k2)
                 km.setCandidateKey3(k3)
-                android.widget.Toast.makeText(context, "已保存", android.widget.Toast.LENGTH_SHORT).show()
-                onDone()
-            }) { Text("保存") }
+                // 轮19.61：**写入 RIME 配置 + 热重载部署**（不再依赖 App 层按键拦截）
+                scope.launch {
+                    android.widget.Toast.makeText(context, "正在应用并重新部署…", android.widget.Toast.LENGTH_SHORT).show()
+                    runCatching { com.azime.input.core.rime.RimeKeyBinder.applyAndDeploy(context) }
+                    android.widget.Toast.makeText(context, "已保存并重载", android.widget.Toast.LENGTH_SHORT).show()
+                    onDone()
+                }
+            }) { Text("保存并重载") }
         }
     }
 }
