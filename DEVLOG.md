@@ -1747,3 +1747,14 @@ key.type == SPACE && key.code == "space"       -> 0   // 空格键 = 候选1
 # 轮19.63（0.9.69-oime vc79）：候选快捷键入口做明显 + 子页删多余说明
 - 「设置候选快捷键」入口改为**强调色描边按钮**（图标 + 半粗文字 + ▸），不再是一行小字 ✓
 - 自定义候选键子页说明删掉后半句（"保存后会多出「自定义」一项"——现在全都是自定义了）✓
+
+# 轮19.64（0.9.70-oime vc80）：图标全套重画（方案 A）+ ○ 菜单加「设置」+ 状态卡白字加大
+
+1. **图标集按方案 A 全套重画**（用户选型）：
+   · 统一 **1.6px 细描边圆头**（原来 1.8~2.4 混用，视觉重量不齐）；实心点改为**双弧闭合小圆**（一致性更好）
+   · **回车 = 纸飞机**（用户指定保留个性）· **○ 菜单/圆环 = 圆环**（用户指定）
+   · 37 枚全部重画（含 schemas/numpad/symbols/settings/backspace/space/shift/back/mic/cloud/refresh/info/
+     link/font/palette/pip/code/emoji/keyboard/check/tune/toggle/apps/manage/sun/moon/ring/candidates/
+     lang/floatKbd/oneHand/redo/undo/trash 等）， 映射保持不变
+2. **○ 菜单新增「设置」**（8 个格子）：点击直达设置页 ✓
+3. **设置内状态大方块**：文本改**白色**（原来是 onPrimaryContainer 深色）+ 字号加大一号（运行状态 18→20sp，方案 14→15sp）✓

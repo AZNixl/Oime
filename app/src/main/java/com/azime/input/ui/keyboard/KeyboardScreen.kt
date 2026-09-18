@@ -2070,6 +2070,8 @@ private fun MenuPanel(
                             ) { onAction(KeyAction.ToggleThemeMode) },
                             // 轮19.34：切换输入法（唤起系统选择器）
                             Triple(oi.keyboard, "切换输入法") { close(); onAction(KeyAction.SwitchIme) },
+                            // 轮19.64：**设置**直达（用户要求 ○ 菜单内一点就到设置页）
+                            Triple(oi.settings, "设置") { close(); onAction(KeyAction.OpenSettings) },
                         )
                         // 轮19.11b：19.11 加进 ○ 菜单的那些功能已移除——它们只出现在「定制工具栏」的可选列表里
                         menuItems.chunked(4).forEach { rowItems ->

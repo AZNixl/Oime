@@ -992,12 +992,12 @@ private fun StatusCard(fillWidth: Boolean = false) {
                             ready -> "运行正常"
                             else -> "引擎未就绪 / 首次部署中…"
                         },
-                        // 轮19.47：字号放大（12 → 18）
-                        fontSize = 18.sp,
+                        // 轮19.64：文本改**白色** + 字号再加大一号（18 → 20）
+                        fontSize = 20.sp,
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        color = if (notEnabled) Color(0xFF3C4043) else cs.onPrimaryContainer,
+                        color = if (notEnabled) Color(0xFF3C4043) else Color.White,
                     )
                 }
                 // 轮19.15：第三行 = 当前方案
@@ -1005,11 +1005,11 @@ private fun StatusCard(fillWidth: Boolean = false) {
                     Spacer(Modifier.height(4.dp))
                     Text(
                         text = "方案 · $schema",
-                        // 轮19.47：字号放大（12 → 14）
-                        fontSize = 14.sp,
+                        // 轮19.64：字号再加大一号（14 → 15）+ 白色
+                        fontSize = 15.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        color = cs.onPrimaryContainer,
+                        color = Color.White,
                     )
                 }
             }
