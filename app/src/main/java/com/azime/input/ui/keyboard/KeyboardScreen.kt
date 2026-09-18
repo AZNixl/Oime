@@ -3323,23 +3323,28 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
                     horizontalArrangement = Arrangement.spacedBy(2.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    // 轮19.66：气泡里也用**文字**（与键面 123 / ？#！ 一致；原来用图标与入口脱节）
                     listOf(
-                        "symbols" to com.azime.input.ui.icons.OimeIcons.symbols,  // 26 键符号键盘
-                        "numpad" to com.azime.input.ui.icons.OimeIcons.numpad,    // 九宫格数字键盘
-                    ).forEach { (page, icon) ->
+                        "symbols" to "123",    // 26 键符号键盘
+                        "numpad" to "？#！",    // 九宫格数字键盘
+                    ).forEach { (page, text) ->
                         val on = page == KeyboardManager.preferredPage()
-                        Icon(
-                            icon,
-                            contentDescription = page,
-                            tint = if (on) c.accentActive else c.text,
+                        Text(
+                            text = text,
+                            fontSize = 15.sp,
+                            fontWeight = if (on) FontWeight.Bold else FontWeight.Normal,
+                            color = if (on) c.accentKeyText else c.text,
                             modifier = Modifier
+                                .background(
+                                    if (on) c.accentKeyBg else Color.Transparent,
+                                    RoundedCornerShape(7.dp),
+                                )
                                 .clickable {
                                     showPageBubble = false
                                     KeyboardManager.setPreferredPage(page)
                                     onAction(KeyAction.SwitchPage(page))
                                 }
-                                .padding(horizontal = 12.dp, vertical = 8.dp)
-                                .size(24.dp),
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
                         )
                     }
                 }

@@ -252,7 +252,7 @@ object KeyboardPages {
             ),
             row(
                 // 轮19.2：第四行首键改为「返回」（原为切九宫格，九宫格入口已在第三行）
-                pageKey("返回", "main", width = 1.7f, icon = "back"),
+                pageKey("abc", "main", width = 1.7f),   // 轮19.66：与 123 / ？#！ 统一为文字（不带图标）
                 charKey(","),
                 // 轮19.29：与主键盘同步（空格 4.5 / 回车 1.8）
                 space(width = 4.5f),
@@ -291,7 +291,7 @@ object KeyboardPages {
                 space(width = 1f),
             ),
             row(
-                pageKey("返回", target = "main", width = 1f, icon = "back"),
+                pageKey("abc", target = "main", width = 1f),   // 轮19.66：同上，文字
                 // 轮19.2：原 = 号键改为 00（= 已并入左列滑键符号带）
                 charKey("00"), charKey("0"), charKey("."),
                 enter(width = 1f),
