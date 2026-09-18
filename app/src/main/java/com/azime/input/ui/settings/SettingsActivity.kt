@@ -552,7 +552,7 @@ fun SettingsScreen(
                     Card(colors = grayCardColors(), shape = settingsCardShape()) { Column { KeyAppearanceSettings() } }
                 }
                 item {
-                    Card(colors = grayCardColors(), shape = settingsCardShape()) { Column { HintOffsetSettings() } }
+                    Card(colors = grayCardColors(), shape = settingsCardShape()) { Column { CandidateKeySettings() } }
                 }
                 item {
                     Card(colors = grayCardColors(), shape = settingsCardShape()) { Column { VibrationSettings() } }
@@ -710,13 +710,13 @@ fun SettingsScreen(
                             KsuItem(
                                 icon = Icons.Default.Backup,
                                 title = "备份设置",
-                                subtitle = "导出全部偏好到 Download 目录（反馈轮10 移入关于）",
+                                subtitle = "导出全部偏好到 Documents/Oime/backup/",
                                 onClick = {
                                     scope.launch {
                                         val name = backupSettings(context)
                                         Toast.makeText(
                                             context,
-                                            if (name != null) "已备份：Download/$name" else "备份失败",
+                                            if (name != null) "已备份：Documents/Oime/backup/$name" else "备份失败",
                                             Toast.LENGTH_LONG,
                                         ).show()
                                     }
@@ -1537,6 +1537,7 @@ private fun FontSizeSettings() {
 /** 按键外观设置（反馈轮9）：按键圆角 / 行距 / 列距。 */
 @Composable
 private fun KeyAppearanceSettings() {
+    val context = androidx.compose.ui.platform.LocalContext.current
     var corner by remember { mutableStateOf(com.azime.input.core.keyboard.KeyboardManager.keyCornerDp().toFloat()) }
     var rowGap by remember { mutableStateOf(com.azime.input.core.keyboard.KeyboardManager.rowGapDp().toFloat()) }
     var colGap by remember { mutableStateOf(com.azime.input.core.keyboard.KeyboardManager.colGapDp().toFloat()) }
@@ -1563,6 +1564,19 @@ private fun KeyAppearanceSettings() {
             sideMargin = it
             com.azime.input.core.keyboard.KeyboardManager.setKeyboardSideMarginDp(it.toInt())
         }
+        Spacer(Modifier.height(4.dp))
+        OutlinedButton(
+            onClick = {
+                com.azime.input.core.keyboard.KeyboardManager.resetKeyboardGeometry()
+                // 回读一次，让滑杆跟着回到默认值
+                corner = com.azime.input.core.keyboard.KeyboardManager.keyCornerDp().toFloat()
+                rowGap = com.azime.input.core.keyboard.KeyboardManager.rowGapDp().toFloat()
+                colGap = com.azime.input.core.keyboard.KeyboardManager.colGapDp().toFloat()
+                sideMargin = com.azime.input.core.keyboard.KeyboardManager.keyboardSideMarginDp().toFloat()
+                android.widget.Toast.makeText(context, "已恢复键盘默认外观", android.widget.Toast.LENGTH_SHORT).show()
+            },
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text("恢复默认（键高 / 工具栏高度 / 字号 / 圆角 / 行距 / 列距 / 边距）") }
         Text(
             "下次键盘弹出即生效（左右边距用于曲面屏，把键盘两侧往里收）。",
             style = MaterialTheme.typography.bodySmall,
@@ -1654,6 +1668,28 @@ private fun FloatingWindowSettings() {
                         contentAlignment = Alignment.Center,
                     ) { Text(label, style = MaterialTheme.typography.bodySmall) }
                 }
+
+                listOf("h" to "横向", "v" to "竖向").forEach { (id, label) ->
+                    val on = orient == id
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .background(
+                                if (on) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                                androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+                            )
+                            .clickable { orient = id; km.setFloatOrientation(id); floatRev++ }
+                            .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center,
+                    ) { Text(label, style = MaterialTheme.typography.bodySmall) }
+                }
+
+            // 轮19.55：竖向显示时可切换正向/反向（反向 = 第 1 个候选在最下）
+            var vReverse by remember { mutableStateOf(km.floatVerticalReverse()) }
+            SettingSwitchRow("竖向反向显示（1 号在最下）", vReverse) { on ->
+                vReverse = on
+                km.setFloatVerticalReverse(on)
+            }
             }
             var showFloatColorPick by remember { mutableStateOf(false) }
             Row(
@@ -2207,7 +2243,7 @@ private fun ThemeCard(
     }
 }
 
-/** 备份全部偏好为 JSON，写入系统 Download 目录（MediaStore）。返回文件名，失败返回 null。 */
+/** 备份全部偏好为 JSON，写入 Documents/Oime/backup/。返回文件名，失败返回 null。 */
 private fun backupSettings(context: android.content.Context): String? = runCatching {
     val prefNames = listOf("keyboard_prefs", "font_prefs", "haptic_prefs", "theme_prefs", "wizard_prefs")
     val root = org.json.JSONObject()
@@ -2218,24 +2254,10 @@ private fun backupSettings(context: android.content.Context): String? = runCatch
     val fileName = "Oime_backup_" +
         java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US)
             .format(java.util.Date()) + ".json"
-    if (android.os.Build.VERSION.SDK_INT >= 29) {
-        val values = android.content.ContentValues().apply {
-            put(android.provider.MediaStore.Downloads.DISPLAY_NAME, fileName)
-            put(android.provider.MediaStore.Downloads.MIME_TYPE, "application/json")
-        }
-        val uri = context.contentResolver.insert(
-            android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values
-        ) ?: return null
-        context.contentResolver.openOutputStream(uri)?.use { out ->
-            out.write(root.toString().toByteArray(Charsets.UTF_8))
-        } ?: return null
-    } else {
-        @Suppress("DEPRECATION")
-        val dir = android.os.Environment
-            .getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
-        dir.mkdirs()
-        java.io.File(dir, fileName).writeText(root.toString())
-    }
+    // 轮19.55：改存到外置目录 Documents/Oime/backup/（原来写系统 Download，用户要求集中管理）
+    val dir = com.azime.input.core.storage.StorageManager.backupDir
+    dir.mkdirs()
+    java.io.File(dir, fileName).writeText(root.toString(), Charsets.UTF_8)
     fileName
 }.getOrNull()
 
@@ -2612,50 +2634,54 @@ private fun AppPickerDialog(
 
 
 /**
- * 键面提示位置微调（轮19.53）。
+ * 候选快捷键（轮19.55）：把「第 2 / 第 3 个候选」绑到某个键。
  *
- * 键面四向滑动提示 + 长按符号提示的位置，各给一对 X/Y 偏移（dp）。
- * 约定：上/下 的 Y = 从该侧边缘往里；左/右 的 X = 从同侧边缘往里；长按的 X = 从右边往里。
+ * 可选：无（默认，保持现状）/ 句号 / 逗号 / Shift / 符号键 / 自定义 code。
+ * 命中且当前候选数足够时才生效，否则该键按原行为走。
  */
 @Composable
-private fun HintOffsetSettings() {
+private fun CandidateKeySettings() {
     val km = com.azime.input.core.keyboard.KeyboardManager
+    var k2 by remember { mutableStateOf(km.candidateKey2()) }
+    var k3 by remember { mutableStateOf(km.candidateKey3()) }
     Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
-        Text("提示位置微调", style = MaterialTheme.typography.titleSmall)
+        Text("候选快捷键", style = MaterialTheme.typography.titleSmall)
         Spacer(Modifier.height(2.dp))
         Text(
-            "四向滑动提示与长按符号提示的位置，全部 ±80dp 可调。约定：X 正数向右，" +
-                "Y 正数向下；上/下 的 Y 基准在该侧边缘，左/右 的 X 基准在同侧边缘，长按在同侧上角。",
+            "把「第 2 / 第 3 个候选」绑到某个键：候选数足够时按下即上屏该候选，否则按键按原行为走。" +
+                "默认「无」= 保持现状。自定义可填任意 code（如 . 、, 、; 、shift 、symbols）。",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.height(6.dp))
 
-        var upX by remember { mutableStateOf(km.hintOffUpX().toFloat()) }
-        var upY by remember { mutableStateOf(km.hintOffUpY().toFloat()) }
-        var downX by remember { mutableStateOf(km.hintOffDownX().toFloat()) }
-        var downY by remember { mutableStateOf(km.hintOffDownY().toFloat()) }
-        var leftX by remember { mutableStateOf(km.hintOffLeftX().toFloat()) }
-        var leftY by remember { mutableStateOf(km.hintOffLeftY().toFloat()) }
-        var rightX by remember { mutableStateOf(km.hintOffRightX().toFloat()) }
-        var rightY by remember { mutableStateOf(km.hintOffRightY().toFloat()) }
-        var pressX by remember { mutableStateOf(km.hintOffPressX().toFloat()) }
-        var pressY by remember { mutableStateOf(km.hintOffPressY().toFloat()) }
+        @Composable
+        fun KeyRow(title: String, value: String, onChange: (String) -> Unit) {
+            Text(title, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 6.dp))
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                listOf("无" to "", "句号" to ".", "逗号" to ",", "Shift" to "shift", "符号" to "symbols")
+                    .forEach { (label, code) ->
+                        val on = value == code
+                        OutlinedButton(
+                            onClick = { onChange(code) },
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                        ) { Text(label, fontSize = 12.sp, fontWeight = if (on) FontWeight.Bold else FontWeight.Normal) }
+                    }
+            }
+            OutlinedTextField(
+                value = value,
+                onValueChange = { onChange(it) },
+                label = { Text("code（留空 = 无）") },
+                singleLine = true,
+                textStyle = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+            )
+        }
 
-        XimeSlider("上滑提示 · X", "${upX.toInt()}dp", upX, -80f..80f) { upX = it; km.setHintOffUpX(it.toInt()) }
-        XimeSlider("上滑提示 · Y", "${upY.toInt()}dp", upY, -80f..80f) { upY = it; km.setHintOffUpY(it.toInt()) }
-        XimeSlider("下滑提示 · X", "${downX.toInt()}dp", downX, -80f..80f) { downX = it; km.setHintOffDownX(it.toInt()) }
-        XimeSlider("下滑提示 · Y", "${downY.toInt()}dp", downY, -80f..80f) { downY = it; km.setHintOffDownY(it.toInt()) }
-        XimeSlider("左滑提示 · X", "${leftX.toInt()}dp", leftX, -80f..80f) { leftX = it; km.setHintOffLeftX(it.toInt()) }
-        XimeSlider("左滑提示 · Y", "${leftY.toInt()}dp", leftY, -80f..80f) { leftY = it; km.setHintOffLeftY(it.toInt()) }
-        XimeSlider("右滑提示 · X", "${rightX.toInt()}dp", rightX, -80f..80f) { rightX = it; km.setHintOffRightX(it.toInt()) }
-        XimeSlider("右滑提示 · Y", "${rightY.toInt()}dp", rightY, -80f..80f) { rightY = it; km.setHintOffRightY(it.toInt()) }
-        XimeSlider("长按符号 · X", "${pressX.toInt()}dp", pressX, -80f..80f) { pressX = it; km.setHintOffPressX(it.toInt()) }
-        XimeSlider("长按符号 · Y", "${pressY.toInt()}dp", pressY, -80f..80f) { pressY = it; km.setHintOffPressY(it.toInt()) }
-        Text(
-            "下次键盘弹出即生效。调好后把数值告诉我，我可以把它们设成默认值。",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        KeyRow("第二候选", k2) { k2 = it; km.setCandidateKey2(it) }
+        KeyRow("第三候选", k3) { k3 = it; km.setCandidateKey3(it) }
     }
 }

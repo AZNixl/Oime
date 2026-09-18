@@ -629,9 +629,9 @@ fun AzimeKeyboardScreen(
                             .background(floatBg, RoundedCornerShape(10.dp))
                             .padding(horizontal = 12.dp, vertical = 7.dp),
                     ) {
-                        // 输入码：只显示前三码（余下的留在工具栏）
+                        // 轮19.55：**显示完整输入码**（原来只显示前三码，余下的丢给工具栏 ⇒ 用户反馈"mn 跑到工具栏去了"）
                         Text(
-                            text = state.preedit.take(3),
+                            text = state.preedit,
                             fontSize = pSp.sp,
                             lineHeight = (pSp * 1.16f).sp,
                             color = c.subText,
@@ -668,10 +668,15 @@ fun AzimeKeyboardScreen(
                                 }
                             }
                             if (vertical) {
+                                // 轮19.55：竖向可反向（反向 = 第 1 个候选在最下）
+                                val vReverse = KeyboardManager.floatVerticalReverse()
                                 Column {
-                                    showCandidates.forEachIndexed { i, cand ->
-                                        if (i > 0) Spacer(Modifier.height(3.dp))
-                                        CandItem(i, cand.text)
+                                    // 正向：1 在最上；反向：1 在最下（越靠后越靠上），序号始终按真实候选号
+                                    val order = if (vReverse) showCandidates.indices.reversed().toList()
+                                    else showCandidates.indices.toList()
+                                    order.forEachIndexed { pos, i ->
+                                        if (pos > 0) Spacer(Modifier.height(3.dp))
+                                        CandItem(i, showCandidates[i].text)
                                     }
                                 }
                             } else {
@@ -1000,7 +1005,8 @@ private fun ToolbarRow(
             val preeditSp = candSp * 0.7f
             // 轮19.11：悬浮窗生效时，前三码交给悬浮窗显示，工具栏只显示余下的
             val floatOn = KeyboardManager.floatEnabled() && state.preedit.isNotEmpty()
-            val preeditForBar = if (floatOn) state.preedit.drop(3) else state.preedit
+            // 轮19.55：悬浮窗已显示完整输入码 ⇒ 工具栏**不再重复显示**（原来显示第 4 码起的部分）
+            val preeditForBar = if (floatOn) "" else state.preedit
             if (preeditForBar.isNotEmpty()) {
                 Text(
                     text = preeditForBar,
@@ -2972,7 +2978,9 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
     if (hasGestures) {
         // 手势闭包内读取最新 state（preedit 等会随打字频繁变化）
         val currentState by rememberUpdatedState(state)
-        baseModifier = baseModifier.pointerInput(key.code, key.longClick, state.page) {
+        // 轮19.55：key 用**整个数据类**做 key（原来只有 code/longClick/page）——
+        // 否则编辑了四向滑动动作后，手势块不会重启 ⇒ 用的还是旧动作（用户反馈"改了不即时生效"）
+        baseModifier = baseModifier.pointerInput(key, state.page) {
             awaitEachGesture {
                 val down = awaitFirstDown(requireUnconsumed = false)
                 longFired = false
@@ -3178,7 +3186,14 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
         }
         // 键面右上角长按符号提示（受设置「长按符号提示」开关控制）
         // 轮19.24：键面符号随中英切换（英文模式显示该键的 ASCII 长按符号）
-        val hintText = key.hint ?: com.azime.input.data.keyboard.longPressHint(key.code, state.asciiMode)
+        // 轮19.55：优先用**键自己的**长按动作/符号（编辑过的要覆盖内置默认），
+        // 都没编辑过才回落内置表。短 token（≤4 字符）才当符号显示，避免把 cut 这种动作名当提示。
+        fun firstSymbolOf(v: String?): String? = v?.trim()?.split(" ")
+            ?.firstOrNull { it.isNotBlank() }?.removeSuffix("{Left}")?.takeIf { it.length <= 4 }
+        val hintText = key.hint
+            ?: key.popup.firstOrNull { it.isNotBlank() }?.removeSuffix("{Left}")?.takeIf { it.length <= 4 }
+            ?: firstSymbolOf(key.longClick)
+            ?: com.azime.input.data.keyboard.longPressHint(key.code, state.asciiMode)
         if (swipePreview == null && KeyboardManager.hintLong() && hintText != null && key.type == KeyType.CHARACTER) {
             Text(
                 text = hintText,
@@ -3188,7 +3203,7 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .offset(
-                        x = -KeyboardManager.hintOffPressX().dp,
+                        x = KeyboardManager.hintOffPressX().dp,
                         y = KeyboardManager.hintOffPressY().dp,
                     ),
             )
@@ -3200,8 +3215,8 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
             val dirHintFont = 8.sp
             // 轮19.11b：四向提示位置 = 字面方向（上→正上、下→正下、左→正左、右→正右），
             // 长按仍固定右上角（见上方 hintText 的 TopEnd）。
-            // 轮19.53：**提示位置改为设置可调**（上/下/左/右 各自的 X/Y 偏移，见「提示位置微调」）。
-            // 单位 dp；左/右的 X 是"从同侧边缘往里"，Y 正数向下；上/下同理（Y 从上/下边缘往里）。
+            // 轮19.55：偏移是**字面屏幕增量**（+x 向右、+y 向下），基准 = 该方向的边缘 / 右上角。
+            // 默认值（用户实测给定）：上(0,-6) 下(0,-6) 左(3,0) 右(3,0) 长按(3,-3)
             val upX = KeyboardManager.hintOffUpX().dp
             val upY = KeyboardManager.hintOffUpY().dp
             val downX = KeyboardManager.hintOffDownX().dp
@@ -3219,7 +3234,7 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
             key.swipeDown?.let {
                 if (KeyboardManager.hintDown()) Text(
                     actionPreview(it), fontSize = dirHintFont, color = c.subText, maxLines = 1,
-                    modifier = Modifier.align(Alignment.BottomCenter).offset(x = downX, y = -downY),
+                    modifier = Modifier.align(Alignment.BottomCenter).offset(x = downX, y = downY),
                 )
             }
             key.swipeLeft?.let {
@@ -3231,7 +3246,7 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
             key.swipeRight?.let {
                 if (KeyboardManager.hintRight()) Text(
                     actionPreview(it), fontSize = dirHintFont, color = c.subText, maxLines = 1,
-                    modifier = Modifier.align(Alignment.CenterEnd).offset(x = -rightX, y = rightY),
+                    modifier = Modifier.align(Alignment.CenterEnd).offset(x = rightX, y = rightY),
                 )
             }
         }

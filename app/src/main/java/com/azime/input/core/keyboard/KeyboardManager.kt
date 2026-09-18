@@ -586,6 +586,31 @@ object KeyboardManager {
         synchronized(lock) { prefs.edit().putInt(PREF_SWIPE_THRESHOLD_DP, v.coerceIn(10, 80)).apply() }
     }
 
+    /**
+     * 轮19.55：**一键恢复键盘默认外观** —— 键高 / 工具栏高度 / 字号（键盘+工具栏）/ 按键圆角 /
+     * 行距 / 列距 / 键盘左右边距 / 四向与长按提示偏移，全部回到出厂默认。返回是否成功。
+     */
+    fun resetKeyboardGeometry() {
+        synchronized(lock) {
+            prefs.edit()
+                .putInt(PREF_KEY_HEIGHT_DP, DEFAULT_KEY_HEIGHT_DP)
+                .putInt(PREF_BAR_HEIGHT_DP, DEFAULT_BAR_HEIGHT_DP)
+                .putInt(PREF_FONT_SIZE_KEY, 20)
+                .putInt(PREF_FONT_SIZE_BAR, 18)
+                .putInt(PREF_KEY_CORNER, 8)
+                .putInt(PREF_ROW_GAP, 4)
+                .putInt(PREF_COL_GAP, 4)
+                .putInt(PREF_SIDE_MARGIN, 0)
+                .remove("hint_off_up_x").remove("hint_off_up_y")
+                .remove("hint_off_down_x").remove("hint_off_down_y")
+                .remove("hint_off_left_x").remove("hint_off_left_y")
+                .remove("hint_off_right_x").remove("hint_off_right_y")
+                .remove("hint_off_press_x").remove("hint_off_press_y")
+                .apply()
+        }
+        bumpLayoutRev()
+    }
+
     // ── 布局热重载版本号（轮19.54）──
     // 键盘编辑器「保存」后，键盘界面必须**重新读取布局**才会生效（原来只更新内存/文件，
     // UI 没有任何东西触发重读 ⇒ 用户看到"保存后新符号没用上"）。
@@ -607,36 +632,72 @@ object KeyboardManager {
     //   左/右：X = 从同侧边缘往里；Y 正数向下
     //   长按符号：X = 从右边往里；Y = 从顶边往里
 
-    private fun hintOff(key: String, def: Int): Int = prefs.getInt("hint_off_$key", def).coerceIn(-80, 80)
+    private fun hintOffX(key: String, def: Int): Int = prefs.getInt("hint_off_$key", def).coerceIn(0, 80)
 
-    private fun setHintOff(key: String, v: Int) {
+    private fun hintOffY(key: String, def: Int): Int = prefs.getInt("hint_off_$key", def).coerceIn(-80, 80)
+
+    private fun setHintOffX(key: String, v: Int) {
+        synchronized(lock) { prefs.edit().putInt("hint_off_$key", v.coerceIn(0, 80)).apply() }
+    }
+
+    private fun setHintOffY(key: String, v: Int) {
         synchronized(lock) { prefs.edit().putInt("hint_off_$key", v.coerceIn(-80, 80)).apply() }
     }
 
     fun hintOffUpX(): Int = prefs.getInt("hint_off_up_x", 0).coerceIn(-80, 80)
-    fun hintOffUpY(): Int = hintOff("up_y", 5)
+    fun hintOffUpY(): Int = hintOffY("up_y", -6)
     fun setHintOffUpX(v: Int) = synchronized(lock) { prefs.edit().putInt("hint_off_up_x", v.coerceIn(-80, 80)).apply() }
-    fun setHintOffUpY(v: Int) = setHintOff("up_y", v)
+    fun setHintOffUpY(v: Int) = setHintOffY("up_y", v)
 
     fun hintOffDownX(): Int = prefs.getInt("hint_off_down_x", 0).coerceIn(-80, 80)
-    fun hintOffDownY(): Int = hintOff("down_y", 5)
+    fun hintOffDownY(): Int = hintOffY("down_y", -6)
     fun setHintOffDownX(v: Int) = synchronized(lock) { prefs.edit().putInt("hint_off_down_x", v.coerceIn(-80, 80)).apply() }
-    fun setHintOffDownY(v: Int) = setHintOff("down_y", v)
+    fun setHintOffDownY(v: Int) = setHintOffY("down_y", v)
 
-    fun hintOffLeftX(): Int = hintOff("left_x", 4)
-    fun hintOffLeftY(): Int = prefs.getInt("hint_off_left_y", 7).coerceIn(-80, 80)
-    fun setHintOffLeftX(v: Int) = setHintOff("left_x", v)
+    fun hintOffLeftX(): Int = hintOffX("left_x", 3)
+    fun hintOffLeftY(): Int = prefs.getInt("hint_off_left_y", 0).coerceIn(-80, 80)
+    fun setHintOffLeftX(v: Int) = setHintOffX("left_x", v)
     fun setHintOffLeftY(v: Int) = synchronized(lock) { prefs.edit().putInt("hint_off_left_y", v.coerceIn(-80, 80)).apply() }
 
-    fun hintOffRightX(): Int = hintOff("right_x", 4)
-    fun hintOffRightY(): Int = prefs.getInt("hint_off_right_y", 7).coerceIn(-80, 80)
-    fun setHintOffRightX(v: Int) = setHintOff("right_x", v)
+    fun hintOffRightX(): Int = hintOffX("right_x", 3)
+    fun hintOffRightY(): Int = prefs.getInt("hint_off_right_y", 0).coerceIn(-80, 80)
+    fun setHintOffRightX(v: Int) = setHintOffX("right_x", v)
     fun setHintOffRightY(v: Int) = synchronized(lock) { prefs.edit().putInt("hint_off_right_y", v.coerceIn(-80, 80)).apply() }
 
-    fun hintOffPressX(): Int = hintOff("press_x", 4)
-    fun hintOffPressY(): Int = hintOff("press_y", 5)
-    fun setHintOffPressX(v: Int) = setHintOff("press_x", v)
-    fun setHintOffPressY(v: Int) = setHintOff("press_y", v)
+    fun hintOffPressX(): Int = hintOffX("press_x", 3)
+    fun hintOffPressY(): Int = hintOffY("press_y", -3)
+    fun setHintOffPressX(v: Int) = setHintOffX("press_x", v)
+    fun setHintOffPressY(v: Int) = setHintOffY("press_y", v)
+
+    // ── 第二 / 第三候选键（轮19.55）──
+    // 值 = 触发键的 code（字符如 "." ","；或 "shift" / "symbols"），空串 = 无（不拦截，保持现状）。
+    // 命中且候选数足够时，按下该键直接上屏第 2 / 第 3 个候选。
+
+    private const val PREF_CAND_KEY2 = "candidate_key_2"
+    private const val PREF_CAND_KEY3 = "candidate_key_3"
+
+    fun candidateKey2(): String = prefs.getString(PREF_CAND_KEY2, "") ?: ""
+
+    fun setCandidateKey2(v: String) {
+        synchronized(lock) { prefs.edit().putString(PREF_CAND_KEY2, v.trim()).apply() }
+    }
+
+    fun candidateKey3(): String = prefs.getString(PREF_CAND_KEY3, "") ?: ""
+
+    fun setCandidateKey3(v: String) {
+        synchronized(lock) { prefs.edit().putString(PREF_CAND_KEY3, v.trim()).apply() }
+    }
+
+    // ── 悬浮窗竖向反向（轮19.55）──
+    // 竖向显示时可切换"正向/反向"：反向 = 第 1 个候选在最下、越靠后越靠上。
+
+    private const val PREF_FLOAT_V_REVERSE = "float_vertical_reverse"
+
+    fun floatVerticalReverse(): Boolean = prefs.getBoolean(PREF_FLOAT_V_REVERSE, false)
+
+    fun setFloatVerticalReverse(v: Boolean) {
+        synchronized(lock) { prefs.edit().putBoolean(PREF_FLOAT_V_REVERSE, v).apply() }
+    }
 
     // ── 键盘左右边距（轮19.52）──
 

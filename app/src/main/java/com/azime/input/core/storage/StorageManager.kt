@@ -13,6 +13,7 @@ object StorageManager {
     private const val FONTS_DIR = "fonts"
     private const val MODELS_DIR = "models"
     private const val SOUNDS_DIR = "sounds"
+    private const val BACKUP_DIR = "backup"
 
     lateinit var externalRootDir: File
         private set
@@ -25,6 +26,10 @@ object StorageManager {
 
     /** 轮19.46：打字音效目录（自动创建，并放入 APK 内置的默认音效）。 */
     lateinit var soundsDir: File
+        private set
+
+    /** 轮19.55：备份目录（设置备份 JSON 写到这里）。 */
+    lateinit var backupDir: File
         private set
     lateinit var internalDataDir: File
         private set
@@ -41,6 +46,7 @@ object StorageManager {
         // 轮19：语音本地模型侧载目录（sherpa-onnx 模型不进 APK）
         modelsDir = File(externalRootDir, MODELS_DIR)
         soundsDir = File(externalRootDir, SOUNDS_DIR)
+        backupDir = File(externalRootDir, BACKUP_DIR)
 
         // Create all directories
         externalRootDir.mkdirs()
@@ -49,6 +55,7 @@ object StorageManager {
         // 轮19.46：**不再创建 lua 目录** —— 预设置（preset_keys）已去除，该目录没有保留必要
         modelsDir.mkdirs()
         soundsDir.mkdirs()
+        backupDir.mkdirs()
 
         // 轮19.46：把内置默认音效释放到外置目录（不覆盖用户自己的文件）
         copyDefaultSounds(context)

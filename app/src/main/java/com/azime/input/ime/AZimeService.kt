@@ -703,7 +703,11 @@ class AZimeService : InputMethodService() {
                     uiState.update { it.copy(shiftOn = false) }
                     refreshState()
                 }
-                KeyAction.Shift -> uiState.update { it.copy(shiftOn = !it.shiftOn, capsOn = false) }
+                KeyAction.Shift -> {
+                    // 轮19.55：Shift 被设为第二/第三候选键时，优先选候选（选到了就不切 Shift）
+                    val picked = handleCandidateShortcut("shift")
+                    if (!picked) uiState.update { it.copy(shiftOn = !it.shiftOn, capsOn = false) }
+                }
                 KeyAction.Backspace -> handleBackspace()
                 KeyAction.Space -> {
                     // 抄 xime.az ImeKeyRouter "space"：以引擎实时组词状态（inputText）
@@ -842,7 +846,11 @@ class AZimeService : InputMethodService() {
                 KeyAction.DeleteSelection -> deleteSelection()
                 KeyAction.CapsLock -> uiState.update { it.copy(capsOn = !it.capsOn, shiftOn = false) }
                 is KeyAction.OpenPage -> uiState.update { it.copy(page = action.page) }
-                is KeyAction.SwitchPage -> uiState.update { it.copy(page = action.page) }
+                is KeyAction.SwitchPage -> {
+                    // 轮19.55：符号键被设为第二/第三候选键时优先选候选（其它页不受影响）
+                    val picked = action.page == "symgrid" && handleCandidateShortcut("symbols")
+                    if (!picked) uiState.update { it.copy(page = action.page) }
+                }
                 is KeyAction.Joystick -> joystickMove(action.dx)
                 is KeyAction.SetJoystickMode -> uiState.update { it.copy(joystickMode = action.mode) }
                 KeyAction.OpenSettings -> {
@@ -1222,8 +1230,27 @@ class AZimeService : InputMethodService() {
         joystickAnchor = -1
     }
 
+    /**
+     * 轮19.55：第二/第三候选键。命中且候选足够时选中对应候选并返回 true。
+     * @param code 触发键的 code（字符本身，或 "shift" / "symbols"）
+     */
+    private suspend fun handleCandidateShortcut(code: String): Boolean {
+        if (code.isEmpty()) return false
+        val n = when (code) {
+            KeyboardManager.candidateKey2() -> 2
+            KeyboardManager.candidateKey3() -> 3
+            else -> return false
+        }
+        if (uiState.value.candidates.size < n) return false
+        if (!RimeManager.selectCandidate(n - 1)) return false
+        applyResult(RimeManager.getProcessResult())
+        return true
+    }
+
     private suspend fun handleChar(c: Char) {
         val state = uiState.value
+        // 轮19.55：第二/第三候选键优先（只在中英文均可的普通字符上生效）
+        if (!state.asciiMode && !state.shiftOn && !state.capsOn && handleCandidateShortcut(c.toString())) return
         // emoji / 非字母符号直出
         if (c.code > 0x7F) {
             currentInputConnection?.commitText(c.toString(), 1)
