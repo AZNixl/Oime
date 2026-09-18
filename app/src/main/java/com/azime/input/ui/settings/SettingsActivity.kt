@@ -2662,16 +2662,44 @@ private fun CandidateKeySettings(onOpen: () -> Unit) {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(8.dp))
+        // 轮19.63：入口做得更明显（原来只是一行小字）——强调色描边按钮 + 图标 + 箭头
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .background(
+                    MaterialTheme.colorScheme.primary.copy(alpha = 0.10f),
+                    androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+                )
+                .border(
+                    1.dp,
+                    MaterialTheme.colorScheme.primary,
+                    androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+                )
                 .clickable { onOpen() }
-                .padding(vertical = 8.dp),
+                .padding(horizontal = 14.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("设置候选快捷键", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-            Text("▸", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Icon(
+                com.azime.input.ui.icons.OimeIcons.byName("settings") ?: Icons.Default.Settings,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(18.dp),
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                "设置候选快捷键",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                "▸",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary,
+            )
         }
     }
 }
@@ -2702,8 +2730,7 @@ private fun CandidateKeyEditorPage(padding: androidx.compose.foundation.layout.P
         Text("自定义候选键", style = MaterialTheme.typography.titleSmall)
         Spacer(Modifier.height(4.dp))
         Text(
-            "填按键的 code：单个字符直接写（如 . , ; /），功能键写 shift / symbols。保存后在上一级" +
-                "「候选快捷键」下拉栏里会多出「自定义」一项。",
+            "填按键的 code：单个字符直接写（如 . , ; /），功能键写 shift / symbols。",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
