@@ -681,6 +681,20 @@ class AZimeService : InputMethodService() {
             //   ② **在复制条上左右划动**（DismissClipStrip，见下）
             // 撤掉 19.17 的「退格键消亡」：强制复制的无效内容不该被逼着先上屏才能清掉；
             // 打字/组词依旧不消亡。
+            // 轮19.59：**全量按键埋点**（临时诊断）——记录每个动作的类型与关键字段，
+            // 用来确认标点键（./,）到底走哪条 KeyAction 路径。
+            run {
+                val d = action::class.simpleName
+                val detail = when (action) {
+                    is KeyAction.CharKey -> "c=${action.c}"
+                    is KeyAction.DirectCommit -> "text=${action.text}"
+                    is KeyAction.Resolved -> "value=${action.value}"
+                    is KeyAction.Candidate -> "idx=${action.index}"
+                    is KeyAction.SwitchPage -> "page=${action.page}"
+                    else -> ""
+                }
+                com.azime.input.core.diag.Diag.log("Key", "$d $detail")
+            }
             when (action) {
                 is KeyAction.CharKey -> handleChar(action.c)
                 is KeyAction.DirectCommit -> {

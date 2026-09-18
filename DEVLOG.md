@@ -1696,3 +1696,10 @@ Unresolved reference）；要么 import 后 `x.roundToInt()`，要么直接 `x.t
 2. **清掉真正的"默认行为"来源**：随包的 `assets/rime/default.custom.yaml` 里**生效中的**两条 key_binder
    `semicolon → 候选2`、`apostrophe → 候选3`（方案本身并不绑定，是这个全局默认配置在抢）
    ⇒ 已注释让位给 App 内的「候选快捷键」设置（想用分号/单引号，在设置里选/填对应 code 即可）✓
+
+# 轮19.59（0.9.66-oime vc76）：候选键**全量按键埋点**（继续定位，不靠猜）
+
+- 19.58 修了两处后，用户反馈仍不生效；再读 diag：`[CandKey] no-match code=d/h/m k2=, k3=shift` ——
+  函数在跑、设置读到了，但**标点键（逗号）依旧没进函数** ✗（说明还存在第三条路径）
+- 本轮加**全量按键埋点**（tag `Key`）：记录每个动作的类名与关键字段（CharKey.c / DirectCommit.text /
+  Resolved.value / Candidate.index / SwitchPage.page）⇒ 按一次标点键即可确定它属于哪类动作，再精准拦
