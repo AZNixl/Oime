@@ -784,6 +784,10 @@ class AZimeService : InputMethodService() {
 
                 // ── 扩展动作 ──
                 is KeyAction.Resolved -> {
+                    // 轮19.58（由埋点定位）：**自定义布局里的 . / , 等是 FUNCTION 键**，走 Resolved 而不是 CharKey
+                    // ⇒ 之前候选快捷键只挂在 handleChar 上，所以按句号/逗号一次都没进过拦截函数 ✗
+                    // 现在这里也先试一次候选快捷键：命中且候选足够就选候选，否则按原行为（上屏标点）走。
+                    if (handleCandidateShortcut(action.value)) return@launch
                     when (val resolved = ActionResolver.resolveAction(action.value)) {
                         is ResolvedAction.Commit -> {
                             val ic = currentInputConnection

@@ -45,8 +45,11 @@ patch:
     bindings:
 #      - { when: has_menu, accept: comma, send: 2 }  # 候选2 用逗号选择 （修改的时候不要多加或少加空格，跟前面的对齐就好了）
 #      - { when: has_menu, accept: period, send: 3 } # 候选3 用句号选择
-      - { when: has_menu, accept: semicolon, send: 2 }  # 候选2 用分号
-      - { when: has_menu, accept: apostrophe, send: 3 } # 候选3 用单引号
+#      - { when: has_menu, accept: semicolon, send: 2 }  # 候选2 用分号
+#      - { when: has_menu, accept: apostrophe, send: 3 } # 候选3 用单引号
+# ↑ 轮19.58：这两条**已让位给 App 内的「候选快捷键」设置**（设置 → 键盘 → 候选快捷键）。
+#   原因：这里硬绑会让"设置里改了却没生效"（设置改的是 App 层，引擎层仍按这两条选候选）。
+#   想用分号/单引号，请在「候选快捷键」里选/填 semicolon / apostrophe 即可。
 
       # 上下翻页 [ ]
       - { when: has_menu, accept: bracketleft, send: Page_Up }

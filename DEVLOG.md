@@ -1680,3 +1680,19 @@ Unresolved reference）；要么 import 后 `x.roundToInt()`，要么直接 `x.t
    · **中文标点归一** —— 配置写 `.` 也能命中「。」（同理 ，/、；：？！）✓
    · **DirectCommit 路径也拦一次**（多字符 code，如九宫格自定义）✓
    下一步：让用户在组词状态按一下配置键，读日志定性（是"没匹配上"还是"候选数为 0"）再精准修
+
+# 轮19.58（0.9.65-oime vc75）：候选快捷键**真凶定位并修掉**（埋点驱动）
+
+**排查过程**（这次的坑很典型，记下来）：
+1. 先加 `Diag` 埋点（tag `CandKey`）→ 用户组词后按键 → 读 `Download/oime_diag.log`
+2. 日志显示：**拦截函数确实在跑**（`code=d/l/s/f` 都进了），且**读到了设置** `k2=. k3=,`
+   —— 但**按句号/逗号时一次都没进过这个函数** ✗
+3. 结论：用户自定义布局里的 `.`/`,` 是 **FUNCTION 键** ⇒ 走 `KeyAction.Resolved`，
+   而候选快捷键当时只挂在 `handleChar`（CHARACTER 键）上 ✗
+
+**两个修复**：
+1. **`KeyAction.Resolved` 路径也拦**：执行前先 `handleCandidateShortcut(action.value)`，
+   命中且候选足够就选候选，否则按原行为（上屏标点）✓
+2. **清掉真正的"默认行为"来源**：随包的 `assets/rime/default.custom.yaml` 里**生效中的**两条 key_binder
+   `semicolon → 候选2`、`apostrophe → 候选3`（方案本身并不绑定，是这个全局默认配置在抢）
+   ⇒ 已注释让位给 App 内的「候选快捷键」设置（想用分号/单引号，在设置里选/填对应 code 即可）✓
