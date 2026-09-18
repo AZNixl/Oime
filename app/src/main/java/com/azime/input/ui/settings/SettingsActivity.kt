@@ -552,6 +552,9 @@ fun SettingsScreen(
                     Card(colors = grayCardColors(), shape = settingsCardShape()) { Column { KeyAppearanceSettings() } }
                 }
                 item {
+                    Card(colors = grayCardColors(), shape = settingsCardShape()) { Column { HintOffsetSettings() } }
+                }
+                item {
                     Card(colors = grayCardColors(), shape = settingsCardShape()) { Column { VibrationSettings() } }
                 }
                 item {
@@ -2604,5 +2607,55 @@ private fun AppPickerDialog(
                 }
             }
         }
+    }
+}
+
+
+/**
+ * 键面提示位置微调（轮19.53）。
+ *
+ * 键面四向滑动提示 + 长按符号提示的位置，各给一对 X/Y 偏移（dp）。
+ * 约定：上/下 的 Y = 从该侧边缘往里；左/右 的 X = 从同侧边缘往里；长按的 X = 从右边往里。
+ */
+@Composable
+private fun HintOffsetSettings() {
+    val km = com.azime.input.core.keyboard.KeyboardManager
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
+        Text("提示位置微调", style = MaterialTheme.typography.titleSmall)
+        Spacer(Modifier.height(2.dp))
+        Text(
+            "四向滑动提示与长按符号提示的位置。上/下 的 Y、左/右 的 X 是「从该侧边缘往里」的像素；" +
+                "左/右 的 Y 正数向下（用来躲开主字）。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(6.dp))
+
+        var upX by remember { mutableStateOf(km.hintOffUpX().toFloat()) }
+        var upY by remember { mutableStateOf(km.hintOffUpY().toFloat()) }
+        var downX by remember { mutableStateOf(km.hintOffDownX().toFloat()) }
+        var downY by remember { mutableStateOf(km.hintOffDownY().toFloat()) }
+        var leftX by remember { mutableStateOf(km.hintOffLeftX().toFloat()) }
+        var leftY by remember { mutableStateOf(km.hintOffLeftY().toFloat()) }
+        var rightX by remember { mutableStateOf(km.hintOffRightX().toFloat()) }
+        var rightY by remember { mutableStateOf(km.hintOffRightY().toFloat()) }
+        var pressX by remember { mutableStateOf(km.hintOffPressX().toFloat()) }
+        var pressY by remember { mutableStateOf(km.hintOffPressY().toFloat()) }
+
+        XimeSlider("上滑提示 · X", "${upX.toInt()}dp", upX, -40f..40f) { upX = it; km.setHintOffUpX(it.toInt()) }
+        XimeSlider("上滑提示 · Y（向里）", "${upY.toInt()}dp", upY, 0f..60f) { upY = it; km.setHintOffUpY(it.toInt()) }
+        XimeSlider("下滑提示 · X", "${downX.toInt()}dp", downX, -40f..40f) { downX = it; km.setHintOffDownX(it.toInt()) }
+        XimeSlider("下滑提示 · Y（向里）", "${downY.toInt()}dp", downY, 0f..60f) { downY = it; km.setHintOffDownY(it.toInt()) }
+        XimeSlider("左滑提示 · X（向里）", "${leftX.toInt()}dp", leftX, 0f..60f) { leftX = it; km.setHintOffLeftX(it.toInt()) }
+        XimeSlider("左滑提示 · Y（向下）", "${leftY.toInt()}dp", leftY, -40f..40f) { leftY = it; km.setHintOffLeftY(it.toInt()) }
+        XimeSlider("右滑提示 · X（向里）", "${rightX.toInt()}dp", rightX, 0f..60f) { rightX = it; km.setHintOffRightX(it.toInt()) }
+        XimeSlider("右滑提示 · Y（向下）", "${rightY.toInt()}dp", rightY, -40f..40f) { rightY = it; km.setHintOffRightY(it.toInt()) }
+        XimeSlider("长按符号 · X（向里）", "${pressX.toInt()}dp", pressX, 0f..60f) { pressX = it; km.setHintOffPressX(it.toInt()) }
+        XimeSlider("长按符号 · Y（向下）", "${pressY.toInt()}dp", pressY, 0f..60f) { pressY = it; km.setHintOffPressY(it.toInt()) }
+        Text(
+            "下次键盘弹出即生效。调好后把数值告诉我，我可以把它们设成默认值。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }

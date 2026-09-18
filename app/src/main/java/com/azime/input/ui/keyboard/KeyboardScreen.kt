@@ -3139,15 +3139,9 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
                 // 反馈轮11：四向预览位置可选——键面中央（默认替换键名）或键上方气泡
                 text = if (swipePreviewAbove) label else (swipePreview ?: label),
                 // 反馈轮9：键面字号可调（键盘/工具栏分开设置）
-                // 轮19.52：键面带提示（四向/长按）时主字缩小 15%，避免稍大的提示符号与主字重合
-                fontSize = if (key.type == KeyType.CHARACTER) {
-                    val hasHints = key.swipeUp != null || key.swipeDown != null ||
-                        key.swipeLeft != null || key.swipeRight != null ||
-                        (key.hint ?: com.azime.input.data.keyboard.longPressHint(key.code, state.asciiMode)) != null
-                    (KeyboardManager.fontSizeKey() * (if (hasHints) 0.85f else 1f)).sp
-                } else {
-                    (KeyboardManager.fontSizeKey() * 0.7f).sp
-                },
+                // 轮19.53：**撤回** 19.52 的"带提示时主字缩小 15%"——用户要求不要动文本大小，只调提示位置
+                fontSize = if (key.type == KeyType.CHARACTER) KeyboardManager.fontSizeKey().sp
+                else (KeyboardManager.fontSizeKey() * 0.7f).sp,
                 // 轮19.35：字重与字体跟随风格（One UI 半粗 / Nothing OS 等宽）
                 fontWeight = if (c.keyBold) FontWeight.SemiBold else FontWeight.Medium,
                 fontFamily = if (c.monoFont && key.type == KeyType.CHARACTER) FontFamily.Monospace else null,
@@ -3189,7 +3183,10 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
                 maxLines = 1,
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .padding(top = 6.dp, end = 7.dp),
+                    .offset(
+                        x = -KeyboardManager.hintOffPressX().dp,
+                        y = KeyboardManager.hintOffPressY().dp,
+                    ),
             )
         }
         // 轮19.1 修复：四向滑动提示——原实现只控制「滑动过程中的临时预览」，
@@ -3199,29 +3196,38 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
             val dirHintFont = 8.sp
             // 轮19.11b：四向提示位置 = 字面方向（上→正上、下→正下、左→正左、右→正右），
             // 长按仍固定右上角（见上方 hintText 的 TopEnd）。
-            // 轮19.52：提示边距加大（3/5 → 6/7dp）——原来紧贴键面边缘，稍大的符号就与主字重合
+            // 轮19.53：**提示位置改为设置可调**（上/下/左/右 各自的 X/Y 偏移，见「提示位置微调」）。
+            // 单位 dp；左/右的 X 是"从同侧边缘往里"，Y 正数向下；上/下同理（Y 从上/下边缘往里）。
+            val upX = KeyboardManager.hintOffUpX().dp
+            val upY = KeyboardManager.hintOffUpY().dp
+            val downX = KeyboardManager.hintOffDownX().dp
+            val downY = KeyboardManager.hintOffDownY().dp
+            val leftX = KeyboardManager.hintOffLeftX().dp
+            val leftY = KeyboardManager.hintOffLeftY().dp
+            val rightX = KeyboardManager.hintOffRightX().dp
+            val rightY = KeyboardManager.hintOffRightY().dp
             key.swipeUp?.let {
                 if (KeyboardManager.hintUp()) Text(
                     actionPreview(it), fontSize = dirHintFont, color = c.subText, maxLines = 1,
-                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 6.dp),
+                    modifier = Modifier.align(Alignment.TopCenter).offset(x = upX, y = upY),
                 )
             }
             key.swipeDown?.let {
                 if (KeyboardManager.hintDown()) Text(
                     actionPreview(it), fontSize = dirHintFont, color = c.subText, maxLines = 1,
-                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 6.dp),
+                    modifier = Modifier.align(Alignment.BottomCenter).offset(x = downX, y = -downY),
                 )
             }
             key.swipeLeft?.let {
                 if (KeyboardManager.hintLeft()) Text(
                     actionPreview(it), fontSize = dirHintFont, color = c.subText, maxLines = 1,
-                    modifier = Modifier.align(Alignment.CenterStart).padding(start = 7.dp),
+                    modifier = Modifier.align(Alignment.CenterStart).offset(x = leftX, y = leftY),
                 )
             }
             key.swipeRight?.let {
                 if (KeyboardManager.hintRight()) Text(
                     actionPreview(it), fontSize = dirHintFont, color = c.subText, maxLines = 1,
-                    modifier = Modifier.align(Alignment.CenterEnd).padding(end = 7.dp),
+                    modifier = Modifier.align(Alignment.CenterEnd).offset(x = -rightX, y = rightY),
                 )
             }
         }

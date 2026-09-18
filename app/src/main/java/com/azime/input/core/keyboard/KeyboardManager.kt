@@ -586,6 +586,43 @@ object KeyboardManager {
         synchronized(lock) { prefs.edit().putInt(PREF_SWIPE_THRESHOLD_DP, v.coerceIn(10, 80)).apply() }
     }
 
+    // ── 键面提示位置微调（轮19.53）──
+    // 每个方向一对 X/Y 偏移（dp）。约定：
+    //   上/下：Y = 从该侧边缘往里；X 正数向右
+    //   左/右：X = 从同侧边缘往里；Y 正数向下
+    //   长按符号：X = 从右边往里；Y = 从顶边往里
+
+    private fun hintOff(key: String, def: Int): Int = prefs.getInt("hint_off_$key", def).coerceIn(0, 60)
+
+    private fun setHintOff(key: String, v: Int) {
+        synchronized(lock) { prefs.edit().putInt("hint_off_$key", v.coerceIn(0, 60)).apply() }
+    }
+
+    fun hintOffUpX(): Int = prefs.getInt("hint_off_up_x", 0).coerceIn(-40, 40)
+    fun hintOffUpY(): Int = hintOff("up_y", 5)
+    fun setHintOffUpX(v: Int) = synchronized(lock) { prefs.edit().putInt("hint_off_up_x", v.coerceIn(-40, 40)).apply() }
+    fun setHintOffUpY(v: Int) = setHintOff("up_y", v)
+
+    fun hintOffDownX(): Int = prefs.getInt("hint_off_down_x", 0).coerceIn(-40, 40)
+    fun hintOffDownY(): Int = hintOff("down_y", 5)
+    fun setHintOffDownX(v: Int) = synchronized(lock) { prefs.edit().putInt("hint_off_down_x", v.coerceIn(-40, 40)).apply() }
+    fun setHintOffDownY(v: Int) = setHintOff("down_y", v)
+
+    fun hintOffLeftX(): Int = hintOff("left_x", 4)
+    fun hintOffLeftY(): Int = prefs.getInt("hint_off_left_y", 7).coerceIn(-40, 40)
+    fun setHintOffLeftX(v: Int) = setHintOff("left_x", v)
+    fun setHintOffLeftY(v: Int) = synchronized(lock) { prefs.edit().putInt("hint_off_left_y", v.coerceIn(-40, 40)).apply() }
+
+    fun hintOffRightX(): Int = hintOff("right_x", 4)
+    fun hintOffRightY(): Int = prefs.getInt("hint_off_right_y", 7).coerceIn(-40, 40)
+    fun setHintOffRightX(v: Int) = setHintOff("right_x", v)
+    fun setHintOffRightY(v: Int) = synchronized(lock) { prefs.edit().putInt("hint_off_right_y", v.coerceIn(-40, 40)).apply() }
+
+    fun hintOffPressX(): Int = hintOff("press_x", 4)
+    fun hintOffPressY(): Int = hintOff("press_y", 5)
+    fun setHintOffPressX(v: Int) = setHintOff("press_x", v)
+    fun setHintOffPressY(v: Int) = setHintOff("press_y", v)
+
     // ── 键盘左右边距（轮19.52）──
 
     private const val PREF_SIDE_MARGIN = "keyboard_side_margin_dp"
