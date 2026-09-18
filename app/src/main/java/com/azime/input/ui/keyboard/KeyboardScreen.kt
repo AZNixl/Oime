@@ -3137,9 +3137,12 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
         // 轮19.4：功能键优先渲染图标（OimeIcons）；无图标 / 滑动预览中回落文字。
         // 轮19.5：空格键例外——有文本（自定义文本或方案名称）时优先文本，文本为空才显示图标。
         // 轮19.25：第四行首键（符号/数字入口）的图标跟随设置偏好——26 键符号 ↔ 九宫格
-        val iconName = if (key.code == "symbols") {
-            if (KeyboardManager.preferredPage() == "numpad") "numpad" else "symbols"
-        } else key.icon
+        // 轮19.65：123/符号键不再用图标 —— 按 preferredPage 直接显示文字 "123" / "？#！"
+        val isSymbolsKey = key.code == "symbols"
+        val iconName = if (isSymbolsKey) null else key.icon
+        val labelText = if (isSymbolsKey) {
+            if (KeyboardManager.preferredPage() == "numpad") "123" else "？#！"
+        } else label
         val keyIcon = if (iconName != null && swipePreview == null) {
             com.azime.input.ui.icons.OimeIcons.byName(iconName)
         } else null
@@ -3157,7 +3160,7 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
         } else {
             Text(
                 // 反馈轮11：四向预览位置可选——键面中央（默认替换键名）或键上方气泡
-                text = if (swipePreviewAbove) label else (swipePreview ?: label),
+                text = if (swipePreviewAbove) labelText else (swipePreview ?: labelText),
                 // 反馈轮9：键面字号可调（键盘/工具栏分开设置）
                 // 轮19.53：**撤回** 19.52 的"带提示时主字缩小 15%"——用户要求不要动文本大小，只调提示位置
                 fontSize = if (key.type == KeyType.CHARACTER) KeyboardManager.fontSizeKey().sp

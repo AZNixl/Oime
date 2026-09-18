@@ -114,7 +114,8 @@ object KeyboardPages {
     )
 
     private fun space(width: Float = 4f) = Key(
-        label = "空格", code = "space", width = width, type = KeyType.SPACE, icon = "space",
+        // 轮19.65：默认 label 置空 ⇒ 渲染层显示「一条直线」图标；用户若自定义了空格文本仍会优先显示
+        label = "", code = "space", width = width, type = KeyType.SPACE, icon = "space",
         // 轮19.34：长按不再切中英，改为**上滑**切中英
         // 轮19.43（按用户要求）：长按 = **连续输入空格**（和电脑空格键一样）——
         // 由渲染层的 autoRepeat 判定（KeyType.SPACE 也进连发）实现，这里不设 longClick
@@ -172,7 +173,7 @@ object KeyboardPages {
                 backspace(width = 1.5f),
             ),
             row(
-                pageKey("123", width = 1.7f, icon = "symbols"), // 稍宽于 shift(1.5)，紧凑起步
+                pageKey("123", width = 1.7f), // 轮19.65：不用图标，键面直接显示 "123" / "？#！"
                 charKey(","),
                 // 轮19.29：空格默认宽度 4.3 → **4.5**，回车 2.0 → **1.8**（Σ 仍为 10.0，列仍对齐）
                 space(width = 4.5f),
@@ -218,7 +219,7 @@ object KeyboardPages {
             // 4：123 ‖ 空格 ｜ 空格 ‖ ⌫ ⏎（权重和同为 10.9，与上面各列对齐）
             // 轮19.15：补回**回车键**（横屏首版漏了 ⏎，用户反馈"横屏没有回车"）
             row(
-                pageKey("123", width = 1.5f, icon = "symbols"),
+                pageKey("123", width = 1.5f),   // 轮19.65：同上，文字显示
                 space(width = 3.5f),
                 spacerKey(0.9f),
                 space(width = 2.2f),
