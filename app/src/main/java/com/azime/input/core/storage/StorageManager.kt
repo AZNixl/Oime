@@ -14,6 +14,7 @@ object StorageManager {
     private const val MODELS_DIR = "models"
     private const val SOUNDS_DIR = "sounds"
     private const val BACKUP_DIR = "backup"
+    private const val HINT_COORD_FILE = "hint_offsets.txt"
 
     lateinit var externalRootDir: File
         private set
@@ -31,6 +32,10 @@ object StorageManager {
     /** 轮19.55：备份目录（设置备份 JSON 写到这里）。 */
     lateinit var backupDir: File
         private set
+
+    /** 轮19.56：键面提示坐标文件（外置可改，改了直接生效）。 */
+    lateinit var hintCoordFile: File
+        private set
     lateinit var internalDataDir: File
         private set
 
@@ -47,6 +52,7 @@ object StorageManager {
         modelsDir = File(externalRootDir, MODELS_DIR)
         soundsDir = File(externalRootDir, SOUNDS_DIR)
         backupDir = File(externalRootDir, BACKUP_DIR)
+        hintCoordFile = File(externalRootDir, HINT_COORD_FILE)
 
         // Create all directories
         externalRootDir.mkdirs()
@@ -60,11 +66,50 @@ object StorageManager {
         // 轮19.46：把内置默认音效释放到外置目录（不覆盖用户自己的文件）
         copyDefaultSounds(context)
 
+        // 轮19.56：提示坐标文件（不存在才写默认模板；改它即时生效，不用重装）
+        writeDefaultHintCoordsIfMissing()
+
         // Internal data directory
         internalDataDir = context.filesDir
 
         // 轮19.43：**去除「预设置（preset_keys）」功能** —— 不再生成预设模板文件。
         // 动作一律走「内置功能键值」（见键盘编辑器里的清单），不再依赖 Lua 预设表。
+    }
+
+    /**
+     * 轮19.56：写「键面提示坐标」默认模板（仅当文件不存在）。
+     *
+     * 坐标语义（正值一律朝**键面内侧**）：
+     * - up/down：y = 距上/下边缘往里
+     * - left/right：x = 距左/右边缘往里；y 正数向下
+     * - press（长按符号）：x = 距右边往里；y = 距顶边往里
+     */
+    private fun writeDefaultHintCoordsIfMissing() {
+        runCatching {
+            if (hintCoordFile.exists()) return@runCatching
+            hintCoordFile.writeText(
+                """
+                # ○输入法 · 键面提示位置坐标（单位 dp，可随时修改；改完回到键盘即生效）
+                # 正值一律朝键面内侧：
+                #   up/down      y = 距上/下边缘往里
+                #   left/right   x = 距左/右边缘往里；y 正数向下
+                #   press(长按)   x = 距右边往里；y = 距顶边往里
+                # 想更靠边就减小，想更居中就增大；负值会把提示顶到键面外。
+
+                up_x = 0
+                up_y = 6
+                down_x = 0
+                down_y = 6
+                left_x = 3
+                left_y = 0
+                right_x = 3
+                right_y = 0
+                press_x = 3
+                press_y = 3
+                """.trimIndent(),
+                Charsets.UTF_8,
+            )
+        }
     }
 
     /**

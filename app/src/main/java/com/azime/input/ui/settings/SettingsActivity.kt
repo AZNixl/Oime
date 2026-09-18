@@ -286,7 +286,8 @@ fun SettingsScreen(
         "float" to "悬浮窗",
         "oring" to "O 圆环",
         "about" to "关于",
-    )
+                "candkeys" to "自定义候选键",
+        )
     // 反馈轮10：设置子级页支持系统返回键（原来滑动/返回直接回桌面）
     BackHandler(enabled = subPage != "main" || showManage) {
         if (showManage) showManage = false else subPage = "main"
@@ -520,6 +521,11 @@ fun SettingsScreen(
             }
             return@Scaffold
         }
+        // ── 二级页：自定义候选键（轮19.56）──
+        if (subPage == "candkeys") {
+            CandidateKeyEditorPage(padding) { subPage = "keyboard" }
+            return@Scaffold
+        }
         // ── 二级页：键盘 ──
         if (subPage == "keyboard") {
             LazyColumn(
@@ -552,7 +558,7 @@ fun SettingsScreen(
                     Card(colors = grayCardColors(), shape = settingsCardShape()) { Column { KeyAppearanceSettings() } }
                 }
                 item {
-                    Card(colors = grayCardColors(), shape = settingsCardShape()) { Column { CandidateKeySettings() } }
+                    Card(colors = grayCardColors(), shape = settingsCardShape()) { Column { CandidateKeySettings(onOpenCustom = { subPage = "candkeys" }) } }
                 }
                 item {
                     Card(colors = grayCardColors(), shape = settingsCardShape()) { Column { VibrationSettings() } }
@@ -1576,7 +1582,14 @@ private fun KeyAppearanceSettings() {
                 android.widget.Toast.makeText(context, "已恢复键盘默认外观", android.widget.Toast.LENGTH_SHORT).show()
             },
             modifier = Modifier.fillMaxWidth(),
-        ) { Text("恢复默认（键高 / 工具栏高度 / 字号 / 圆角 / 行距 / 列距 / 边距）") }
+        ) { Text("恢复默认") }
+        Text(
+            "恢复内容：键高、工具栏高度、键盘/工具栏字号、按键圆角、行距、列距、键盘左右边距、" +
+                "四向与长按提示位置。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 4.dp),
+        )
         Text(
             "下次键盘弹出即生效（左右边距用于曲面屏，把键盘两侧往里收）。",
             style = MaterialTheme.typography.bodySmall,
@@ -2634,13 +2647,13 @@ private fun AppPickerDialog(
 
 
 /**
- * 候选快捷键（轮19.55）：把「第 2 / 第 3 个候选」绑到某个键。
+ * 候选快捷键（轮19.56）：第二 / 第三候选用**下拉栏**选择。
  *
- * 可选：无（默认，保持现状）/ 句号 / 逗号 / Shift / 符号键 / 自定义 code。
- * 命中且当前候选数足够时才生效，否则该键按原行为走。
+ * 选项：无（= 从按键上解除，打字时不触发）/ 句号 / 逗号 / Shift / 符号键 / 自定义（值）*
+ * 默认：第二候选 = 句号，第三候选 = 符号键（与现状一致）。
  */
 @Composable
-private fun CandidateKeySettings() {
+private fun CandidateKeySettings(onOpenCustom: () -> Unit) {
     val km = com.azime.input.core.keyboard.KeyboardManager
     var k2 by remember { mutableStateOf(km.candidateKey2()) }
     var k3 by remember { mutableStateOf(km.candidateKey3()) }
@@ -2649,39 +2662,119 @@ private fun CandidateKeySettings() {
         Spacer(Modifier.height(2.dp))
         Text(
             "把「第 2 / 第 3 个候选」绑到某个键：候选数足够时按下即上屏该候选，否则按键按原行为走。" +
-                "默认「无」= 保持现状。自定义可填任意 code（如 . 、, 、; 、shift 、symbols）。",
+                "「无」= 解除绑定，打字时不再触发。",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.height(6.dp))
 
         @Composable
-        fun KeyRow(title: String, value: String, onChange: (String) -> Unit) {
-            Text(title, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 6.dp))
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                listOf("无" to "", "句号" to ".", "逗号" to ",", "Shift" to "shift", "符号" to "symbols")
-                    .forEach { (label, code) ->
-                        val on = value == code
-                        OutlinedButton(
-                            onClick = { onChange(code) },
-                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 2.dp),
-                        ) { Text(label, fontSize = 12.sp, fontWeight = if (on) FontWeight.Bold else FontWeight.Normal) }
-                    }
-            }
-            OutlinedTextField(
-                value = value,
-                onValueChange = { onChange(it) },
-                label = { Text("code（留空 = 无）") },
-                singleLine = true,
-                textStyle = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+        fun Picker(title: String, value: String, onChange: (String) -> Unit) {
+            val preset = listOf(
+                "" to "无", "." to "句号", "," to "逗号",
+                "shift" to "Shift", "symbols" to "符号键",
             )
+            val known = preset.any { it.first == value }
+            val label = when {
+                value.isEmpty() -> "无"
+                known -> preset.first { it.first == value }.second
+                else -> "自定义（$value）"
+            }
+            var open by remember { mutableStateOf(false) }
+            Text(title, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 6.dp))
+            Box(Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surfaceVariant, androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
+                        .clickable { open = true }
+                        .padding(horizontal = 12.dp, vertical = 11.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                    Text("▾", style = MaterialTheme.typography.bodyMedium)
+                }
+                DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+                    preset.forEach { (code, name) ->
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    name + if (code == value) "   ✓" else "",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                            },
+                            onClick = { onChange(code); open = false },
+                        )
+                    }
+                    if (!known && value.isNotEmpty()) {
+                        DropdownMenuItem(
+                            text = { Text("自定义（$value）   ✓", style = MaterialTheme.typography.bodyMedium) },
+                            onClick = { open = false },
+                        )
+                    }
+                }
+            }
         }
 
-        KeyRow("第二候选", k2) { k2 = it; km.setCandidateKey2(it) }
-        KeyRow("第三候选", k3) { k3 = it; km.setCandidateKey3(it) }
+        Picker("第二候选", k2) { k2 = it; km.setCandidateKey2(it) }
+        Picker("第三候选", k3) { k3 = it; km.setCandidateKey3(it) }
+
+        Spacer(Modifier.height(6.dp))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onOpenCustom() }
+                .padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("自定义候选键", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            Text("▸", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/** 自定义候选键子页面（轮19.56）：分别填第二/第三候选的触发 code，保存后回到上一级下拉栏选择。 */
+@Composable
+private fun CandidateKeyEditorPage(padding: androidx.compose.foundation.layout.PaddingValues, onDone: () -> Unit) {
+    val km = com.azime.input.core.keyboard.KeyboardManager
+    var k2 by remember { mutableStateOf(km.candidateKey2()) }
+    var k3 by remember { mutableStateOf(km.candidateKey3()) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(padding)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+    ) {
+        Text("自定义候选键", style = MaterialTheme.typography.titleSmall)
+        Spacer(Modifier.height(4.dp))
+        Text(
+            "填按键的 code：单个字符直接写（如 . , ; /），功能键写 shift / symbols。保存后在上一级" +
+                "「候选快捷键」下拉栏里会多出「自定义」一项。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(10.dp))
+        OutlinedTextField(
+            value = k2, onValueChange = { k2 = it },
+            label = { Text("第二候选键 code") }, singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(8.dp))
+        OutlinedTextField(
+            value = k3, onValueChange = { k3 = it },
+            label = { Text("第三候选键 code") }, singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(12.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = { k2 = ""; k3 = "" }) { Text("清空（都设为无）") }
+            Button(onClick = {
+                km.setCandidateKey2(k2)
+                km.setCandidateKey3(k3)
+                android.widget.Toast.makeText(context, "已保存", android.widget.Toast.LENGTH_SHORT).show()
+                onDone()
+            }) { Text("保存") }
+        }
     }
 }

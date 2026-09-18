@@ -3193,6 +3193,8 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
         val hintText = key.hint
             ?: key.popup.firstOrNull { it.isNotBlank() }?.removeSuffix("{Left}")?.takeIf { it.length <= 4 }
             ?: firstSymbolOf(key.longClick)
+            ?: key.longClick?.takeIf { it.isNotBlank() }?.let { actionDisplayName(it) }
+                ?.takeIf { it != key.longClick }
             ?: com.azime.input.data.keyboard.longPressHint(key.code, state.asciiMode)
         if (swipePreview == null && KeyboardManager.hintLong() && hintText != null && key.type == KeyType.CHARACTER) {
             Text(
@@ -3203,7 +3205,7 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .offset(
-                        x = KeyboardManager.hintOffPressX().dp,
+                        x = -KeyboardManager.hintOffPressX().dp,
                         y = KeyboardManager.hintOffPressY().dp,
                     ),
             )
@@ -3215,8 +3217,9 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
             val dirHintFont = 8.sp
             // 轮19.11b：四向提示位置 = 字面方向（上→正上、下→正下、左→正左、右→正右），
             // 长按仍固定右上角（见上方 hintText 的 TopEnd）。
-            // 轮19.55：偏移是**字面屏幕增量**（+x 向右、+y 向下），基准 = 该方向的边缘 / 右上角。
-            // 默认值（用户实测给定）：上(0,-6) 下(0,-6) 左(3,0) 右(3,0) 长按(3,-3)
+            // 轮19.56：偏移语义 = **从该侧边缘往里的距离**（正值一律朝键面内侧）：
+            //   上/下 = 距上/下边缘往里；左/右 = 距左/右边缘往里（Y 正数向下）；
+            //   长按 = 距右边往里 / 距顶边往里。默认值：上6 下6 左3 右3 长按(3,3)
             val upX = KeyboardManager.hintOffUpX().dp
             val upY = KeyboardManager.hintOffUpY().dp
             val downX = KeyboardManager.hintOffDownX().dp
@@ -3234,7 +3237,7 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
             key.swipeDown?.let {
                 if (KeyboardManager.hintDown()) Text(
                     actionPreview(it), fontSize = dirHintFont, color = c.subText, maxLines = 1,
-                    modifier = Modifier.align(Alignment.BottomCenter).offset(x = downX, y = downY),
+                    modifier = Modifier.align(Alignment.BottomCenter).offset(x = downX, y = -downY),
                 )
             }
             key.swipeLeft?.let {
@@ -3246,7 +3249,7 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
             key.swipeRight?.let {
                 if (KeyboardManager.hintRight()) Text(
                     actionPreview(it), fontSize = dirHintFont, color = c.subText, maxLines = 1,
-                    modifier = Modifier.align(Alignment.CenterEnd).offset(x = rightX, y = rightY),
+                    modifier = Modifier.align(Alignment.CenterEnd).offset(x = -rightX, y = rightY),
                 )
             }
         }
@@ -3270,7 +3273,8 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
                                 val si = longPressSymbols.indexOf(symbol)
                                 val isSel = longPressSymbols.size > 1 && si == longSelIdx
                                 Text(
-                                    text = symbol.removeSuffix("{Left}"),
+                                    // 轮19.56：内置动作显示中文名（Time → 时间）
+                                    text = actionDisplayName(symbol.removeSuffix("{Left}")),
                                     fontSize = 16.sp,
                                     fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
                                     // 轮19.52：选中项底色是 accentKeyBg ⇒ 文字必须用 on 色，
@@ -3334,6 +3338,27 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
 }
 
 /** 滑动方向上的键面预览文本。 */
+/** 轮19.56：内置动作的**中文显示名**（键面提示与长按气泡都用它，避免"Time 就显示 Time"）。 */
+fun actionDisplayName(action: String): String = when (action.trim().lowercase()) {
+    "date" -> "日期"
+    "time" -> "时间"
+    "chinesedate" -> "农历"
+    "repeatcommit" -> "重复"
+    "deploy" -> "部署"
+    "switch_ime" -> "切换输入法"
+    "clipboard" -> "剪贴板"
+    "menu" -> "○菜单"
+    "select_all" -> "全选"
+    "cut" -> "剪切"
+    "copy" -> "复制"
+    "paste" -> "粘贴"
+    "undo" -> "撤回"
+    "delete_all" -> "全删"
+    "newline" -> "换行"
+    "escape", "esc" -> "清空"
+    else -> action
+}
+
 private fun actionPreview(action: String): String = when (action) {
     KeyActions.BS_UP, "delete_all" -> "全删"
     KeyActions.BS_DOWN, "undo" -> "撤回"
@@ -3342,10 +3367,16 @@ private fun actionPreview(action: String): String = when (action) {
     "toggle_ascii" -> "中/EN"
     "caps_lock" -> "⇪"
     else -> {
-        val resolved = ActionResolver.resolveAction(action)
-        when (resolved) {
-            is com.azime.input.core.action.ResolvedAction.Commit -> resolved.text
-            else -> action
+        // 内置动作（date/time/…）显示中文名；字面文本原样显示
+        val named = actionDisplayName(action)
+        if (named != action) {
+            named
+        } else {
+            val resolved = ActionResolver.resolveAction(action)
+            when (resolved) {
+                is com.azime.input.core.action.ResolvedAction.Commit -> resolved.text
+                else -> action
+            }
         }
     }
 }

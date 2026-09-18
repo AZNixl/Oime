@@ -632,9 +632,47 @@ object KeyboardManager {
     //   左/右：X = 从同侧边缘往里；Y 正数向下
     //   长按符号：X = 从右边往里；Y = 从顶边往里
 
-    private fun hintOffX(key: String, def: Int): Int = prefs.getInt("hint_off_$key", def).coerceIn(0, 80)
+    // 轮19.56：坐标改为**读外置文件** Documents/Oime/hint_offsets.txt
+    // （用户自己改文件即可调位，不必重装）。文件不存在/某项缺失时用 def 兜底。
+    // 用 (exists, lastModified) 缓存 + 最多每 2 秒 stat 一次，避免热路径反复触碰文件系统。
 
-    private fun hintOffY(key: String, def: Int): Int = prefs.getInt("hint_off_$key", def).coerceIn(-80, 80)
+    @Volatile private var hintCoordCache: Map<String, Int> = emptyMap()
+    @Volatile private var hintCoordStamp: Long = -1L
+    @Volatile private var hintCoordCheckedAt: Long = 0L
+
+    private fun hintCoordMap(): Map<String, Int> {
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now - hintCoordCheckedAt < 2_000L) return hintCoordCache
+        hintCoordCheckedAt = now
+        runCatching {
+            val f = com.azime.input.core.storage.StorageManager.hintCoordFile
+            val stamp = if (f.exists()) f.lastModified() else -1L
+            if (stamp == hintCoordStamp) return@runCatching
+            hintCoordStamp = stamp
+            if (stamp < 0L) {
+                hintCoordCache = emptyMap()
+                return@runCatching
+            }
+            val map = HashMap<String, Int>()
+            f.readLines(Charsets.UTF_8).forEach { raw ->
+                val line = raw.substringBefore('#').trim()
+                if (line.isEmpty()) return@forEach
+                val parts = line.split('=', limit = 2)
+                if (parts.size != 2) return@forEach
+                val key = parts[0].trim().lowercase()
+                val v = parts[1].trim().toIntOrNull() ?: return@forEach
+                map[key] = v
+            }
+            hintCoordCache = map
+        }
+        return hintCoordCache
+    }
+
+    private fun hintOff(key: String, def: Int): Int = hintCoordMap()[key] ?: def
+
+    private fun hintOffX(key: String, def: Int): Int = hintOff(key, def).coerceIn(0, 80)
+
+    private fun hintOffY(key: String, def: Int): Int = hintOff(key, def).coerceIn(-80, 80)
 
     private fun setHintOffX(key: String, v: Int) {
         synchronized(lock) { prefs.edit().putInt("hint_off_$key", v.coerceIn(0, 80)).apply() }
@@ -644,28 +682,28 @@ object KeyboardManager {
         synchronized(lock) { prefs.edit().putInt("hint_off_$key", v.coerceIn(-80, 80)).apply() }
     }
 
-    fun hintOffUpX(): Int = prefs.getInt("hint_off_up_x", 0).coerceIn(-80, 80)
-    fun hintOffUpY(): Int = hintOffY("up_y", -6)
+    fun hintOffUpX(): Int = hintOffX("up_x", 0).coerceIn(-80, 80)
+    fun hintOffUpY(): Int = hintOffY("up_y", 6)
     fun setHintOffUpX(v: Int) = synchronized(lock) { prefs.edit().putInt("hint_off_up_x", v.coerceIn(-80, 80)).apply() }
     fun setHintOffUpY(v: Int) = setHintOffY("up_y", v)
 
-    fun hintOffDownX(): Int = prefs.getInt("hint_off_down_x", 0).coerceIn(-80, 80)
-    fun hintOffDownY(): Int = hintOffY("down_y", -6)
+    fun hintOffDownX(): Int = hintOffX("down_x", 0).coerceIn(-80, 80)
+    fun hintOffDownY(): Int = hintOffY("down_y", 6)
     fun setHintOffDownX(v: Int) = synchronized(lock) { prefs.edit().putInt("hint_off_down_x", v.coerceIn(-80, 80)).apply() }
     fun setHintOffDownY(v: Int) = setHintOffY("down_y", v)
 
     fun hintOffLeftX(): Int = hintOffX("left_x", 3)
-    fun hintOffLeftY(): Int = prefs.getInt("hint_off_left_y", 0).coerceIn(-80, 80)
+    fun hintOffLeftY(): Int = hintOffY("left_y", 0).coerceIn(-80, 80)
     fun setHintOffLeftX(v: Int) = setHintOffX("left_x", v)
     fun setHintOffLeftY(v: Int) = synchronized(lock) { prefs.edit().putInt("hint_off_left_y", v.coerceIn(-80, 80)).apply() }
 
     fun hintOffRightX(): Int = hintOffX("right_x", 3)
-    fun hintOffRightY(): Int = prefs.getInt("hint_off_right_y", 0).coerceIn(-80, 80)
+    fun hintOffRightY(): Int = hintOffY("right_y", 0).coerceIn(-80, 80)
     fun setHintOffRightX(v: Int) = setHintOffX("right_x", v)
     fun setHintOffRightY(v: Int) = synchronized(lock) { prefs.edit().putInt("hint_off_right_y", v.coerceIn(-80, 80)).apply() }
 
     fun hintOffPressX(): Int = hintOffX("press_x", 3)
-    fun hintOffPressY(): Int = hintOffY("press_y", -3)
+    fun hintOffPressY(): Int = hintOffY("press_y", 3)
     fun setHintOffPressX(v: Int) = setHintOffX("press_x", v)
     fun setHintOffPressY(v: Int) = setHintOffY("press_y", v)
 
@@ -676,13 +714,13 @@ object KeyboardManager {
     private const val PREF_CAND_KEY2 = "candidate_key_2"
     private const val PREF_CAND_KEY3 = "candidate_key_3"
 
-    fun candidateKey2(): String = prefs.getString(PREF_CAND_KEY2, "") ?: ""
+    fun candidateKey2(): String = prefs.getString(PREF_CAND_KEY2, ".") ?: "."
 
     fun setCandidateKey2(v: String) {
         synchronized(lock) { prefs.edit().putString(PREF_CAND_KEY2, v.trim()).apply() }
     }
 
-    fun candidateKey3(): String = prefs.getString(PREF_CAND_KEY3, "") ?: ""
+    fun candidateKey3(): String = prefs.getString(PREF_CAND_KEY3, "symbols") ?: "symbols"
 
     fun setCandidateKey3(v: String) {
         synchronized(lock) { prefs.edit().putString(PREF_CAND_KEY3, v.trim()).apply() }
