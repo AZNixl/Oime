@@ -2762,10 +2762,16 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
     val composingNow = state.preedit.isNotEmpty() || state.candidates.isNotEmpty()
     val keyCornerDp = KeyboardManager.keyCornerDp().dp
     if (composingNow && state.page == "main") {
+        // 轮19.62（用户指路 + 仓库记录定位）：**这里才是"组合中选候选键"的唯一实现点**——
+        // 原来把 符号键/句号键/空格键 写死成候选 3/2/1（DEVLOG 轮8），所以设置里怎么改都"没生效" ✗
+        // 现在改成**读「候选快捷键」设置**：第二候选键 ← candidateKey2()、第三候选键 ← candidateKey3()；
+        // 「无」= 不映射（该键恢复原行为）。空格键仍固定为第一候选。
+        val k2 = KeyboardManager.candidateKey2()
+        val k3 = KeyboardManager.candidateKey3()
         val selectIndex = when {
-            key.type == KeyType.FUNCTION && key.code == "symbols" -> 2
-            key.type == KeyType.CHARACTER && key.code == "." -> 1
             key.type == KeyType.SPACE && key.code == "space" -> 0
+            k2.isNotEmpty() && key.code == k2 -> 1
+            k3.isNotEmpty() && key.code == k3 -> 2
             else -> -1
         }
         if (selectIndex >= 0) {
@@ -3116,18 +3122,8 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
             interactionSource = clickSource,
             indication = null,
         ) {
-            // 轮19.60：**候选快捷键在 UI 层先判一次** —— 有布局里 . , 是 FUNCTION 键、
-            // 甚至完全不经过 Service（埋点证实过），所以这里必须也拦一道。
-            val candN = KeyboardManager.candidateShortcutIndex(key.code)
-            com.azime.input.core.diag.Diag.log(
-                "KeyUI", "code=${key.code} type=${key.type} candN=$candN cands=${state.candidates.size}",
-            )
             HapticsManager.press(); com.azime.input.core.sound.SoundManager.playPress()
-            if (candN > 0 && state.candidates.size >= candN) {
-                onAction(KeyAction.Candidate(candN - 1))
-            } else {
-                onKeyAction(key, onAction)
-            }
+            onKeyAction(key, onAction)
             HapticsManager.release()
         }
     }

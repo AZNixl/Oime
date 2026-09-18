@@ -103,11 +103,6 @@ class AZimeService : InputMethodService() {
     }
 
     override fun onCreate() {
-        // 轮19.61：**启动自愈** —— 把「候选快捷键」写进 RIME 配置（资产同步可能覆盖，这里每次补回），
-        // 引擎随后初始化/部署时即按最新配置生效。
-        runCatching {
-            com.azime.input.core.rime.RimeKeyBinder.applyCandidateBindings(applicationContext)
-        }
         super.onCreate()
         lifecycleOwner.onCreate()
         // 沉浸式圆角：IME 窗口透明，键盘顶部圆角下透出应用内容；
@@ -686,25 +681,9 @@ class AZimeService : InputMethodService() {
             //   ② **在复制条上左右划动**（DismissClipStrip，见下）
             // 撤掉 19.17 的「退格键消亡」：强制复制的无效内容不该被逼着先上屏才能清掉；
             // 打字/组词依旧不消亡。
-            // 轮19.59：**全量按键埋点**（临时诊断）——记录每个动作的类型与关键字段，
-            // 用来确认标点键（./,）到底走哪条 KeyAction 路径。
-            run {
-                val d = action::class.simpleName
-                val detail = when (action) {
-                    is KeyAction.CharKey -> "c=${action.c}"
-                    is KeyAction.DirectCommit -> "text=${action.text}"
-                    is KeyAction.Resolved -> "value=${action.value}"
-                    is KeyAction.Candidate -> "idx=${action.index}"
-                    is KeyAction.SwitchPage -> "page=${action.page}"
-                    else -> ""
-                }
-                com.azime.input.core.diag.Diag.log("Key", "$d $detail")
-            }
             when (action) {
                 is KeyAction.CharKey -> handleChar(action.c)
                 is KeyAction.DirectCommit -> {
-                    // 轮19.57：多字符 code 也可能是候选快捷键（如九宫格的自定义 code）
-                    if (handleCandidateShortcut(action.text)) return@launch
                     // 中文模式下的单字符先送 Rime（识别反查引导符，如 ` 笔画反查），
                     // 引擎未消费再直出（对齐 xime.az ImeKeyRouter 的符号键盘处理）
                     val text = action.text
@@ -724,11 +703,7 @@ class AZimeService : InputMethodService() {
                     uiState.update { it.copy(shiftOn = false) }
                     refreshState()
                 }
-                KeyAction.Shift -> {
-                    // 轮19.55：Shift 被设为第二/第三候选键时，优先选候选（选到了就不切 Shift）
-                    val picked = handleCandidateShortcut("shift")
-                    if (!picked) uiState.update { it.copy(shiftOn = !it.shiftOn, capsOn = false) }
-                }
+                KeyAction.Shift -> uiState.update { it.copy(shiftOn = !it.shiftOn, capsOn = false) }
                 KeyAction.Backspace -> handleBackspace()
                 KeyAction.Space -> {
                     // 抄 xime.az ImeKeyRouter "space"：以引擎实时组词状态（inputText）
@@ -803,10 +778,6 @@ class AZimeService : InputMethodService() {
 
                 // ── 扩展动作 ──
                 is KeyAction.Resolved -> {
-                    // 轮19.58（由埋点定位）：**自定义布局里的 . / , 等是 FUNCTION 键**，走 Resolved 而不是 CharKey
-                    // ⇒ 之前候选快捷键只挂在 handleChar 上，所以按句号/逗号一次都没进过拦截函数 ✗
-                    // 现在这里也先试一次候选快捷键：命中且候选足够就选候选，否则按原行为（上屏标点）走。
-                    if (handleCandidateShortcut(action.value)) return@launch
                     when (val resolved = ActionResolver.resolveAction(action.value)) {
                         is ResolvedAction.Commit -> {
                             val ic = currentInputConnection
@@ -871,11 +842,7 @@ class AZimeService : InputMethodService() {
                 KeyAction.DeleteSelection -> deleteSelection()
                 KeyAction.CapsLock -> uiState.update { it.copy(capsOn = !it.capsOn, shiftOn = false) }
                 is KeyAction.OpenPage -> uiState.update { it.copy(page = action.page) }
-                is KeyAction.SwitchPage -> {
-                    // 轮19.55：符号键被设为第二/第三候选键时优先选候选（其它页不受影响）
-                    val picked = action.page == "symgrid" && handleCandidateShortcut("symbols")
-                    if (!picked) uiState.update { it.copy(page = action.page) }
-                }
+                is KeyAction.SwitchPage -> uiState.update { it.copy(page = action.page) }
                 is KeyAction.Joystick -> joystickMove(action.dx)
                 is KeyAction.SetJoystickMode -> uiState.update { it.copy(joystickMode = action.mode) }
                 KeyAction.OpenSettings -> {
@@ -1259,32 +1226,8 @@ class AZimeService : InputMethodService() {
      * 轮19.55：第二/第三候选键。命中且候选足够时选中对应候选并返回 true。
      * @param code 触发键的 code（字符本身，或 "shift" / "symbols"）
      */
-    private suspend fun handleCandidateShortcut(code: String): Boolean {
-        if (code.isEmpty()) return false
-        // 轮19.60：判定逻辑抽到 KeyboardManager.candidateShortcutIndex（UI 与 Service 共用）
-        val n = KeyboardManager.candidateShortcutIndex(code)
-        if (n == 0) {
-            com.azime.input.core.diag.Diag.log(
-                "CandKey", "no-match code=$code k2=${KeyboardManager.candidateKey2()} k3=${KeyboardManager.candidateKey3()}",
-            )
-            return false
-        }
-        val cands = uiState.value.candidates.size
-        if (cands < n) {
-            com.azime.input.core.diag.Diag.log("CandKey", "match n=$n but candidates=$cands")
-            return false
-        }
-        val ok = RimeManager.selectCandidate(n - 1)
-        com.azime.input.core.diag.Diag.log("CandKey", "code=$code n=$n cands=$cands select=$ok")
-        if (!ok) return false
-        applyResult(RimeManager.getProcessResult())
-        return true
-    }
-
     private suspend fun handleChar(c: Char) {
         val state = uiState.value
-        // 轮19.55：第二/第三候选键优先（只在中英文均可的普通字符上生效）
-        if (!state.asciiMode && !state.shiftOn && !state.capsOn && handleCandidateShortcut(c.toString())) return
         // emoji / 非字母符号直出
         if (c.code > 0x7F) {
             currentInputConnection?.commitText(c.toString(), 1)

@@ -2725,14 +2725,10 @@ private fun CandidateKeyEditorPage(padding: androidx.compose.foundation.layout.P
             Button(onClick = {
                 km.setCandidateKey2(k2)
                 km.setCandidateKey3(k3)
-                // 轮19.61：**写入 RIME 配置 + 热重载部署**（不再依赖 App 层按键拦截）
-                scope.launch {
-                    android.widget.Toast.makeText(context, "正在应用并重新部署…", android.widget.Toast.LENGTH_SHORT).show()
-                    runCatching { com.azime.input.core.rime.RimeKeyBinder.applyAndDeploy(context) }
-                    android.widget.Toast.makeText(context, "已保存并重载", android.widget.Toast.LENGTH_SHORT).show()
-                    onDone()
-                }
-            }) { Text("保存并重载") }
+                // 轮19.62：直接生效——组合中的候选映射每次渲染都会读设置（无需重载）
+                android.widget.Toast.makeText(context, "已保存（组合中按该键即选候选）", android.widget.Toast.LENGTH_SHORT).show()
+                onDone()
+            }) { Text("保存") }
         }
     }
 }
