@@ -537,12 +537,19 @@ fun AzimeKeyboardScreen(
             } else {
                 // 轮19.17：横屏不再用分体布局，只用同一套布局 + 横屏键高（-25%）
                 val layout = KeyboardManager.layoutFor(state.page) ?: KeyboardManager.mainLayout()
+                // 轮19.52：键盘左右边距（曲面屏可用，默认 0）
+                val sideMargin = KeyboardManager.keyboardSideMarginDp().dp
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         // 轮19.4：底部留白 rowGap → 2dp（用户反馈「与最下沿还有距离」）
                         // 轮19.6：顶部留白 rowGap → 0（工具栏图标在「灰色带 + 首行」整体中才居中，且空白更窄）
-                        .padding(start = colGap, end = colGap, top = 0.dp, bottom = 2.dp),
+                        .padding(
+                            start = colGap + sideMargin,
+                            end = colGap + sideMargin,
+                            top = 0.dp,
+                            bottom = 2.dp,
+                        ),
                     verticalArrangement = Arrangement.spacedBy(rowGap),
                 ) {
                     for (row in layout.rows) {
@@ -3132,8 +3139,15 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
                 // 反馈轮11：四向预览位置可选——键面中央（默认替换键名）或键上方气泡
                 text = if (swipePreviewAbove) label else (swipePreview ?: label),
                 // 反馈轮9：键面字号可调（键盘/工具栏分开设置）
-                fontSize = if (key.type == KeyType.CHARACTER) KeyboardManager.fontSizeKey().sp
-                else (KeyboardManager.fontSizeKey() * 0.7f).sp,
+                // 轮19.52：键面带提示（四向/长按）时主字缩小 15%，避免稍大的提示符号与主字重合
+                fontSize = if (key.type == KeyType.CHARACTER) {
+                    val hasHints = key.swipeUp != null || key.swipeDown != null ||
+                        key.swipeLeft != null || key.swipeRight != null ||
+                        (key.hint ?: com.azime.input.data.keyboard.longPressHint(key.code, state.asciiMode)) != null
+                    (KeyboardManager.fontSizeKey() * (if (hasHints) 0.85f else 1f)).sp
+                } else {
+                    (KeyboardManager.fontSizeKey() * 0.7f).sp
+                },
                 // 轮19.35：字重与字体跟随风格（One UI 半粗 / Nothing OS 等宽）
                 fontWeight = if (c.keyBold) FontWeight.SemiBold else FontWeight.Medium,
                 fontFamily = if (c.monoFont && key.type == KeyType.CHARACTER) FontFamily.Monospace else null,
@@ -3170,42 +3184,44 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
         if (swipePreview == null && KeyboardManager.hintLong() && hintText != null && key.type == KeyType.CHARACTER) {
             Text(
                 text = hintText,
-                fontSize = 9.sp,
+                fontSize = 8.sp,
                 color = c.subText,
+                maxLines = 1,
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .padding(top = 3.dp, end = 5.dp),
+                    .padding(top = 6.dp, end = 7.dp),
             )
         }
         // 轮19.1 修复：四向滑动提示——原实现只控制「滑动过程中的临时预览」，
         // 开关打开后键面不显示任何提示（用户反馈「打开开关不显示」）。
         // 现按设置把该方向的滑动符号常驻渲染在键面对应位置（无滑动动作的键不显示）。
         if (key.type == KeyType.CHARACTER || key.type == KeyType.DELETE) {
-            val dirHintFont = 9.sp
+            val dirHintFont = 8.sp
             // 轮19.11b：四向提示位置 = 字面方向（上→正上、下→正下、左→正左、右→正右），
             // 长按仍固定右上角（见上方 hintText 的 TopEnd）。
+            // 轮19.52：提示边距加大（3/5 → 6/7dp）——原来紧贴键面边缘，稍大的符号就与主字重合
             key.swipeUp?.let {
                 if (KeyboardManager.hintUp()) Text(
-                    actionPreview(it), fontSize = dirHintFont, color = c.subText,
-                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 3.dp),
+                    actionPreview(it), fontSize = dirHintFont, color = c.subText, maxLines = 1,
+                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 6.dp),
                 )
             }
             key.swipeDown?.let {
                 if (KeyboardManager.hintDown()) Text(
-                    actionPreview(it), fontSize = dirHintFont, color = c.subText,
-                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 3.dp),
+                    actionPreview(it), fontSize = dirHintFont, color = c.subText, maxLines = 1,
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 6.dp),
                 )
             }
             key.swipeLeft?.let {
                 if (KeyboardManager.hintLeft()) Text(
-                    actionPreview(it), fontSize = dirHintFont, color = c.subText,
-                    modifier = Modifier.align(Alignment.CenterStart).padding(start = 5.dp),
+                    actionPreview(it), fontSize = dirHintFont, color = c.subText, maxLines = 1,
+                    modifier = Modifier.align(Alignment.CenterStart).padding(start = 7.dp),
                 )
             }
             key.swipeRight?.let {
                 if (KeyboardManager.hintRight()) Text(
-                    actionPreview(it), fontSize = dirHintFont, color = c.subText,
-                    modifier = Modifier.align(Alignment.CenterEnd).padding(end = 5.dp),
+                    actionPreview(it), fontSize = dirHintFont, color = c.subText, maxLines = 1,
+                    modifier = Modifier.align(Alignment.CenterEnd).padding(end = 7.dp),
                 )
             }
         }
@@ -3232,7 +3248,9 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
                                     text = symbol.removeSuffix("{Left}"),
                                     fontSize = 16.sp,
                                     fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
-                                    color = if (isSel) c.accentActive else c.text,
+                                    // 轮19.52：选中项底色是 accentKeyBg ⇒ 文字必须用 on 色，
+                                    // 原来 accentActive（同色）压上去 ⇒ 整块看不出字（用户截图）
+                                    color = if (isSel) c.accentKeyText else c.text,
                                     modifier = Modifier
                                         .background(
                                             if (isSel) c.accentKeyBg else Color.Transparent,

@@ -518,7 +518,16 @@ private fun KeyEditDialog(
     var code by remember { mutableStateOf(key.code) }
     var widthText by remember { mutableStateOf(key.width.toString()) }
     var heightText by remember { mutableStateOf(key.height.toString()) }
-    var longClick by remember { mutableStateOf(key.longClick ?: "") }
+    // 轮19.52：**把默认长按动作写进输入框** —— 原来只有自定义过的键才显示（用户反馈"一部分写一部分没得"）。
+    // 默认值取内置长按符号表（可与长按气泡共存：空格分隔多个即气泡）。
+    var longClick by remember {
+        mutableStateOf(
+            key.longClick?.takeIf { it.isNotBlank() }
+                ?: com.azime.input.data.keyboard
+                    .longPressSymbolsFor(key.code, ascii = false)
+                    .joinToString(" "),
+        )
+    }
     var swipeUp by remember { mutableStateOf(key.swipeUp ?: "") }
     var swipeDown by remember { mutableStateOf(key.swipeDown ?: "") }
     var swipeLeft by remember { mutableStateOf(key.swipeLeft ?: "") }
@@ -587,11 +596,40 @@ private fun KeyEditDialog(
                 }
 
 
-                Text(
-                    BUILTIN_ACTIONS_HELP,
-                    fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                // 轮19.52：说明文字太长占空间 ⇒ 改为一行提示 + 点「动作说明」看完整清单
+                var showActionHelp by remember { mutableStateOf(false) }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "动作值可用内置功能键值，或直接写文本。",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = { showActionHelp = true }) { Text("动作说明", fontSize = 12.sp) }
+                }
+                if (showActionHelp) {
+                    AlertDialog(
+                        onDismissRequest = { showActionHelp = false },
+                        title = { Text("动作说明") },
+                        text = {
+                            androidx.compose.foundation.rememberScrollState().let { _ ->
+                                Column(
+                                    modifier = Modifier
+                                        .verticalScroll(androidx.compose.foundation.rememberScrollState()),
+                                ) {
+                                    Text(
+                                        BUILTIN_ACTIONS_HELP,
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        },
+                        confirmButton = {
+                            TextButton(onClick = { showActionHelp = false }) { Text("知道了") }
+                        },
+                    )
+                }
             }
         },
         confirmButton = {
@@ -638,15 +676,24 @@ private fun KeyEditDialog(
  * 已去除「预设置（preset_keys）」功能——动作只认这里的键值或字面文本。
  */
 private val BUILTIN_ACTIONS_HELP = """
-动作可用（内置功能键值，大小写/下划线/连字符均容错）：
+动作可用（内置功能键值，大小写 / 下划线 / 连字符均容错）：
 
 【编辑】select_all 全选 · cut 剪切 · copy 复制 · paste 粘贴 · undo 撤销 · delete_all 清空
-【上屏】newline(=return/enter) 换行 · space 空格 · tab 制表符 · backspace 退格 · delete 删除
-【中英】toggle_ascii(=ascii_mode) 切换中英 · caps_lock 大写锁定 · shift 临时大写
+【上屏】newline（=return/enter）换行 · space 空格 · tab 制表符 · backspace 退格 · delete 删除
+【时间】Date 日期（2026-09-18）· Time 时间（08:30）· ChineseDate 农历（二〇二六年八月廿八）
+        RepeatCommit 重复上一次上屏的内容
+【中英】toggle_ascii（=ascii_mode）切换中英 · caps_lock 大写锁定 · shift 临时大写
 【光标】left / right / up / down / home / end
-【翻页】prior(=page_up) 上一页 · next(=page_down) 下一页
-【组合】esc(=escape) 清空输入码 · clear 同上
+【翻页】prior（=page_up）上一页 · next（=page_down）下一页
+【组合】esc（=escape）清空输入码 · clear 同上
 【页面】page:main 主键盘 · page:symbols 符号 · page:numpad 数字 · page:emoji 表情
 【内置】deploy 部署 · switch_ime 切换输入法 · clipboard 剪贴板 · menu ○ 菜单
-其它写法按**字面文本**上屏（支持 {Left} / {Right} 光标后缀）
+
+—— 成对符号（上屏后光标停在中间）——
+写为  （）{Left}   或   (){Left}
+· {Left} 表示「上屏后光标左移一位」，{Right} 为右移一位
+· 例：K 键长按默认就是成对括号，上屏后光标自动落在括号中间
+· 多个符号用空格分隔 ⇒ 长按弹出气泡（气泡内左右滑动选择）
+
+其它写法按**字面文本**上屏。
 """.trimIndent()

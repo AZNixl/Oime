@@ -56,6 +56,8 @@ object ActionResolver {
         "choose_page", "toggle_symbols",
         // Oime 内置
         "deploy", "switch_ime", "clipboard", "menu",
+        // 轮19.52 新增：时间与重复（大小写不敏感，Date/ChineseDate/RepeatCommit 均可）
+        "date", "time", "chinesedate", "repeatcommit",
     )
 
     private fun resolveBuiltin(v: String): ResolvedAction? =

@@ -465,6 +465,9 @@ class AZimeService : InputMethodService() {
     /** 最近一次从剪贴板条/面板上屏的文本：再次读到同文本时不再显示（xime 式消亡）。 */
     @Volatile private var lastCommittedClip: String? = null
 
+    /** 轮19.52：最近一次上屏文本（RepeatCommit 内置动作复用）。 */
+    @Volatile private var lastCommittedText: String? = null
+
     /** 导航条增高区颜色 = 键盘背景色（深浅色感知，与 buildKeyboardColors 的 bg 保持一致）。 */
     /**
      * 轮19.27：立即重刷 IME 窗口的导航栏（系统底部条）颜色。
@@ -1032,6 +1035,32 @@ class AZimeService : InputMethodService() {
             "clipboard" -> onKeyAction(KeyAction.ToggleClipboardPanel)
             "menu" -> onKeyAction(KeyAction.ToggleMenuPanel)
             "deploy" -> onKeyAction(KeyAction.Deploy)
+            // 轮19.52 新增内置动作
+            "date" -> {
+                val s = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
+                    .format(java.util.Date())
+                ic?.commitText(s, 1); pushUndo(s)
+            }
+            "time" -> {
+                val s = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+                    .format(java.util.Date())
+                ic?.commitText(s, 1); pushUndo(s)
+            }
+            "chinesedate" -> {
+                val now = java.util.Calendar.getInstance()
+                val s = com.azime.input.utils.LunarCalendar.toChineseString(
+                    now.get(java.util.Calendar.YEAR),
+                    now.get(java.util.Calendar.MONTH) + 1,
+                    now.get(java.util.Calendar.DAY_OF_MONTH),
+                )
+                if (s.isNotEmpty()) { ic?.commitText(s, 1); pushUndo(s) }
+            }
+            "repeatcommit" -> {
+                // 重复上一次上屏文本（含空格/换行等，由 pushUndo 记录）
+                lastCommittedText?.takeIf { it.isNotEmpty() }?.let {
+                    ic?.commitText(it, 1)
+                }
+            }
             "toggle_ascii" -> onKeyAction(KeyAction.ToggleAscii)
             "newline" -> {
                 ic?.commitText("\n", 1)
@@ -1090,6 +1119,7 @@ class AZimeService : InputMethodService() {
     /** 记录一次「上屏」操作（撤回时删除该文本）。 */
     private fun pushUndo(text: String) {
         if (text.isEmpty()) return
+        lastCommittedText = text   // 轮19.52：记住最近一次上屏，供 RepeatCommit 复用
         undoStack.addLast(UndoOp(text, isDelete = false))
         while (undoStack.size > 50) undoStack.removeFirst()
         redoStack.clear() // 新操作使 redo 失效（标准撤销语义）

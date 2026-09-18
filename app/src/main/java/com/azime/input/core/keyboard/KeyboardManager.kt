@@ -586,6 +586,20 @@ object KeyboardManager {
         synchronized(lock) { prefs.edit().putInt(PREF_SWIPE_THRESHOLD_DP, v.coerceIn(10, 80)).apply() }
     }
 
+    // ── 键盘左右边距（轮19.52）──
+
+    private const val PREF_SIDE_MARGIN = "keyboard_side_margin_dp"
+
+    /**
+     * 键盘左右两侧与屏幕边缘的距离（dp，默认 0）。
+     * 曲面屏/圆角屏可用它把键盘往中间收，避免边缘按键落在曲面上。
+     */
+    fun keyboardSideMarginDp(): Int = prefs.getInt(PREF_SIDE_MARGIN, 0).coerceIn(0, 48)
+
+    fun setKeyboardSideMarginDp(v: Int) {
+        synchronized(lock) { prefs.edit().putInt(PREF_SIDE_MARGIN, v.coerceIn(0, 48)).apply() }
+    }
+
     // ── 手势提示位置（反馈轮11：四向预览与长按符号位置可调） ──
 
     private const val PREF_BUBBLE_X_DP = "bubble_x_dp"
