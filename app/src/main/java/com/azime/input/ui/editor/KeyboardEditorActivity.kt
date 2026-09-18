@@ -80,12 +80,18 @@ fun KeyboardEditorScreen(onBack: () -> Unit) {
             onDelete = { name -> pendingDelete = name },
         )
     } else {
+        // 轮19.54：lambda 里拿不到 Activity 上下文，先在 composable 作用域取好
+        val ctx = androidx.compose.ui.platform.LocalContext.current
         GridEditorScreen(
             initial = editingLayout!!,
             onDone = { saved ->
                 if (saved != null) {
                     KeyboardManager.saveLayout(saved)
                     KeyboardManager.setActiveMain(saved.name)
+                    // 轮19.54：保存即热重载（键盘会立刻读取新布局，无需重开输入法）
+                    android.widget.Toast.makeText(
+                        ctx, "已保存并热重载", android.widget.Toast.LENGTH_SHORT,
+                    ).show()
                 }
                 editingLayout = null
                 version++

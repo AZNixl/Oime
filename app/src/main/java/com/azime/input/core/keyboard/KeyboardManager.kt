@@ -586,37 +586,52 @@ object KeyboardManager {
         synchronized(lock) { prefs.edit().putInt(PREF_SWIPE_THRESHOLD_DP, v.coerceIn(10, 80)).apply() }
     }
 
+    // ── 布局热重载版本号（轮19.54）──
+    // 键盘编辑器「保存」后，键盘界面必须**重新读取布局**才会生效（原来只更新内存/文件，
+    // UI 没有任何东西触发重读 ⇒ 用户看到"保存后新符号没用上"）。
+    // 这里用 Compose 可观察的状态：编辑器保存 → ++ → 正在显示的键盘自动重组 ✓
+
+    private val layoutRevHolder = androidx.compose.runtime.mutableIntStateOf(0)
+
+    /** 当前布局版本号（Compose 可观察）——键盘界面读它会自动重组。 */
+    fun layoutRev(): Int = layoutRevHolder.intValue
+
+    /** 布局发生变化（保存/删除/切主布局/导入）时调用，触发键盘热重载。 */
+    private fun bumpLayoutRev() {
+        layoutRevHolder.intValue = layoutRevHolder.intValue + 1
+    }
+
     // ── 键面提示位置微调（轮19.53）──
     // 每个方向一对 X/Y 偏移（dp）。约定：
     //   上/下：Y = 从该侧边缘往里；X 正数向右
     //   左/右：X = 从同侧边缘往里；Y 正数向下
     //   长按符号：X = 从右边往里；Y = 从顶边往里
 
-    private fun hintOff(key: String, def: Int): Int = prefs.getInt("hint_off_$key", def).coerceIn(0, 60)
+    private fun hintOff(key: String, def: Int): Int = prefs.getInt("hint_off_$key", def).coerceIn(-80, 80)
 
     private fun setHintOff(key: String, v: Int) {
-        synchronized(lock) { prefs.edit().putInt("hint_off_$key", v.coerceIn(0, 60)).apply() }
+        synchronized(lock) { prefs.edit().putInt("hint_off_$key", v.coerceIn(-80, 80)).apply() }
     }
 
-    fun hintOffUpX(): Int = prefs.getInt("hint_off_up_x", 0).coerceIn(-40, 40)
+    fun hintOffUpX(): Int = prefs.getInt("hint_off_up_x", 0).coerceIn(-80, 80)
     fun hintOffUpY(): Int = hintOff("up_y", 5)
-    fun setHintOffUpX(v: Int) = synchronized(lock) { prefs.edit().putInt("hint_off_up_x", v.coerceIn(-40, 40)).apply() }
+    fun setHintOffUpX(v: Int) = synchronized(lock) { prefs.edit().putInt("hint_off_up_x", v.coerceIn(-80, 80)).apply() }
     fun setHintOffUpY(v: Int) = setHintOff("up_y", v)
 
-    fun hintOffDownX(): Int = prefs.getInt("hint_off_down_x", 0).coerceIn(-40, 40)
+    fun hintOffDownX(): Int = prefs.getInt("hint_off_down_x", 0).coerceIn(-80, 80)
     fun hintOffDownY(): Int = hintOff("down_y", 5)
-    fun setHintOffDownX(v: Int) = synchronized(lock) { prefs.edit().putInt("hint_off_down_x", v.coerceIn(-40, 40)).apply() }
+    fun setHintOffDownX(v: Int) = synchronized(lock) { prefs.edit().putInt("hint_off_down_x", v.coerceIn(-80, 80)).apply() }
     fun setHintOffDownY(v: Int) = setHintOff("down_y", v)
 
     fun hintOffLeftX(): Int = hintOff("left_x", 4)
-    fun hintOffLeftY(): Int = prefs.getInt("hint_off_left_y", 7).coerceIn(-40, 40)
+    fun hintOffLeftY(): Int = prefs.getInt("hint_off_left_y", 7).coerceIn(-80, 80)
     fun setHintOffLeftX(v: Int) = setHintOff("left_x", v)
-    fun setHintOffLeftY(v: Int) = synchronized(lock) { prefs.edit().putInt("hint_off_left_y", v.coerceIn(-40, 40)).apply() }
+    fun setHintOffLeftY(v: Int) = synchronized(lock) { prefs.edit().putInt("hint_off_left_y", v.coerceIn(-80, 80)).apply() }
 
     fun hintOffRightX(): Int = hintOff("right_x", 4)
-    fun hintOffRightY(): Int = prefs.getInt("hint_off_right_y", 7).coerceIn(-40, 40)
+    fun hintOffRightY(): Int = prefs.getInt("hint_off_right_y", 7).coerceIn(-80, 80)
     fun setHintOffRightX(v: Int) = setHintOff("right_x", v)
-    fun setHintOffRightY(v: Int) = synchronized(lock) { prefs.edit().putInt("hint_off_right_y", v.coerceIn(-40, 40)).apply() }
+    fun setHintOffRightY(v: Int) = synchronized(lock) { prefs.edit().putInt("hint_off_right_y", v.coerceIn(-80, 80)).apply() }
 
     fun hintOffPressX(): Int = hintOff("press_x", 4)
     fun hintOffPressY(): Int = hintOff("press_y", 5)
@@ -760,6 +775,7 @@ object KeyboardManager {
             customs[layout.name] = layout
             layoutFile(layout.name).writeText(gson.toJson(layout))
         }
+        bumpLayoutRev()   // 轮19.54：保存即热重载
     }
 
     /** 删除自定义布局；若它正被使用，主键盘指针回退到内置 qwerty。 */
@@ -769,6 +785,7 @@ object KeyboardManager {
             layoutFile(name).delete()
             if (activeMain == name) setActiveMainLocked(DEFAULT_MAIN)
         }
+        bumpLayoutRev()   // 轮19.54：删除即热重载
     }
 
     /** 切换主键盘布局（接受内置名或自定义名）。 */
@@ -789,6 +806,7 @@ object KeyboardManager {
         if (name in ReservedPageNames) return
         activeMain = name
         prefs.edit().putString(PREF_ACTIVE_MAIN, name).apply()
+        bumpLayoutRev()   // 轮19.54：切主布局即热重载
     }
 
     private fun layoutFile(name: String) = File(dir, "$name.json")

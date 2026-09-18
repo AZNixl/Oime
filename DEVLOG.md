@@ -1622,3 +1622,15 @@ Unresolved reference）；要么 import 后 `x.roundToInt()`，要么直接 `x.t
   · 渲染改为 `align(...) + offset(x, y)`（原来用固定 padding，写死不可调）
   · 默认值 = 19.52 调过的那组（上/下向里 5、左/右向里 4、左侧 Y 7、右侧 Y 7、长按向里 4/5）
 - 说明文案里注明：调好数值告诉我，可以把它们固化成默认值
+
+# 轮19.54（0.9.61-oime vc71）：编辑器保存热重载 + 提示偏移放宽到 ±80dp
+
+1. **键盘编辑器「保存」后不生效**（用户：保存了新符号但用不上）：
+   真因——`saveLayout()` 只更新内存与文件，**键盘 UI 没有任何东西触发重读** ✗
+   ⇒ 新增 **`KeyboardManager.layoutRev()`**（用 `mutableIntStateOf` 做成 Compose 可观察状态）：
+   · `saveLayout` / `deleteLayout` / `setActiveMainLocked` 三处变更都 `bumpLayoutRev()` ✓
+   · `KeyboardScreen` 里 `val layoutRev = KeyboardManager.layoutRev()` +
+     `remember(layoutRev, state.page) { … }` ⇒ 保存后**正在显示的键盘自动重组**（保存即热重载）✓
+   · 编辑器保存后 Toast「已保存并热重载」✓
+2. **提示位置偏移全部放宽到 ±80dp**（原来上/下 Y 与左/右 X 是 0–60、其余 ±40，调不到合适位置）：
+   10 条滑杆统一 −80…+80，`KeyboardManager` 的 clamp 同步放宽 ✓

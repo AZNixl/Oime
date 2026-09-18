@@ -2624,8 +2624,8 @@ private fun HintOffsetSettings() {
         Text("提示位置微调", style = MaterialTheme.typography.titleSmall)
         Spacer(Modifier.height(2.dp))
         Text(
-            "四向滑动提示与长按符号提示的位置。上/下 的 Y、左/右 的 X 是「从该侧边缘往里」的像素；" +
-                "左/右 的 Y 正数向下（用来躲开主字）。",
+            "四向滑动提示与长按符号提示的位置，全部 ±80dp 可调。约定：X 正数向右，" +
+                "Y 正数向下；上/下 的 Y 基准在该侧边缘，左/右 的 X 基准在同侧边缘，长按在同侧上角。",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -2642,16 +2642,16 @@ private fun HintOffsetSettings() {
         var pressX by remember { mutableStateOf(km.hintOffPressX().toFloat()) }
         var pressY by remember { mutableStateOf(km.hintOffPressY().toFloat()) }
 
-        XimeSlider("上滑提示 · X", "${upX.toInt()}dp", upX, -40f..40f) { upX = it; km.setHintOffUpX(it.toInt()) }
-        XimeSlider("上滑提示 · Y（向里）", "${upY.toInt()}dp", upY, 0f..60f) { upY = it; km.setHintOffUpY(it.toInt()) }
-        XimeSlider("下滑提示 · X", "${downX.toInt()}dp", downX, -40f..40f) { downX = it; km.setHintOffDownX(it.toInt()) }
-        XimeSlider("下滑提示 · Y（向里）", "${downY.toInt()}dp", downY, 0f..60f) { downY = it; km.setHintOffDownY(it.toInt()) }
-        XimeSlider("左滑提示 · X（向里）", "${leftX.toInt()}dp", leftX, 0f..60f) { leftX = it; km.setHintOffLeftX(it.toInt()) }
-        XimeSlider("左滑提示 · Y（向下）", "${leftY.toInt()}dp", leftY, -40f..40f) { leftY = it; km.setHintOffLeftY(it.toInt()) }
-        XimeSlider("右滑提示 · X（向里）", "${rightX.toInt()}dp", rightX, 0f..60f) { rightX = it; km.setHintOffRightX(it.toInt()) }
-        XimeSlider("右滑提示 · Y（向下）", "${rightY.toInt()}dp", rightY, -40f..40f) { rightY = it; km.setHintOffRightY(it.toInt()) }
-        XimeSlider("长按符号 · X（向里）", "${pressX.toInt()}dp", pressX, 0f..60f) { pressX = it; km.setHintOffPressX(it.toInt()) }
-        XimeSlider("长按符号 · Y（向下）", "${pressY.toInt()}dp", pressY, 0f..60f) { pressY = it; km.setHintOffPressY(it.toInt()) }
+        XimeSlider("上滑提示 · X", "${upX.toInt()}dp", upX, -80f..80f) { upX = it; km.setHintOffUpX(it.toInt()) }
+        XimeSlider("上滑提示 · Y", "${upY.toInt()}dp", upY, -80f..80f) { upY = it; km.setHintOffUpY(it.toInt()) }
+        XimeSlider("下滑提示 · X", "${downX.toInt()}dp", downX, -80f..80f) { downX = it; km.setHintOffDownX(it.toInt()) }
+        XimeSlider("下滑提示 · Y", "${downY.toInt()}dp", downY, -80f..80f) { downY = it; km.setHintOffDownY(it.toInt()) }
+        XimeSlider("左滑提示 · X", "${leftX.toInt()}dp", leftX, -80f..80f) { leftX = it; km.setHintOffLeftX(it.toInt()) }
+        XimeSlider("左滑提示 · Y", "${leftY.toInt()}dp", leftY, -80f..80f) { leftY = it; km.setHintOffLeftY(it.toInt()) }
+        XimeSlider("右滑提示 · X", "${rightX.toInt()}dp", rightX, -80f..80f) { rightX = it; km.setHintOffRightX(it.toInt()) }
+        XimeSlider("右滑提示 · Y", "${rightY.toInt()}dp", rightY, -80f..80f) { rightY = it; km.setHintOffRightY(it.toInt()) }
+        XimeSlider("长按符号 · X", "${pressX.toInt()}dp", pressX, -80f..80f) { pressX = it; km.setHintOffPressX(it.toInt()) }
+        XimeSlider("长按符号 · Y", "${pressY.toInt()}dp", pressY, -80f..80f) { pressY = it; km.setHintOffPressY(it.toInt()) }
         Text(
             "下次键盘弹出即生效。调好后把数值告诉我，我可以把它们设成默认值。",
             style = MaterialTheme.typography.bodySmall,

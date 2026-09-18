@@ -536,7 +536,11 @@ fun AzimeKeyboardScreen(
                 NumpadPane(state = state, onAction = onAction, keyHeight = keyH)
             } else {
                 // 轮19.17：横屏不再用分体布局，只用同一套布局 + 横屏键高（-25%）
-                val layout = KeyboardManager.layoutFor(state.page) ?: KeyboardManager.mainLayout()
+                // 轮19.54：读取布局版本号 ⇒ 编辑器「保存」后键盘**自动热重载**（原来保存了不生效）
+                val layoutRev = KeyboardManager.layoutRev()
+                val layout = remember(layoutRev, state.page) {
+                    KeyboardManager.layoutFor(state.page) ?: KeyboardManager.mainLayout()
+                }
                 // 轮19.52：键盘左右边距（曲面屏可用，默认 0）
                 val sideMargin = KeyboardManager.keyboardSideMarginDp().dp
                 Column(
