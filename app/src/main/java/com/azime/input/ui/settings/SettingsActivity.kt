@@ -1733,15 +1733,15 @@ private fun FloatingWindowSettings() {
                         contentAlignment = Alignment.Center,
                     ) { Text(label, style = MaterialTheme.typography.bodySmall) }
                 }
+            }
+            // 轮19.73：**补回丢失的 `}`** —— 19.71 删重复块时把 Row 的闭合括号一起删了 ✗
+            // ⇒ 后面的「竖向反向」开关被并进同一个 Row（它内部 fillMaxWidth）⇒ 把两个 chips 挤成 0 宽 ✗
 
-
-            // 轮19.71：**删掉重复的第二份「横向/竖向」渲染**（19.55 插入时重复了 ⇒ 选项显示两遍 ✗）
             // 轮19.55：竖向显示时可切换正向/反向（反向 = 第 1 个候选在最下）
             var vReverse by remember { mutableStateOf(km.floatVerticalReverse()) }
             SettingSwitchRow("竖向反向显示（1 号在最下）", vReverse) { on ->
                 vReverse = on
                 km.setFloatVerticalReverse(on)
-            }
             }
             var showFloatColorPick by remember { mutableStateOf(false) }
             // 轮19.72：入口做明显（与其它设置行同规格：标题 + 右侧色块/箭头）

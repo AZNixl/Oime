@@ -1898,3 +1898,27 @@ UI 判定「没有光标位置」⇒ 悬浮窗退化为**固定位置**，观感
 - **候选排列 chips 可能不显示**：那行 Row 缺宽度约束（weight 子项可量成 0 宽）⇒ 补 `fillMaxWidth()` ✓
 - **「悬浮窗背景色」入口做明显**：改成与其它设置行同规格（标题 + 右侧「自定义/跟随主题」+ 色块）✓
 - **删除底部那段说明**（用户要求）✓
+
+# 轮19.73（0.9.79-oime vc89）：系统级浮窗落地 + 上一轮遗留问题真修
+
+## 1. 上一轮没修对的，这次找到真因
+- **候选排列看不到**：19.71 删重复块时把 **`Row {` 的闭合括号一起删了** ✗
+  ⇒ 后面的「竖向反向」开关被并进**同一个 Row**（它内部是 `fillMaxWidth`）⇒ 把两个 chips **挤成 0 宽** ✗✓
+  ⇒ 补回括号 ✓（`fillMaxWidth` 只是缓解，真正的病因是结构错 ✗）
+- **界面风格对比度兜底方向错了**：19.72 无条件朝**白**推 ✗ ⇒ 底色本就接近纯白时，键越推越白、差反而更小 ✗
+  ⇒ 改为**按底色判断方向**（底色够暗才用"键比底亮"的惯例；否则压暗键）✓
+  ⇒ 再加一层：**按需压暗键盘底色**（保住白键惯例，比把键压暗更符合各风格观感）✓，阈值也提到 0.075/0.06 ✓
+- **悬浮窗背景色入口**：已是标准设置行（标题 + 自定义/跟随主题 + 色块）✓
+
+## 2. ★ 系统级编码浮窗（按《TRIME 悬浮窗实现路径分析报告》配方落地）
+- `AZimeService` 自建 **`PopupWindow`**（内容 = `ComposeView` 渲染 `FloatWindowBody`）：
+  · `isClippingEnabled = false` ✓
+  · `inputMethodMode = INPUT_METHOD_NOT_NEEDED`（显示时不拉起输入法）✓
+  · `setWindowLayoutType(2038)`（`TYPE_APPLICATION_OVERLAY`；<26 用 1003）✓
+  · `isFocusable = false` + `isOutsideTouchable = false` ✓
+- **用屏幕坐标定位**：`showAtLocation(anchor, NO_GRAVITY, cursorLeft, cursorBottom)` 后按实测高度
+  `update(x, cursorBottom - h - 6dp)` ⇒ **不再需要 imeTop 换算** ✓，且可画到屏幕任意位置（含闲鱼顶部搜索栏）✓
+- **订阅 `uiState`** 同步显示/定位/隐藏；键盘收起或服务销毁时 `dismiss()` ✓
+- **内容共用**：`FloatWindowBody`（编码 + 候选 + 横/竖 + 竖向反向）两套窗口渲染同一份 ✓
+- **门控**：系统级浮窗激活时，窗口内浮窗自动让位（`FloatOverlayHost.active`）✓ 不会画两份 ✓
+- **降级**：未授权（`canDrawOverlays == false`）或 API<23 ⇒ 自动回退窗口内浮窗 ✓

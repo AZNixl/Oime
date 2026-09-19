@@ -293,12 +293,11 @@ data class KeyboardColors(
 private fun ensureLuminanceDelta(fg: Color, ref: Color, minDelta: Float, preferLight: Boolean): Color {
     var c = fg
     var guard = 0
-    while (guard++ < 14 && kotlin.math.abs(c.luminance() - ref.luminance()) < minDelta) {
-        c = androidx.compose.ui.graphics.lerp(
-            c,
-            if (preferLight) Color.White else Color.Black,
-            0.16f,
-        )
+    while (guard++ < 16 && kotlin.math.abs(c.luminance() - ref.luminance()) < minDelta) {
+        // 轮19.73：**方向要按底色判断** —— 19.72 无条件朝白推是错的：
+        // 底色本来就接近纯白时，键越推越白 ⇒ 差反而更小（Material You 就是这个症状）✗
+        val pushLight = ref.luminance() < 0.86f   // 底色还够暗才用"键比底亮"的惯例
+        c = androidx.compose.ui.graphics.lerp(c, if (pushLight) Color.White else Color.Black, 0.16f)
     }
     return c
 }
@@ -338,9 +337,16 @@ fun buildKeyboardColors(dark: Boolean): KeyboardColors {
     val baseKey = customKeyBg ?: Color(palette.keyBg)
     val border = if (tokens.keyBorderAlpha > 0f) Color(palette.text).copy(alpha = tokens.keyBorderAlpha) else null
     // 轮19.72：统一兜底（浅/深两套都用）
-    val palBg = Color(palette.bg)
-    val palKey = ensureLuminanceDelta(baseKey, palBg, 0.055f, preferLight = true)
-    val palFunc = ensureLuminanceDelta(customFuncBg ?: Color(palette.funcKeyBg), palBg, 0.045f, preferLight = true)
+    var palBg = Color(palette.bg)
+    // 轮19.73：**先按需压暗键盘底色**，让白键/浅键仍能显出来（比"把键压暗"更符合各类风格的观感）
+    run {
+        var guard = 0
+        while (guard++ < 10 && kotlin.math.abs(baseKey.luminance() - palBg.luminance()) < 0.075f) {
+            palBg = androidx.compose.ui.graphics.lerp(palBg, Color.Black, 0.07f)
+        }
+    }
+    val palKey = ensureLuminanceDelta(baseKey, palBg, 0.075f, preferLight = true)
+    val palFunc = ensureLuminanceDelta(customFuncBg ?: Color(palette.funcKeyBg), palBg, 0.06f, preferLight = true)
     val palText = ensureTextReadable(Color(palette.text), palKey)
     val palSub = ensureTextReadable(Color(palette.subText), palKey)
     return if (dark) {
@@ -378,7 +384,7 @@ fun buildKeyboardColors(dark: Boolean): KeyboardColors {
 }
 
 @Composable
-private fun keyboardColors(): KeyboardColors =
+fun keyboardColors(): KeyboardColors =
     buildKeyboardColors(
         com.azime.input.core.theme.KeyboardTheme.isDark(isSystemInDarkTheme()),
     )
@@ -620,7 +626,10 @@ fun AzimeKeyboardScreen(
 
             // ── 悬浮窗（编码预览，参考 trime 悬浮窗 / 悬浮窗显示优化.lua）──
             // 输入时在键盘上方悬浮显示输入码；默认模式固定样式，自定义模式位置/字号/透明度可调
-            if (KeyboardManager.floatEnabled() && state.preedit.isNotEmpty()) {
+            // 轮19.73：系统级浮窗（PopupWindow/2038）激活时不再画窗口内浮窗，避免两份 ✗
+            if (KeyboardManager.floatEnabled() && state.preedit.isNotEmpty() &&
+                !com.azime.input.ui.keyboard.FloatOverlayHost.active
+            ) {
                 val density = LocalDensity.current
                 val custom = KeyboardManager.floatMode() == "custom"
                 val bgAlpha = if (custom) KeyboardManager.floatBgAlpha() / 100f else 0.92f
@@ -3483,4 +3492,91 @@ private fun onKeyAction(key: Key, onAction: (KeyAction) -> Unit) {
             }
         }
     }
+}
+
+
+/**
+ * 轮19.73：**编码浮窗主体**（系统级浮窗与窗口内浮窗共用同一份内容）。
+ *
+ * 供 `AZimeService` 的自建 `PopupWindow`（TYPE_APPLICATION_OVERLAY=2038）渲染 ——
+ * 这样"编码 + 候选 + 横/竖 + 竖向反向"两套窗口下的表现完全一致 ✓
+ */
+@Composable
+fun FloatWindowBody(state: KeyboardUiState) {
+    val c = keyboardColors()
+    val fSp = KeyboardManager.fontSizeBar().toFloat()
+    val pSp = fSp * 0.7f
+    val showCandidates = state.candidates.take(KeyboardManager.floatCandCount())
+    val vertical = KeyboardManager.floatOrientation() == "v"
+    val firstAccent = KeyboardManager.floatFirstAccent()
+    val customFloatBg = KeyboardManager.floatBgColor()
+    val bgAlpha = if (KeyboardManager.floatMode() == "custom") KeyboardManager.floatBgAlpha() / 100f else 0.92f
+    val floatBg = if (customFloatBg != 0) Color(customFloatBg).copy(alpha = bgAlpha)
+    else c.barBg.copy(alpha = bgAlpha)
+
+    @Composable
+    fun Item(i: Int, text: String) {
+        val emphasize = i == 0 && firstAccent
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = if (emphasize) {
+                Modifier
+                    .background(c.accentKeyBg, RoundedCornerShape(6.dp))
+                    .padding(horizontal = 6.dp, vertical = 2.dp)
+            } else Modifier,
+        ) {
+            if (i < 9) {
+                Text(
+                    "${i + 1}",
+                    fontSize = (pSp * 0.8f).sp,
+                    color = if (emphasize) c.accentKeyText else c.subText,
+                )
+                Spacer(Modifier.width(3.dp))
+            }
+            Text(
+                text,
+                fontSize = fSp.sp,
+                color = if (emphasize) c.accentKeyText else c.text,
+            )
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .background(floatBg, RoundedCornerShape(10.dp))
+            .padding(horizontal = 12.dp, vertical = 7.dp),
+    ) {
+        Text(
+            text = state.preedit,
+            fontSize = pSp.sp,
+            lineHeight = (pSp * 1.16f).sp,
+            color = c.subText,
+            maxLines = 1,
+        )
+        if (showCandidates.isNotEmpty()) {
+            if (vertical) {
+                val vReverse = KeyboardManager.floatVerticalReverse()
+                Column {
+                    val order = if (vReverse) showCandidates.indices.reversed().toList()
+                    else showCandidates.indices.toList()
+                    order.forEachIndexed { pos, i ->
+                        if (pos > 0) Spacer(Modifier.height(3.dp))
+                        Item(i, showCandidates[i].text)
+                    }
+                }
+            } else {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    showCandidates.forEachIndexed { i, cand ->
+                        if (i > 0) Spacer(Modifier.width(10.dp))
+                        Item(i, cand.text)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** 系统级浮窗是否已接管绘制（由 AZimeService 维护；供窗口内浮窗让位）。 */
+object FloatOverlayHost {
+    @Volatile var active: Boolean = false
 }

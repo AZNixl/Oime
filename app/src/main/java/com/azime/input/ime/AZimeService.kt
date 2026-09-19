@@ -51,6 +51,79 @@ class AZimeService : InputMethodService() {
     private val scope = CoroutineScope(SupervisorJob() + engineDispatcher)
     private val uiState = MutableStateFlow(KeyboardUiState())
 
+    // ── 系统级编码浮窗（轮19.73，按《TRIME 悬浮窗实现路径分析报告》配方实现）──
+    // 要点：自建 PopupWindow + TYPE_APPLICATION_OVERLAY(2038) + setClippingEnabled(false)
+    //       + setInputMethodMode(INPUT_METHOD_NOT_NEEDED) ⇒ 浮窗可画到**屏幕任意位置**（含 App 顶部搜索栏），
+    //       不再受 IME 窗口高度限制 ✓（未授权时自动降级回窗口内浮窗）
+    private var floatPopup: android.widget.PopupWindow? = null
+    private var floatView: androidx.compose.ui.platform.ComposeView? = null
+
+    private fun canDrawOverlay(): Boolean =
+        android.os.Build.VERSION.SDK_INT < 23 ||
+            android.provider.Settings.canDrawOverlays(this)
+
+    private fun ensureFloatOverlay(): androidx.compose.ui.platform.ComposeView? = runCatching {
+        floatView?.let { return@runCatching it }
+        val cv = androidx.compose.ui.platform.ComposeView(this)
+        cv.setViewTreeLifecycleOwner(lifecycleOwner)
+        cv.setViewTreeSavedStateRegistryOwner(lifecycleOwner)
+        cv.setContent {
+            val st = uiState.collectAsState().value
+            com.azime.input.ui.keyboard.FloatWindowBody(st)
+        }
+        val pw = android.widget.PopupWindow(
+            cv,
+            android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+            android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+            false,
+        ).apply {
+            isClippingEnabled = false
+            inputMethodMode = android.widget.PopupWindow.INPUT_METHOD_NOT_NEEDED
+            if (android.os.Build.VERSION.SDK_INT >= 23) {
+                setWindowLayoutType(if (android.os.Build.VERSION.SDK_INT >= 26) 2038 else 1003)
+            }
+            isOutsideTouchable = false
+            isFocusable = false
+        }
+        floatView = cv
+        floatPopup = pw
+        cv
+    }.getOrNull()
+
+    private fun hideFloatOverlay() {
+        com.azime.input.ui.keyboard.FloatOverlayHost.active = false
+        runCatching { floatPopup?.dismiss() }
+    }
+
+    /** 每次 uiState 变化：按需显示 / 用**屏幕坐标**定位 / 隐藏系统级浮窗。 */
+    private fun syncFloatOverlay(st: KeyboardUiState) {
+        val want = KeyboardManager.floatEnabled() && st.preedit.isNotEmpty() && canDrawOverlay()
+        if (!want) {
+            if (com.azime.input.ui.keyboard.FloatOverlayHost.active) hideFloatOverlay()
+            return
+        }
+        val v = ensureFloatOverlay() ?: return
+        val pw = floatPopup ?: return
+        com.azime.input.ui.keyboard.FloatOverlayHost.active = true
+        val x = st.cursorLeft.coerceAtLeast(0)
+        val anchor = window?.window?.decorView ?: v
+        if (!pw.isShowing) {
+            runCatching { pw.showAtLocation(anchor, android.view.Gravity.NO_GRAVITY, x, st.cursorBottom) }
+        }
+        v.post {
+            val h = if (v.height > 0) v.height else 0
+            val gap = (6 * resources.displayMetrics.density).toInt()
+            val y = (st.cursorBottom - h - gap).coerceAtLeast(0)
+            runCatching {
+                if (pw.isShowing) {
+                    pw.update(x, y, android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+                        android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
+                }
+            }
+        }
+    }
+
+
     /** 语音输入 RMS（dB）：高频回调独立 State，只供声纹 Canvas 读取，不走 uiState 重组链。 */
     private val voiceRmsState = androidx.compose.runtime.mutableStateOf(0f)
 
@@ -105,6 +178,8 @@ class AZimeService : InputMethodService() {
     override fun onCreate() {
         super.onCreate()
         lifecycleOwner.onCreate()
+        // 轮19.73：跟随 uiState 同步系统级编码浮窗（显示 / 定位 / 隐藏）
+        runCatching { scope.launch { uiState.collect { syncFloatOverlay(it) } } }
         // 沉浸式圆角：IME 窗口透明，键盘顶部圆角下透出应用内容；
         // 底部导航条增高区涂键盘背景色（随深浅色主题），实现底部沉浸
         runCatching {
@@ -363,6 +438,8 @@ class AZimeService : InputMethodService() {
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
+        // 轮19.73：键盘收起 ⇒ 系统级浮窗也要收（否则会留在屏幕上）
+        runCatching { hideFloatOverlay() }
         lifecycleOwner.pause()
         // 键盘收起时若在听写中，取消识别
         if (uiState.value.voiceState == "listening") {
@@ -397,6 +474,7 @@ class AZimeService : InputMethodService() {
     }
 
     override fun onDestroy() {
+        runCatching { hideFloatOverlay() }
         runCatching { clipboardManager.removePrimaryClipChangedListener(clipboardListener) }
         SpeechEngineManager.cancel()
         // 轮19.9（省电，对齐 trime2 / Xime 的退出释放）：服务真的被系统销毁时，
