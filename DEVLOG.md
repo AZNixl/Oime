@@ -1985,3 +1985,21 @@ if (!pw.isShowing) { runCatching { pw.showAtLocation(...) } } // ← 再去显�
 **修复**：
 1. 订阅改到 **`Dispatchers.Main.immediate`**（窗口操作回主线程）✓
 2. 光标坐标无效（`-1/-1`）时**保持原位**（不再把浮窗挪到 (0,0)）✓
+
+# 轮19.78（0.9.84-oime vc94）：修"打字即闪退" —— PopupWindow 里不能用 ComposeView
+
+**崩溃堆栈（logcat crash buffer 拿到）**：
+```
+java.lang.IllegalStateException: ViewTreeLifecycleOwner not found from
+    android.widget.PopupWindow$PopupDecorView{...}
+  at WindowRecomposer_androidKt.createLifecycleAwareWindowRecomposer
+  at AbstractComposeView.onAttachedToWindow(ComposeView.android.kt:283)
+```
+**真因**：把 **ComposeView** 塞进自建 `PopupWindow` ✗ —— popup 的装饰视图（`PopupDecorView`）链条上
+**没有 ViewTreeLifecycleOwner** ⇒ Compose 在 `onAttachedToWindow` 里解析 recomposer 时直接抛异常 ✗
+（与当年做 IME 输入视图踩的是**同一个坑**：Compose 需要从视图链上找到 owner ✗）
+
+**修复**：浮窗内容改用**纯 Android View** 渲染（`LinearLayout` + `TextView`）✓
+- 不再依赖 Compose 生命周期 ⇒ 从根上消除该崩溃 ✓（也和 TRIME 报告里的纯 View 做法一致 ✓）
+- 配色仍复用 `buildKeyboardColors(dark)`（非 Composable 的 public 函数 ✓），`toArgb()` 转色 ✓
+- 横/竖 + 竖向反向 + 首选强调底色 + 自定义背景色/透明度 全部保留 ✓
