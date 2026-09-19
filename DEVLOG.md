@@ -1968,3 +1968,20 @@ if (!pw.isShowing) { runCatching { pw.showAtLocation(...) } } // ← 再去显�
 **修复**：
 - `onFinishInputView` **不再收浮窗**（保留空实现 + 注释说明原因）
 - 收网改到 **`onWindowHidden()`**（键盘窗口**真正隐藏**时才触发一次）✓ 与 `onDestroy()` 双保险 ✓
+
+# 轮19.77（0.9.83-oime vc93）：**系统级浮窗从未显示过** —— 后台线程调窗口 API
+
+**埋点铁证**：
+```
+[FloatOv] show-failed: Can't create handler inside thread
+          Thread[DefaultDispatcher-worker-2,5,main] that has not called Looper.prepare()
+[Float]   cursor=(261,311) imeTop=1996 h=335 offset=(261,-2044)   ← 一直在走窗口内降级路径
+```
+**真因**：`uiState.collect { syncFloatOverlay(it) }` 跑在 **DefaultDispatcher（后台线程）** ✗，
+而 `PopupWindow.showAtLocation` / `ComposeView` 都是**窗口操作，必须主线程** ✗
+⇒ 每次 show 都抛异常 ⇒ **系统级浮窗一次都没成功显示** ✗ ⇒ 一直退到窗口内路径
+⇒ 而窗口内路径的偏移是 `cursorBottom - imeTop` = 311-1996 ≈ **-1700** ⇒ 被裁掉 ⇒ "闲鱼不跟随" ✓
+
+**修复**：
+1. 订阅改到 **`Dispatchers.Main.immediate`**（窗口操作回主线程）✓
+2. 光标坐标无效（`-1/-1`）时**保持原位**（不再把浮窗挪到 (0,0)）✓

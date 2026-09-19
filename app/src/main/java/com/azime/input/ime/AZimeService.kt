@@ -113,6 +113,7 @@ class AZimeService : InputMethodService() {
             return
         }
         val pw = floatPopup ?: return
+        val validCursor = st.cursorLeft >= 0 && st.cursorBottom > 0
         val x = st.cursorLeft.coerceAtLeast(0)
         val anchor = window?.window?.decorView ?: v
         if (!pw.isShowing) {
@@ -138,6 +139,11 @@ class AZimeService : InputMethodService() {
             "FloatOv", "sync showing=$showing cursor=(${st.cursorLeft},${st.cursorBottom}) preedit=${st.preedit}",
         )
         if (!showing) return
+        // 轮19.77：光标坐标无效（-1/-1）时**保持原位**，别把浮窗挪到 (0,0)
+        if (!validCursor) {
+            com.azime.input.core.diag.Diag.log("FloatOv", "cursor-invalid, keep position")
+            return
+        }
         v.post {
             val h = if (v.height > 0) v.height else 0
             val gap = (6 * resources.displayMetrics.density).toInt()
@@ -207,8 +213,14 @@ class AZimeService : InputMethodService() {
     override fun onCreate() {
         super.onCreate()
         lifecycleOwner.onCreate()
-        // 轮19.73：跟随 uiState 同步系统级编码浮窗（显示 / 定位 / 隐藏）
-        runCatching { scope.launch { uiState.collect { syncFloatOverlay(it) } } }
+        // 轮19.77：**必须在主线程**订阅 —— PopupWindow / ComposeView 都是窗口操作，
+        // 在 DefaultDispatcher/IO 上会抛 "Can't create handler inside thread ... Looper.prepare()" ✗
+        // （19.73~19.76 系统级浮窗一次都没显示成功的真因）
+        runCatching {
+            scope.launch(kotlinx.coroutines.Dispatchers.Main.immediate) {
+                uiState.collect { syncFloatOverlay(it) }
+            }
+        }
         // 沉浸式圆角：IME 窗口透明，键盘顶部圆角下透出应用内容；
         // 底部导航条增高区涂键盘背景色（随深浅色主题），实现底部沉浸
         runCatching {
