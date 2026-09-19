@@ -539,3 +539,52 @@
   49MB 的 sherpa AAR 由 CI 从官方 release 下载；`librime_jni.so` / RIME 资源 / 音效均在库内）
   ⇒ fork 后**无需配置即可跑通** ✓（唯一注意：`cache: gradle` 对 public 免费，private 建议删掉）
 - 文档踩坑：用 `python -c "..."` 写含**反引号**的中文文档会被 shell 吃掉内容 ✗ ⇒ 写文档一律用 heredoc ✓
+
+
+---
+
+# 第八阶段：2026-09-19 晚（vc86 → vc98）
+
+> 这一晚的关键词：**系统级悬浮窗的完整探索与理性回退** + **"压底用 on 色"第 5 次教训** + 若干设置页打磨。
+
+## 一、系统级悬浮窗：从尝试到回退（最有价值的一段）
+
+**起因**：闲鱼顶部搜索栏里浮窗不跟随光标。依据用户提供的《TRIME 悬浮窗实现路径分析报告》
+（结论：「中文输入法」用的是 `SYSTEM_ALERT_WINDOW` + `PopupWindow(TYPE_APPLICATION_OVERLAY=2038)` 的系统级窗口），
+我按同款配方实现了一版（vc89）：自建 `PopupWindow` + `setClippingEnabled(false)` +
+`setInputMethodMode(INPUT_METHOD_NOT_NEEDED)` + 屏幕坐标定位 + 未授权自动降级。
+
+**踩到的四个坑（全部靠埋点定性 ✗→✓）**：
+1. **窗口 API 跑在后台线程** ⇒ `showAtLocation` 抛 "Can't create handler … Looper.prepare()" ⇒ 一次都没显示成功
+2. **PopupWindow 里放 ComposeView** ⇒ `IllegalStateException: ViewTreeLifecycleOwner not found from PopupDecorView`
+   （popup 装饰视图链上没有 owner ✗）⇒ **打字即闪退** ⇒ 改用纯 Android View 渲染
+3. **PopupWindow 实例 dismiss 后不可复用** ⇒ 同实例再 show 静默失败 ⇒ "出一次不出一次"
+4. **收网时机挂错**：`onFinishInputView` 会被 App（如闲鱼）**反复触发** ⇒ 打两个字就关浮窗 / 坐标被清零导致
+   "先闪一下再跳回" ⇒ 正解是 `onWindowHidden` / `onDestroy`
+
+**结论与决定**（用户拍板）：闲鱼那类**自定义输入框压根不上报 `CursorAnchorInfo`**（同时反编译「中文输入法」
+确认它用的是**同一批 API** ⇒ 它同样跟不了）⇒ 为它引入系统级浮窗**代价大于收益** ✗
+⇒ **整体回退到 vc85 的实现**（窗口内 Compose Popup ✓），只保留两项独立改进：
+`CursorAnchor` 取坐标更稳（字符外框扫描 + NaN 过滤）、界面风格对比度兜底 ✓
+
+## 二、「压底用 on 色」第 5 次（本轮唯一的高频设计错误）
+
+- 状态大方块（写死白色 ⇒ 浅色强调色下看不清）
+- 候选排列 chips（选中只换底色、文字没换 on 色）
+⇒ 铁律再强调一次：**压在强调色/选中底色上的文字与图标，一律用对应的 on 色** ✓
+
+## 三、设置页与功能的其它打磨
+
+- ○ 菜单新增**「设置」直达**
+- 候选快捷键：入口做明显 + **改到子级菜单** + 「无」= 解除绑定 + 自定义 code 子页
+- 悬浮窗设置：**候选排列 chips 修复**（Row 括号丢失 ⇒ 被 `fillMaxWidth` 的兄弟挤成 0 宽 ✗）、
+  背景色入口改强调样式、**语音使用说明改弹窗并写细**、竖向正/反向
+- 数字/符号/返回入口统一为文字（`123` / 符号图标 / `abc`），空格改一条直线
+- 界面风格：**改为立即生效**（主题外壳改读 rev 状态 ✗ 原来是直接读偏好、不会重组）
+- 删除三种修不动的风格（iOS / Nothing OS / Material You）⇒ 收敛到 **Material / Miuix / One UI** ✓
+
+## 四、工程
+
+- 推送 token **统一走 `~/.gh_token` 文件**（内联会触发敏感审批超时 ✗）
+- 记录纪律：每轮 DEVLOG + BUILD_STATUS 跟版本；收工做**本地 ↔ 仓库逐文件 sha1 零差异**核对 ✓
+- 回退方法论：**用仓库历史提交做逐行 diff 校验**（本次回退以 `551072ec` 为基准 ✓，确认剩余差异仅两项）
