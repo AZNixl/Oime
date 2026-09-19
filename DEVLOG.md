@@ -1813,3 +1813,23 @@ UI 判定「没有光标位置」⇒ 悬浮窗退化为**固定位置**，观感
    —— 用反射取 `getCharacterBoundsCount` / `getInsertionIndex`，兼容不同 compileSdk
 3. `matrix` 变换后再次校验（NaN / `bottom <= 0` 一律视为无效）
 4. 无效时**保持上一次位置**（不再清零）
+
+# 轮19.69（0.9.75-oime vc85）：浮窗跟随真因②——IME 窗口太矮，浮窗被裁在窗口外
+
+**埋点证据**（第 2 次，修好 NaN 后）：
+```
+[CursorAnchor] insertionMarker h=302.0 top=109.0 bottom=195.0   ← 坐标正常，就在屏幕顶部搜索栏
+[CursorAnchor] insertionMarker h=42.0  top=33.0  bottom=119.0
+```
+坐标拿得到 ⇒ 说明问题不在取值，而在**画不出来**：
+浮窗偏移 = `cursorBottom - imeTop - floatH - 6dp`，而 `imeTop` = **IME 窗口顶部**；
+普通键盘的 IME 窗口**只有键盘那么高**（约 1900）⇒ 偏移 ≈ 195 - 1900 ≈ **-1700**
+⇒ 浮窗被放到窗口外 ⇒ Android 不绘制（IME 不能画到自己窗口之外）✗
+
+**修复（复用既有"高窗口 + 区域触摸"机制）**：
+- 编码浮窗开启时把**根内容撑满屏**（`height(screenHdp)`）⇒ IME 窗口覆盖全屏 ⇒ 浮窗可贴到任意光标位置 ✓
+- 服务端 `onComputeInsets`：此时仍把 `contentTopInsets`/`visibleTopInsets` 报成**键盘上沿**
+  ⇒ App 照常让位、输入框不被键盘盖住 ✓；`touchableRegion` 限定成键盘 ⇒ 其余区域触摸穿透给 App ✓
+- 键盘列在浮窗模式下同样**上报自身矩形**（原来只在悬浮键盘模式上报）
+- 普通模式（未开浮窗）行为**完全不变**（矩形上报 -1 ⇒ 走系统默认 insets）✓
+- 新增埋点 `Float`：记录 cursor / imeTop / floatH / 最终 offset，便于下次一眼确认 ✓
