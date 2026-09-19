@@ -102,14 +102,32 @@ class AZimeService : InputMethodService() {
             if (com.azime.input.ui.keyboard.FloatOverlayHost.active) hideFloatOverlay()
             return
         }
-        val v = ensureFloatOverlay() ?: return
+        val v = ensureFloatOverlay() ?: run {
+            com.azime.input.core.diag.Diag.log("FloatOv", "ensure-failed")
+            return
+        }
         val pw = floatPopup ?: return
-        com.azime.input.ui.keyboard.FloatOverlayHost.active = true
         val x = st.cursorLeft.coerceAtLeast(0)
         val anchor = window?.window?.decorView ?: v
         if (!pw.isShowing) {
-            runCatching { pw.showAtLocation(anchor, android.view.Gravity.NO_GRAVITY, x, st.cursorBottom) }
+            val ok = runCatching {
+                pw.showAtLocation(anchor, android.view.Gravity.NO_GRAVITY, x, st.cursorBottom)
+                true
+            }.getOrElse { e ->
+                com.azime.input.core.diag.Diag.log("FloatOv", "show-failed: ${e.message}")
+                false
+            }
+            if (!ok) {
+                // 轮19.74：**关键** —— 系统级窗口没出来时必须让窗口内浮窗顶上 ✗
+                // （19.73 的 bug：`active=true` 写在显示之前 ⇒ 窗口内浮窗被抑制、系统级又没出来 ⇒ 两边都不画）
+                com.azime.input.ui.keyboard.FloatOverlayHost.active = false
+                return
+            }
+            com.azime.input.core.diag.Diag.log("FloatOv", "shown at ($x,${st.cursorBottom})")
         }
+        // 只有真的在显示中，才让窗口内浮窗让位 ✓
+        com.azime.input.ui.keyboard.FloatOverlayHost.active = pw.isShowing
+        if (!pw.isShowing) return
         v.post {
             val h = if (v.height > 0) v.height else 0
             val gap = (6 * resources.displayMetrics.density).toInt()

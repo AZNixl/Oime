@@ -13,9 +13,9 @@ enum class UiStyle(val id: String, val label: String) {
     MATERIAL("material", "Material"),
     MIUIX("miuix", "Miuix"),
     ONEUI("oneui", "One UI"),
-    IOS("ios", "iOS / 胶囊"),
-    NOTHING("nothing", "Nothing OS"),
-    MATERIAL_YOU("materialyou", "Material You"),
+    // 轮19.74：**删除 iOS / Nothing OS / Material You 三种风格**（用户要求：修不好的直接删）
+    // 原因：它们的键面/功能键与底色对比在真机上始终不理想（尤其 Material You 取壁纸色后键面难辨），
+    // 与其留着重试，不如把选择收窄到三套稳定的 ✓
     ;
 
     companion object {
@@ -80,27 +80,6 @@ object UiStyles {
             light = p(0xFFF2F4F7, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFE4E7EC, 0xFF101828, 0xFF667085),
             dark = p(0xFF171C24, 0xFF1D2530, 0xFF242B35, 0xFF2E3742, 0xFFF2F4F7, 0xFF98A2B3),
         ),
-        // iOS / Gboard：胶囊大圆角、无描边、细字重
-        UiStyle.IOS to StyleTokens(
-            UiStyle.IOS, keyCornerDp = 22, keyBorderAlpha = 0f, keyShadowDp = 0,
-            boldKeys = false, monospace = false, dynamicColor = false,
-            light = p(0xFFD1D5DB, 0xFFF9FAFB, 0xFFFFFFFF, 0xFFADB5C0, 0xFF111827, 0xFF6B7280),
-            dark = p(0xFF1C1C1E, 0xFF2C2C2E, 0xFF3A3A3C, 0xFF48484A, 0xFFFFFFFF, 0xFF8E8E93),
-        ),
-        // Nothing OS：单色极简 + 等宽字体
-        UiStyle.NOTHING to StyleTokens(
-            UiStyle.NOTHING, keyCornerDp = 4, keyBorderAlpha = 0.10f, keyShadowDp = 0,
-            boldKeys = false, monospace = true, dynamicColor = false,
-            light = p(0xFFFFFFFF, 0xFFFFFFFF, 0xFFF2F2F2, 0xFFE6E6E6, 0xFF000000, 0xFF7A7A7A),
-            dark = p(0xFF000000, 0xFF0A0A0A, 0xFF1A1A1A, 0xFF2A2A2A, 0xFFFFFFFF, 0xFF8C8C8C),
-        ),
-        // Material You：壁纸动态取色（API 31+），回落 Material 调色板
-        UiStyle.MATERIAL_YOU to StyleTokens(
-            UiStyle.MATERIAL_YOU, keyCornerDp = 8, keyBorderAlpha = 0f, keyShadowDp = 0,
-            boldKeys = false, monospace = false, dynamicColor = true,
-            light = p(0xFFE9EBEE, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFD3D7DC, 0xFF202124, 0xFF80868B),
-            dark = p(0xFF1B1D1F, 0xFF26282A, 0xFF2A2D2F, 0xFF3C4043, 0xFFE8EAED, 0xFF9AA0A6),
-        ),
     )
 
     fun of(style: UiStyle): StyleTokens = all[style] ?: all.getValue(UiStyle.MATERIAL)
@@ -109,6 +88,5 @@ object UiStyles {
 
     val selectable: List<UiStyle> = listOf(
         UiStyle.MATERIAL, UiStyle.MIUIX, UiStyle.ONEUI,
-        UiStyle.IOS, UiStyle.NOTHING, UiStyle.MATERIAL_YOU,
     )
 }

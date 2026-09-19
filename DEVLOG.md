@@ -1922,3 +1922,22 @@ UI 判定「没有光标位置」⇒ 悬浮窗退化为**固定位置**，观感
 - **内容共用**：`FloatWindowBody`（编码 + 候选 + 横/竖 + 竖向反向）两套窗口渲染同一份 ✓
 - **门控**：系统级浮窗激活时，窗口内浮窗自动让位（`FloatOverlayHost.active`）✓ 不会画两份 ✓
 - **降级**：未授权（`canDrawOverlays == false`）或 API<23 ⇒ 自动回退窗口内浮窗 ✓
+
+# 轮19.74（0.9.80-oime vc90）：修"浮窗不出现"（active 门控时机错）+ 删除三种风格
+
+## 1. 浮窗根本不出现 —— 真因是我 19.73 的**门控时机写反** ✗
+```kotlin
+com.azime.input.ui.keyboard.FloatOverlayHost.active = true   // ← 先宣告"我接管了"
+if (!pw.isShowing) { runCatching { pw.showAtLocation(...) } } // ← 再去显示（可能失败）
+```
+⇒ 一旦系统级窗口没能显示（异常/被系统拒），`active` 已是 true ⇒ **窗口内浮窗被抑制** ✗
+⇒ 结果：**两边都不画** ⇒ "根本不出现" ✗✓
+
+**修复**：
+- 先 `showAtLocation`，**成功后才**把 `active = true`；失败则立刻 `active = false` 让窗口内浮窗顶上 ✓
+- 整个显示过程加日志（`FloatOv`：ensure-failed / show-failed: … / shown at (x,y)）⇒ 下次一眼可判 ✓
+
+## 2. 删除三种界面风格（用户要求：修不好的直接删）
+- **移除 iOS / Nothing OS / Material You** ⇒ 保留 **Material / Miuix / One UI** 三套 ✓
+- 三套 token 定义、枚举项、`selectable` 列表一并删除；用户旧偏好值（如 "ios"）会由
+  `UiStyle.from()` **自动回落 Material** ✓ 不会崩 ✓
