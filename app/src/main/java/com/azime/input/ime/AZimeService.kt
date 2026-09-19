@@ -306,14 +306,42 @@ class AZimeService : InputMethodService() {
         if (info == null) return
         val matrix = info.matrix
         val r = android.graphics.RectF()
-        val hasInsertion = runCatching {
-            info.getInsertionMarkerTop() != Float.MAX_VALUE
-        }.getOrDefault(false)
-        if (hasInsertion) {
-            val h = info.insertionMarkerHorizontal
-            r.set(h, info.insertionMarkerTop, h + 1f, info.insertionMarkerBottom)
-        } else {
-            r.set(0f, 0f, 0f, 0f)
+        var ok = false
+        // 轮19.67：**优先用「字符外框」**——闲鱼等自定义搜索栏不提供 insertionMarker（旧逻辑会清零坐标，
+        // 浮窗于是退化成固定位置、看起来"不跟随光标"），但它们通常仍提供 characterBounds ✓
+        runCatching {
+            // 反射取光标字符下标（不同 compileSdk 下 API 可见性有差异，反射最稳）
+            val idx = (info.javaClass.getMethod("getInsertionIndex").invoke(info) as? Int) ?: -1
+            if (idx >= 0) {
+                for (k in intArrayOf(idx, idx - 1)) {
+                    if (k < 0) continue
+                    val cb = info.getCharacterBounds(k)
+                    if (cb != null && cb.height() > 0f) {
+                        r.set(cb)
+                        ok = true
+                        com.azime.input.core.diag.Diag.log(
+                            "CursorAnchor", "charBounds k=$k rect=${cb.left},${cb.top},${cb.right},${cb.bottom}",
+                        )
+                        break
+                    }
+                }
+            }
+        }
+        if (!ok) {
+            val hasInsertion = runCatching {
+                info.getInsertionMarkerTop() != Float.MAX_VALUE
+            }.getOrDefault(false)
+            if (hasInsertion) {
+                val h = info.insertionMarkerHorizontal
+                r.set(h, info.insertionMarkerTop, h + 1f, info.insertionMarkerBottom)
+                ok = true
+                com.azime.input.core.diag.Diag.log("CursorAnchor", "insertionMarker h=$h top=${info.insertionMarkerTop}")
+            }
+        }
+        // 两者都没有 ⇒ **保持上一次位置**（不要清零：清零会让浮窗跳到固定位置）
+        if (!ok) {
+            com.azime.input.core.diag.Diag.log("CursorAnchor", "no-bounds(keep-last)")
+            return
         }
         matrix.mapRect(r)
         val left = r.left.toInt()

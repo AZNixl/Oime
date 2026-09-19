@@ -245,7 +245,7 @@ object KeyboardPages {
                 spacerKey(0.5f),
             ),
             row(
-                pageKey("九宫格", "numpad", icon = "numpad"),
+                pageKey("123", "numpad"),   // 轮19.67：入口改文字 123（不带图标）
                 charKey("*"), charKey("\""), charKey("'"), charKey(":"),
                 charKey(";"), charKey("!"), charKey("?"),
                 backspace(),

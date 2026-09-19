@@ -1672,13 +1672,18 @@ private fun RowScope.toolbarToolItem(id: String, state: KeyboardUiState, onActio
             }
             .padding(horizontal = 8.dp, vertical = 6.dp),
     ) {
-        Icon(
-            icon,
-            contentDescription = id,
-            tint = c.text,
-            // 反馈轮11：图标调大（18→24dp），与 ○ 菜单键（36dp）比例协调
-            modifier = Modifier.size(24.dp),
-        )
+        // 轮19.67：**数字**工具用文字 123（与键面 123 统一），其余仍是图标
+        if (id == "numpad") {
+            Text("123", fontSize = 15.sp, fontWeight = FontWeight.Medium, color = c.text)
+        } else {
+            Icon(
+                icon,
+                contentDescription = id,
+                tint = c.text,
+                // 反馈轮11：图标调大（18→24dp），与 ○ 菜单键（36dp）比例协调
+                modifier = Modifier.size(24.dp),
+            )
+        }
     }
 }
 
@@ -3137,12 +3142,11 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
         // 轮19.4：功能键优先渲染图标（OimeIcons）；无图标 / 滑动预览中回落文字。
         // 轮19.5：空格键例外——有文本（自定义文本或方案名称）时优先文本，文本为空才显示图标。
         // 轮19.25：第四行首键（符号/数字入口）的图标跟随设置偏好——26 键符号 ↔ 九宫格
-        // 轮19.65：123/符号键不再用图标 —— 按 preferredPage 直接显示文字 "123" / "？#！"
+        // 轮19.67（按用户要求修正）：**符号仍是图标**，只有「数字（九宫格）」这一态用文字 123
         val isSymbolsKey = key.code == "symbols"
-        val iconName = if (isSymbolsKey) null else key.icon
-        val labelText = if (isSymbolsKey) {
-            if (KeyboardManager.preferredPage() == "numpad") "123" else "？#！"
-        } else label
+        val symbolsKeyGoesNumpad = isSymbolsKey && KeyboardManager.preferredPage() == "numpad"
+        val iconName = if (symbolsKeyGoesNumpad) null else key.icon
+        val labelText = if (symbolsKeyGoesNumpad) "123" else label
         val keyIcon = if (iconName != null && swipePreview == null) {
             com.azime.input.ui.icons.OimeIcons.byName(iconName)
         } else null
@@ -3323,29 +3327,40 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
                     horizontalArrangement = Arrangement.spacedBy(2.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    // 轮19.66：气泡里也用**文字**（与键面 123 / ？#！ 一致；原来用图标与入口脱节）
+                    // 轮19.67（修正 19.66 的左右写反）：**左 = 符号（图标）**，**右 = 九宫格（文字 123）**
                     listOf(
-                        "symbols" to "123",    // 26 键符号键盘
-                        "numpad" to "？#！",    // 九宫格数字键盘
-                    ).forEach { (page, text) ->
+                        "symbols" to com.azime.input.ui.icons.OimeIcons.symbols,  // 左：26 键符号键盘
+                        "numpad" to null,                                          // 右：九宫格数字键盘（文字 123）
+                    ).forEach { (page, icon) ->
                         val on = page == KeyboardManager.preferredPage()
-                        Text(
-                            text = text,
-                            fontSize = 15.sp,
-                            fontWeight = if (on) FontWeight.Bold else FontWeight.Normal,
-                            color = if (on) c.accentKeyText else c.text,
-                            modifier = Modifier
-                                .background(
-                                    if (on) c.accentKeyBg else Color.Transparent,
-                                    RoundedCornerShape(7.dp),
-                                )
-                                .clickable {
-                                    showPageBubble = false
-                                    KeyboardManager.setPreferredPage(page)
-                                    onAction(KeyAction.SwitchPage(page))
-                                }
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
-                        )
+                        val bg = if (on) c.accentKeyBg else Color.Transparent
+                        val tint = if (on) c.accentKeyText else c.text
+                        val click = Modifier.clickable {
+                            showPageBubble = false
+                            KeyboardManager.setPreferredPage(page)
+                            onAction(KeyAction.SwitchPage(page))
+                        }
+                        if (icon != null) {
+                            Icon(
+                                icon,
+                                contentDescription = page,
+                                tint = tint,
+                                modifier = click
+                                    .background(bg, RoundedCornerShape(7.dp))
+                                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                                    .size(22.dp),
+                            )
+                        } else {
+                            Text(
+                                text = "123",
+                                fontSize = 15.sp,
+                                fontWeight = if (on) FontWeight.Bold else FontWeight.Normal,
+                                color = tint,
+                                modifier = click
+                                    .background(bg, RoundedCornerShape(7.dp))
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                            )
+                        }
                     }
                 }
             }

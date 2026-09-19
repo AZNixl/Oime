@@ -347,7 +347,10 @@ object KeyboardManager {
     }
 
     /** 悬浮模式：整个键盘缩到 86% 并可拖动（位置持久化）。 */
-    fun floatKeyboard(): Boolean = prefs.getBoolean(PREF_FLOAT_KBD, false)
+    /** 轮19.67：**悬浮模式已下线**，恒返回 false（保留 setter 以兼容旧偏好）。 */
+    fun floatKeyboard(): Boolean = false
+
+    private fun floatKeyboardLegacy(): Boolean = prefs.getBoolean(PREF_FLOAT_KBD, false)
 
     fun setFloatKeyboard(v: Boolean) {
         synchronized(lock) { prefs.edit().putBoolean(PREF_FLOAT_KBD, v).apply() }
@@ -807,7 +810,7 @@ object KeyboardManager {
         "redo" to "重做",
         // 轮19.19
         "onehand" to "单手",
-        "floatkbd" to "悬浮",
+        // 轮19.67：**悬浮模式已下线**（用户要求去除；键面/工具栏都不再提供入口）
     )
 
     /** 工具栏两侧空间有限：最多可选 6 个（每侧 3 个）。 */
