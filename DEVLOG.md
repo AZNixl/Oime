@@ -1941,3 +1941,20 @@ if (!pw.isShowing) { runCatching { pw.showAtLocation(...) } } // ← 再去显�
 - **移除 iOS / Nothing OS / Material You** ⇒ 保留 **Material / Miuix / One UI** 三套 ✓
 - 三套 token 定义、枚举项、`selectable` 列表一并删除；用户旧偏好值（如 "ios"）会由
   `UiStyle.from()` **自动回落 Material** ✓ 不会崩 ✓
+
+# 轮19.75（0.9.81-oime vc91）：修"浮窗出一次不出一次" —— PopupWindow 实例不能复用
+
+**现象**：悬浮窗出来一次、下一次不出来（交替）✗
+**真因**：`PopupWindow` 一旦 `dismiss()`，其 `contentView` 已从窗口 detach ⇒
+**同一个实例再次 `showAtLocation` 会静默失败**（不抛异常、`isShowing` 保持 false）✗
+⇒ 第一次成功、第二次不出 ⇒ 交替 ✗✓
+
+**修复**：`hideFloatOverlay()` 里 **丢弃实例**（`floatPopup = null; floatView = null`）⇒
+下次同步时用**全新实例**重建 ✓
+
+**同时加足埋点**（`FloatOv`）：
+- `hide`
+- `sync showing=? cursor=(x,y) preedit=…`（每次状态同步）
+- `update -> (x,y) h=?`（每次实际落点）
+- `shown at (x,y)` / `show-failed: …` / `ensure-failed`
+⇒ 下次在闲鱼打字后，一次日志即可判定："有没有走系统级窗口 / 落点是否跟着光标" ✓

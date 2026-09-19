@@ -91,8 +91,14 @@ class AZimeService : InputMethodService() {
     }.getOrNull()
 
     private fun hideFloatOverlay() {
+        com.azime.input.core.diag.Diag.log("FloatOv", "hide")
         com.azime.input.ui.keyboard.FloatOverlayHost.active = false
         runCatching { floatPopup?.dismiss() }
+        // 轮19.75：**必须丢弃实例** —— PopupWindow 一旦 dismiss，其 contentView 已 detach，
+        // 同一实例再次 showAtLocation 会**静默失败**（不抛异常、isShowing 仍 false）
+        // ⇒ 表现就是"出来一次、不出来一次" ✗；下次用全新实例重建 ✓
+        floatPopup = null
+        floatView = null
     }
 
     /** 每次 uiState 变化：按需显示 / 用**屏幕坐标**定位 / 隐藏系统级浮窗。 */
@@ -126,8 +132,12 @@ class AZimeService : InputMethodService() {
             com.azime.input.core.diag.Diag.log("FloatOv", "shown at ($x,${st.cursorBottom})")
         }
         // 只有真的在显示中，才让窗口内浮窗让位 ✓
-        com.azime.input.ui.keyboard.FloatOverlayHost.active = pw.isShowing
-        if (!pw.isShowing) return
+        val showing = pw.isShowing
+        com.azime.input.ui.keyboard.FloatOverlayHost.active = showing
+        com.azime.input.core.diag.Diag.log(
+            "FloatOv", "sync showing=$showing cursor=(${st.cursorLeft},${st.cursorBottom}) preedit=${st.preedit}",
+        )
+        if (!showing) return
         v.post {
             val h = if (v.height > 0) v.height else 0
             val gap = (6 * resources.displayMetrics.density).toInt()
@@ -136,6 +146,7 @@ class AZimeService : InputMethodService() {
                 if (pw.isShowing) {
                     pw.update(x, y, android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
                         android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
+                    com.azime.input.core.diag.Diag.log("FloatOv", "update -> ($x,$y) h=$h")
                 }
             }
         }
