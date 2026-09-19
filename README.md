@@ -237,3 +237,24 @@
 - 阶段总结（耗电优化 / 交互定稿 / 外观与布局）：[PHASE_REPORT.md](PHASE_REPORT.md)
 - 界面风格调研：[UI_STYLE_RESEARCH.md](UI_STYLE_RESEARCH.md)
 - 语音联网方案调研：[DOUBAO_ASR_REPORT.md](DOUBAO_ASR_REPORT.md)
+
+---
+
+## Fork 后如何跑 CI（已验证无私有依赖）
+
+本仓库的 CI 只依赖**公开资源**，fork 后无需任何配置即可直接跑：
+
+- 工作流：`.github/workflows/android.yml`（push main/develop、PR、也可手动 `workflow_dispatch`）
+- **无 secrets / 无私有 token / 无仓库硬编码**（不校验 owner/repo）
+- JDK 17（temurin）+ 标准 Android SDK（ubuntu-latest 自带）
+- `sherpa-onnx-1.13.5.aar`（约 49MB，超 GitHub API 单文件限制）**不入库**，
+  由 CI 从官方 release 下载（公开 URL）
+- `librime_jni.so`、RIME 资源、内置音效等**都在仓库内**，无需额外准备
+- 产物：`app-debug` 工件（保留 3 天），路径 `app/build/outputs/apk/debug/app-debug.apk`
+
+**唯一注意**：`cache: gradle` 对 **public 仓库免费**；若你的 fork 是 **private**，
+Gradle 缓存会占用 500MB 存储额度（历史上曾因此导致上传步骤失败），
+可把 `setup-java` 的 `cache: gradle` 一行删掉再跑。
+
+本地构建（可选）：在仓库根目录执行 `./gradlew assembleDebug` 即可，
+`local.properties` 中的 SDK 路径请按自己的机器填写（该文件不入库）。
