@@ -163,6 +163,8 @@ class SettingsActivity : AppCompatActivity() {
         setContent {
             // 主题色跟随键盘回车键颜色，并跟随系统深浅色
             val dark = androidx.compose.foundation.isSystemInDarkTheme()
+            // 轮19.71：界面风格版本号 —— 在「主题与配色」里改风格时 +1，触发整页主题重算 ✓
+            var uiStyleRev by remember { mutableStateOf(0) }
             val scheme = if (dark) androidx.compose.material3.darkColorScheme()
             else androidx.compose.material3.lightColorScheme()
             // 轮19.15：Card 默认底色（surfaceContainerLow/surfaceContainer）统一成浅灰 →
@@ -171,7 +173,9 @@ class SettingsActivity : AppCompatActivity() {
             // surfaceVariant / surfaceContainerHighest …），只覆盖两个角色会漏 —— 用户看到的紫底就是漏网的角色。
             // 这里把**整套中性色**统一成灰阶（浅色/深色各一套）。
             // 轮19.31：界面风格 —— miuix 用 MIUI 扁平灰阶（页面浅灰 + 卡片纯白），material 用中性灰
-            val miuix = com.azime.input.core.theme.KeyboardTheme.isMiuix()
+            // 轮19.71：界面风格改为**读 rev 状态** —— 原来直接读 isMiuix()（非 Compose 状态 ✗）
+            // ⇒ 下拉改了偏好却没有任何东西触发重组 ⇒ 看起来"改了没反应" ✗
+            val miuix = remember(uiStyleRev) { com.azime.input.core.theme.KeyboardTheme.isMiuix() }
             val plainGray = when {
                 miuix && dark -> Color(0xFF2C2C2E)
                 miuix -> Color(0xFFFFFFFF)
@@ -229,6 +233,7 @@ class SettingsActivity : AppCompatActivity() {
                             }
                         )
                     },
+                    onUiStyleChanged = { uiStyleRev++ },
                 )
             }
         }
@@ -249,6 +254,8 @@ fun SettingsScreen(
     onOpenKeyboardEditor: () -> Unit,
     onManageFonts: () -> Unit,
     onPickZip: () -> Unit,
+    // 轮19.71：界面风格变更回调（用于让整页主题立即重算）
+    onUiStyleChanged: () -> Unit = {},
 ) {
     val cs = MaterialTheme.colorScheme
     // 轮19.11b：设置主页卡片配色——大方块=强调色(不变)、右侧两方块=按键色、其余大项=浅灰
@@ -662,7 +669,7 @@ fun SettingsScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 contentPadding = PaddingValues(vertical = 8.dp),
             ) {
-                item { Card(colors = grayCardColors(), shape = settingsCardShape()) { Column { ThemeColorSettings() } } }
+                item { Card(colors = grayCardColors(), shape = settingsCardShape()) { Column { ThemeColorSettings(onUiStyleChanged = onUiStyleChanged) } } }
                 item {
                     // 字体管理入口：位于主题与配色下层
                     Card(colors = grayCardColors(), shape = settingsCardShape()) {
@@ -992,13 +999,12 @@ private fun StatusCard(fillWidth: Boolean = false) {
                             ready -> "运行正常"
                             else -> "引擎未就绪 / 首次部署中…"
                         },
-                        // 轮19.70：**回退到换图标前那一版**（用户反馈写死白色在浅色强调色下看不清 ✗）
-                        // 改回 on 色：由主题按强调色自动给出对比色，任何界面风格下都清晰 ✓
-                        fontSize = 18.sp,
+                        // 轮19.71：按用户要求**改回白色 + 放大**（19.70 的回退撤销）
+                        fontSize = 20.sp,
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        color = if (notEnabled) Color(0xFF3C4043) else cs.onPrimaryContainer,
+                        color = if (notEnabled) Color(0xFF3C4043) else Color.White,
                     )
                 }
                 // 轮19.15：第三行 = 当前方案
@@ -1006,11 +1012,11 @@ private fun StatusCard(fillWidth: Boolean = false) {
                     Spacer(Modifier.height(4.dp))
                     Text(
                         text = "方案 · $schema",
-                        // 轮19.70：同步回退（14sp + on 色）
-                        fontSize = 14.sp,
+                        // 轮19.71：同步改回 15sp + 白色
+                        fontSize = 15.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        color = cs.onPrimaryContainer,
+                        color = Color.White,
                     )
                 }
             }
@@ -1727,21 +1733,8 @@ private fun FloatingWindowSettings() {
                     ) { Text(label, style = MaterialTheme.typography.bodySmall) }
                 }
 
-                listOf("h" to "横向", "v" to "竖向").forEach { (id, label) ->
-                    val on = orient == id
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .background(
-                                if (on) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
-                                androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
-                            )
-                            .clickable { orient = id; km.setFloatOrientation(id); floatRev++ }
-                            .padding(vertical = 8.dp),
-                        contentAlignment = Alignment.Center,
-                    ) { Text(label, style = MaterialTheme.typography.bodySmall) }
-                }
 
+            // 轮19.71：**删掉重复的第二份「横向/竖向」渲染**（19.55 插入时重复了 ⇒ 选项显示两遍 ✗）
             // 轮19.55：竖向显示时可切换正向/反向（反向 = 第 1 个候选在最下）
             var vReverse by remember { mutableStateOf(km.floatVerticalReverse()) }
             SettingSwitchRow("竖向反向显示（1 号在最下）", vReverse) { on ->
@@ -1879,7 +1872,7 @@ private fun SymbolHintSettings() {
 
 /** 主题与配色（参考小企鹅输入法.fx）：色彩模式 + 主题卡片网格（迷你键盘预览）+ 自定义 RGB。 */
 @Composable
-private fun ThemeColorSettings() {
+private fun ThemeColorSettings(onUiStyleChanged: () -> Unit = {}) {
     val km = com.azime.input.core.theme.KeyboardTheme
     var mode by remember { mutableStateOf(km.mode()) }
     var accentRev by remember { mutableStateOf(0) }
@@ -1971,7 +1964,13 @@ private fun ThemeColorSettings() {
                                     style = MaterialTheme.typography.bodyMedium,
                                 )
                             },
-                            onClick = { uiStyle = st.id; km.setUiStyle(st.id); styleMenu = false; styleRev++ },
+                            onClick = {
+                                uiStyle = st.id
+                                km.setUiStyle(st.id)
+                                styleMenu = false
+                                styleRev++
+                                onUiStyleChanged()   // 轮19.71：立刻让设置页主题重算 ✓
+                            },
                         )
                     }
                 }
