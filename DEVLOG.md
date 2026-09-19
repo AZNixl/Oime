@@ -2020,3 +2020,13 @@ java.lang.IllegalStateException: ViewTreeLifecycleOwner not found from
 系统级浮窗是**纯 Android View**（不是 Compose）⇒ 拿不到 `FontFamily` ✗
 ⇒ 新增 `FontManager.keyboardTypeface()`（按已选字体顺序取第一个可用字体 → `Typeface`）✓
 ⇒ 浮窗的编码行与候选行都套用该 Typeface ✓（字体设置一变，下次渲染即同步 ✓）
+
+# 轮19.80（0.9.86-oime vc96）：修"浮窗先闪一下再跳回"—— 光标坐标被过早清零
+
+**现象**（用户实测，闲鱼搜索框）：先在搜索框处**闪现**一个浮窗，随即**跳回**常规位置 ✗
+**真因**：把"清光标坐标"放在了 **`onFinishInputView`** ✗ —— 而不少 App（如闲鱼）**打字中途会反复触发**它 ⇒
+坐标被清成 `-1` ⇒ 浮窗被判"无坐标" ⇒ 从光标处掉到我加的兜底位置（键盘上沿之上）✗✓
+
+**修复**：
+- `onFinishInputView` **不再清光标坐标**（保留最后一次有效坐标 ✓）
+- 清零移到 **`onWindowHidden`**（键盘真正收起时才清 ✓）

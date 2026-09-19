@@ -560,11 +560,12 @@ class AZimeService : InputMethodService() {
                 showSchemaPanel = false,
             )
         }
-        // 轮19.11：停止光标监听 + 清掉光标坐标
+        // 轮19.80：**这里不能清光标坐标** —— 不少 App（如闲鱼）打字中途会反复触发 onFinishInputView，
+        // 清零 ⇒ 浮窗被判"无坐标" ⇒ 从光标处闪一下、掉到兜底位置（用户实测"先闪现一下再跳回"）✗
+        // 保留最后一次有效坐标即可；真正收起键盘时在 onWindowHidden 里清 ✓
         runCatching {
             getCurrentInputConnection()?.requestCursorUpdates(0)
         }
-        uiState.update { it.copy(cursorLeft = -1, cursorBottom = -1) }
         // 语音 = 最重的可选资源：闲置后卸载（90s 宽限）
         scheduleSpeechEngineRelease()
         super.onFinishInputView(finishingInput)
@@ -579,8 +580,10 @@ class AZimeService : InputMethodService() {
     override fun onWindowHidden() {
         super.onWindowHidden()
         // 轮19.76：键盘窗口真正隐藏 ⇒ 收起系统级浮窗（替代原来放在 onFinishInputView 的错误时机）
+        // 轮19.80：顺手在这里清光标坐标 —— 这才是"真的不再输入"的时机 ✓
         com.azime.input.core.diag.Diag.log("FloatOv", "onWindowHidden -> hide")
         runCatching { hideFloatOverlay() }
+        uiState.update { it.copy(cursorLeft = -1, cursorBottom = -1) }
     }
 
     override fun onDestroy() {
