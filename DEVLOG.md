@@ -1797,3 +1797,19 @@ key.type == SPACE && key.code == "space"       -> 0   // 空格键 = 候选1
   退而用 insertionMarker；**两者都没有时保持上一次位置**（不再清零）✓
   · 取下标用反射（不同 compileSdk 下可见性有差异）；该下标取不到时回退取前一个字符
 - 加埋点 CursorAnchor（记录命中哪条分支 + 矩形），便于在闲鱼里直接验证 ✓
+
+# 轮19.68（0.9.74-oime vc84）：浮窗光标跟随 —— 埋点抓到真因（NaN 未过滤）
+
+**埋点证据**（闲鱼搜索栏打字）：
+```
+[CursorAnchor] insertionMarker h=NaN top=NaN
+```
+**真因**：旧判断只挡 `Float.MAX_VALUE`，**放行了 NaN** ⇒ `NaN.toInt()` = **0** ⇒ `cursorBottom = 0` ⇒
+UI 判定「没有光标位置」⇒ 悬浮窗退化为**固定位置**，观感就是"不跟随" ✗
+
+**修复**：
+1. 插入点标记必须**过滤 NaN / Infinity / 零高度**（`b > t`）才算有效
+2. **字符外框**改为「下标未知时扫描全部可用外框、取最后一个有效值」（光标通常在已输入内容末尾）
+   —— 用反射取 `getCharacterBoundsCount` / `getInsertionIndex`，兼容不同 compileSdk
+3. `matrix` 变换后再次校验（NaN / `bottom <= 0` 一律视为无效）
+4. 无效时**保持上一次位置**（不再清零）

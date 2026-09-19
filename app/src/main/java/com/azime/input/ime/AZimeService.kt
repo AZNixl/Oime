@@ -305,49 +305,61 @@ class AZimeService : InputMethodService() {
         super.onUpdateCursorAnchorInfo(info)
         if (info == null) return
         val matrix = info.matrix
-        val r = android.graphics.RectF()
+        val rect = android.graphics.RectF()
         var ok = false
-        // 轮19.67：**优先用「字符外框」**——闲鱼等自定义搜索栏不提供 insertionMarker（旧逻辑会清零坐标，
-        // 浮窗于是退化成固定位置、看起来"不跟随光标"），但它们通常仍提供 characterBounds ✓
+
+        // ① 优先「字符外框」。下标未知时（很多自定义输入框不给 insertionIndex）**扫描全部可用外框**，
+        //    取最后一个有效值 —— 光标通常在已输入内容末尾，这个近似比"没有"好得多。
         runCatching {
-            // 反射取光标字符下标（不同 compileSdk 下 API 可见性有差异，反射最稳）
+            val count = (info.javaClass.getMethod("getCharacterBoundsCount").invoke(info) as? Int) ?: 0
             val idx = (info.javaClass.getMethod("getInsertionIndex").invoke(info) as? Int) ?: -1
-            if (idx >= 0) {
-                for (k in intArrayOf(idx, idx - 1)) {
-                    if (k < 0) continue
-                    val cb = info.getCharacterBounds(k)
-                    if (cb != null && cb.height() > 0f) {
-                        r.set(cb)
-                        ok = true
-                        com.azime.input.core.diag.Diag.log(
-                            "CursorAnchor", "charBounds k=$k rect=${cb.left},${cb.top},${cb.right},${cb.bottom}",
-                        )
-                        break
-                    }
+            val order: List<Int> = if (idx in 0 until count) listOf(idx, idx - 1)
+            else (count - 1 downTo 0).toList()
+            for (k in order) {
+                if (k < 0 || k >= count) continue
+                val cb = info.getCharacterBounds(k) ?: continue
+                if (cb.height() > 0f && !cb.left.isNaN() && !cb.right.isNaN() &&
+                    !cb.top.isNaN() && !cb.bottom.isNaN()
+                ) {
+                    rect.set(cb)
+                    ok = true
+                    com.azime.input.core.diag.Diag.log(
+                        "CursorAnchor", "charBounds k=$k count=$count idx=$idx rect=${cb.left},${cb.top},${cb.right},${cb.bottom}",
+                    )
+                    break
                 }
             }
         }
-        if (!ok) {
-            val hasInsertion = runCatching {
-                info.getInsertionMarkerTop() != Float.MAX_VALUE
-            }.getOrDefault(false)
-            if (hasInsertion) {
-                val h = info.insertionMarkerHorizontal
-                r.set(h, info.insertionMarkerTop, h + 1f, info.insertionMarkerBottom)
+
+        // ② 退回插入点标记。**必须过滤 NaN/Infinity/零高度** ——
+        //    闲鱼给的就是 NaN（只判 Float.MAX_VALUE 会放行 ⇒ NaN.toInt()=0 ⇒ 浮窗退化成固定位置）
+        if (!ok) runCatching {
+            val h = info.insertionMarkerHorizontal
+            val t = info.insertionMarkerTop
+            val b = info.insertionMarkerBottom
+            val sane = !h.isNaN() && !t.isNaN() && !b.isNaN() &&
+                !h.isInfinite() && !t.isInfinite() && !b.isInfinite() &&
+                t != Float.MAX_VALUE && b > t
+            if (sane) {
+                rect.set(h, t, h + 1f, b)
                 ok = true
-                com.azime.input.core.diag.Diag.log("CursorAnchor", "insertionMarker h=$h top=${info.insertionMarkerTop}")
+                com.azime.input.core.diag.Diag.log("CursorAnchor", "insertionMarker h=$h top=$t bottom=$b")
             }
         }
-        // 两者都没有 ⇒ **保持上一次位置**（不要清零：清零会让浮窗跳到固定位置）
+
+        // ③ 都没拿到 ⇒ 保持上一次位置（不要清零）
         if (!ok) {
             com.azime.input.core.diag.Diag.log("CursorAnchor", "no-bounds(keep-last)")
             return
         }
-        matrix.mapRect(r)
-        val left = r.left.toInt()
-        val bottom = r.bottom.toInt()
-        if (left == uiState.value.cursorLeft && bottom == uiState.value.cursorBottom) return
-        uiState.update { it.copy(cursorLeft = left, cursorBottom = bottom) }
+        matrix.mapRect(rect)
+        val cl = rect.left
+        val cb2 = rect.bottom
+        if (cl.isNaN() || cb2.isNaN() || cb2 <= 0f) {
+            com.azime.input.core.diag.Diag.log("CursorAnchor", "bad-after-matrix(keep-last)")
+            return
+        }
+        uiState.update { it.copy(cursorLeft = cl.toInt(), cursorBottom = cb2.toInt()) }
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
