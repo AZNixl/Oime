@@ -2003,3 +2003,20 @@ java.lang.IllegalStateException: ViewTreeLifecycleOwner not found from
 - 不再依赖 Compose 生命周期 ⇒ 从根上消除该崩溃 ✓（也和 TRIME 报告里的纯 View 做法一致 ✓）
 - 配色仍复用 `buildKeyboardColors(dark)`（非 Composable 的 public 函数 ✓），`toArgb()` 转色 ✓
 - 横/竖 + 竖向反向 + 首选强调底色 + 自定义背景色/透明度 全部保留 ✓
+
+# 轮19.79（0.9.85-oime vc95）：浮窗字体同步 + 光标缺失兜底位置（闲鱼现象定性）
+
+## 1. 闲鱼"固定在左上角"——**日志给出定性**：闲鱼压根不发光标信息
+```
+[CursorAnchor] no-bounds(keep-last)        ← 全程没有任何光标数据（连字符外框都没有）
+[FloatOv]      shown at (0,-1)             ← 于是显示在 (0,-1) = 左上角
+[FloatOv]      cursor-invalid, keep position
+```
+⇒ 不是我们算错 ✗，是**该 App 不上报 `CursorAnchorInfo`** ⇒ 无坐标可用 ⇒ 只能退到固定位置 ✓
+**本轮改法**：光标不可用时退到「**键盘上沿之上**」的合理位置（不再跑到左上角 (0,0)）✓
+（真正"跟随"需要另找信号源 —— 下一步用「中文输入法」在同页面做对照实验 ✗）
+
+## 2. 浮窗字体没同步字体设置
+系统级浮窗是**纯 Android View**（不是 Compose）⇒ 拿不到 `FontFamily` ✗
+⇒ 新增 `FontManager.keyboardTypeface()`（按已选字体顺序取第一个可用字体 → `Typeface`）✓
+⇒ 浮窗的编码行与候选行都套用该 Typeface ✓（字体设置一变，下次渲染即同步 ✓）

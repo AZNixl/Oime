@@ -95,6 +95,18 @@ object FontManager {
      * 未选择任何字体时返回 null（调用方用系统默认字体）。
      * 按文件名列表签名缓存，变更时自动重建。
      */
+    /**
+     * 轮19.79：**给纯 View（系统级浮窗）用的 Typeface** —— 按已选字体顺序取第一个可用字体。
+     * 系统级浮窗是纯 Android View（不是 Compose），拿不到 FontFamily ⇒ 用 Typeface 同步字体设置 ✓
+     */
+    fun keyboardTypeface(): android.graphics.Typeface? {
+        for (n in selectedFonts()) {
+            val f = findFontFile(n) ?: continue
+            runCatching { return android.graphics.Typeface.createFromFile(f) }
+        }
+        return null
+    }
+
     fun keyboardFontFamily(): FontFamily? {
         val names = selectedFonts()
         if (names.isEmpty()) return null

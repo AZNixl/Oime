@@ -1,11 +1,11 @@
 # ○输入法 / Oime 项目状态
 
-> 最后更新：2026-09-19（轮19.78，vc94 / 0.9.84-oime）
+> 最后更新：2026-09-19（轮19.79，vc95 / 0.9.85-oime）
 
 ## 项目信息
 
 - **项目名称**：○输入法（Oime）
-- **版本**：0.9.84-oime（versionCode 94）
+- **版本**：0.9.85-oime（versionCode 95）
 - **包名**：`com.azime.input`
 - **仓库**：https://github.com/AZNixl/Oime （曾名 AZime，main 分支）
 - **技术栈**：Kotlin 1.9.22 / AGP 8.3.0 / Gradle 8.4 / Compose BOM 2024.02.00
@@ -85,7 +85,7 @@
 | 0.9.23-oime | 33 | 实测耗电定位（UI 渲染占 92%）+ 退出/收起释放策略 + 呼吸动画降帧 |
 | 0.9.24-oime | 34 | 定制工具栏保存移到标题右 / 修复「00」只出一个 0 / 主键盘 2·3 行对齐 / 设置大项拆卡 / 预设置等页面状态栏沉浸 |
 | 0.9.25-oime | 35 | ⇧/⌫ 回 1.5 / 悬浮窗跟随光标+候选+字号同步+前三码 / 工具栏 17 工具与默认为空 / 方案快捷面板 / ○ 菜单图标同步 / 眼睛 5 动作 / 上滑栏可下滑关闭 |
-| 0.9.84-oime | 94 | 修"打字即闪退"（PopupWindow 里不能用 ComposeView：PopupDecorView 链上无 ViewTreeLifecycleOwner ⇒ 改用**纯 Android View** 渲染浮窗）|\n| 0.9.83-oime | 93 | ★ **系统级浮窗真因修复**：窗口操作被放在后台线程（DefaultDispatcher）⇒ show 全抛异常、一次没显示成功 ⇒ 改 `Dispatchers.Main.immediate`；光标无效时保持原位 |\n| 0.9.82-oime | 92 | 修"打两个字母浮窗就消失"（收网时机从 onFinishInputView 改到 onWindowHidden —— 前者会被 App 反复触发）|\n| 0.9.81-oime | 91 | 修"浮窗出一次不出一次"（PopupWindow 实例 dismiss 后不可复用 ⇒ 丢弃实例重建）+ FloatOv 全链路埋点 |\n| 0.9.80-oime | 90 | 修"浮窗不出现"（active 门控时机写反 ⇒ 两边都不画；改为显示成功后才让位 + 埋点）/ **删除 iOS · Nothing OS · Material You 三种风格**（保留 Material / Miuix / One UI）|\n| 0.9.79-oime | 89 | ★ **系统级编码浮窗**（PopupWindow + TYPE_APPLICATION_OVERLAY=2038 + 屏幕坐标定位，未授权自动降级）/ 补回丢失的 Row 括号（候选排列 chips 被挤成 0 宽的真因）/ 对比度兜底方向修正 + 按需压暗底色 |\n| 0.9.78-oime | 88 | **界面风格对比度兜底**（Material You 键不可见 / Nothing·OneUI 键消失 / iOS 功能键糊底 —— 统一在配色出口保底亮度差）/ 候选排列补宽度约束 / 悬浮窗背景色入口做明显 + 删说明 |\n| 0.9.77-oime | 87 | 界面风格改后立即生效（主题外壳改读 rev 状态）/ 候选排列去重（原来显示两遍）/ 状态大方块改回白字 + 20·15sp |\n| 0.9.76-oime | 86 | 撤销 19.69 撑屏（修浮窗错乱，回到 19.68 状态）/ 定制工具栏勾选列表「数字」也改文字 123 / 界面风格：状态大方块回退（白字改 on 色、字号回退）/ 新增 SYSTEM_ALERT_WINDOW 权限 + 授权直达入口（为系统级悬浮窗铺路）|
+| 0.9.85-oime | 95 | 浮窗**字体同步**（纯 View 用 `FontManager.keyboardTypeface()`）/ 光标不可用时退到「键盘上沿之上」的合理位置（闲鱼不发 anchor info 的定性）|\n| 0.9.84-oime | 94 | 修"打字即闪退"（PopupWindow 里不能用 ComposeView：PopupDecorView 链上无 ViewTreeLifecycleOwner ⇒ 改用**纯 Android View** 渲染浮窗）|\n| 0.9.83-oime | 93 | ★ **系统级浮窗真因修复**：窗口操作被放在后台线程（DefaultDispatcher）⇒ show 全抛异常、一次没显示成功 ⇒ 改 `Dispatchers.Main.immediate`；光标无效时保持原位 |\n| 0.9.82-oime | 92 | 修"打两个字母浮窗就消失"（收网时机从 onFinishInputView 改到 onWindowHidden —— 前者会被 App 反复触发）|\n| 0.9.81-oime | 91 | 修"浮窗出一次不出一次"（PopupWindow 实例 dismiss 后不可复用 ⇒ 丢弃实例重建）+ FloatOv 全链路埋点 |\n| 0.9.80-oime | 90 | 修"浮窗不出现"（active 门控时机写反 ⇒ 两边都不画；改为显示成功后才让位 + 埋点）/ **删除 iOS · Nothing OS · Material You 三种风格**（保留 Material / Miuix / One UI）|\n| 0.9.79-oime | 89 | ★ **系统级编码浮窗**（PopupWindow + TYPE_APPLICATION_OVERLAY=2038 + 屏幕坐标定位，未授权自动降级）/ 补回丢失的 Row 括号（候选排列 chips 被挤成 0 宽的真因）/ 对比度兜底方向修正 + 按需压暗底色 |\n| 0.9.78-oime | 88 | **界面风格对比度兜底**（Material You 键不可见 / Nothing·OneUI 键消失 / iOS 功能键糊底 —— 统一在配色出口保底亮度差）/ 候选排列补宽度约束 / 悬浮窗背景色入口做明显 + 删说明 |\n| 0.9.77-oime | 87 | 界面风格改后立即生效（主题外壳改读 rev 状态）/ 候选排列去重（原来显示两遍）/ 状态大方块改回白字 + 20·15sp |\n| 0.9.76-oime | 86 | 撤销 19.69 撑屏（修浮窗错乱，回到 19.68 状态）/ 定制工具栏勾选列表「数字」也改文字 123 / 界面风格：状态大方块回退（白字改 on 色、字号回退）/ 新增 SYSTEM_ALERT_WINDOW 权限 + 授权直达入口（为系统级悬浮窗铺路）|
 | 0.9.75-oime | 85 | 浮窗跟随真因②：IME 窗口太矮致浮窗被裁 —— 浮窗开启时根内容撑满屏 + insets 仍报键盘上沿 + 触摸区限定键盘 + Float 埋点 |
 | 0.9.74-oime | 84 | 浮窗光标跟随修复（真因：insertionMarker 为 NaN 未过滤 ⇒ 坐标被算成 0）+ 字符外框全量扫描兜底 + matrix 后二次校验 |
 | 0.9.73-oime | 83 | 符号键回退图标（仅数字态用123）/ 长按气泡左右修正 / 定制工具栏与符号页入口改123 / 去除悬浮模式 / 修复浮窗在闲鱼等顶部搜索栏不跟随光标（改取 characterBounds）|

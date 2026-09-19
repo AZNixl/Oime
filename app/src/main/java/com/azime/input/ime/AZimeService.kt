@@ -73,6 +73,7 @@ class AZimeService : InputMethodService() {
         val c = com.azime.input.ui.keyboard.buildKeyboardColors(isDarkNow())
         val fSp = KeyboardManager.fontSizeBar().toFloat()
         val pSp = fSp * 0.7f
+        val tf = com.azime.input.core.font.FontManager.keyboardTypeface()   // 轮19.79：同步字体设置 ✓
         val customBg = KeyboardManager.floatBgColor()
         val bgAlpha = if (KeyboardManager.floatMode() == "custom") KeyboardManager.floatBgAlpha() / 100f else 0.92f
         val bgColor = if (customBg != 0) customBg else (c.barBg.toArgb() and 0xFFFFFF) or (0xFF shl 24)
@@ -88,6 +89,7 @@ class AZimeService : InputMethodService() {
         // 编码行
         root.addView(android.widget.TextView(this).apply {
             text = st.preedit
+            typeface = tf
             textSize = pSp
             setTextColor(c.subText.toArgb())
             maxLines = 1
@@ -99,6 +101,7 @@ class AZimeService : InputMethodService() {
         fun makeItem(i: Int, text: String): android.widget.TextView =
             android.widget.TextView(this).apply {
                 this.text = if (i < 9) "${i + 1} $text" else text
+                typeface = tf
                 textSize = fSp
                 setTextColor(if (i == 0 && KeyboardManager.floatFirstAccent()) c.accentKeyText.toArgb() else c.text.toArgb())
                 setPadding(dp(6), dp(2), dp(6), dp(2))
@@ -186,18 +189,31 @@ class AZimeService : InputMethodService() {
         val showing = pw.isShowing
         com.azime.input.ui.keyboard.FloatOverlayHost.active = showing
         if (!showing) return
-        if (!validCursor) {
-            com.azime.input.core.diag.Diag.log("FloatOv", "cursor-invalid, keep position")
-            return
-        }
         v.post {
             val h = if (v.height > 0) v.height else 0
-            val y = (st.cursorBottom - h - dp(6)).coerceAtLeast(0)
+            // 轮19.79：**光标不可用时的兜底位置**（闲鱼等自定义搜索栏根本不发 anchor info ✗）
+            // 退到"键盘上沿之上"，至少是个合理位置，不再跑到 (0,0) 左上角 ✗
+            val imeTopScreen = runCatching {
+                val loc = IntArray(2)
+                (window?.window?.decorView)?.getLocationOnScreen(loc)
+                loc[1]
+            }.getOrDefault(0)
+            val ux: Int
+            val uy: Int
+            if (validCursor) {
+                ux = x
+                uy = (st.cursorBottom - h - dp(6)).coerceAtLeast(0)
+            } else {
+                ux = dp(8)
+                uy = if (imeTopScreen > 0) (imeTopScreen - h - dp(6)).coerceAtLeast(dp(8))
+                else dp(8)
+                com.azime.input.core.diag.Diag.log("FloatOv", "cursor-invalid -> fallback ($ux,$uy)")
+            }
             runCatching {
                 if (pw.isShowing) {
-                    pw.update(x, y, android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+                    pw.update(ux, uy, android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
                         android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
-                    com.azime.input.core.diag.Diag.log("FloatOv", "update -> ($x,$y) h=$h")
+                    com.azime.input.core.diag.Diag.log("FloatOv", "update -> ($ux,$uy) h=$h")
                 }
             }
         }
