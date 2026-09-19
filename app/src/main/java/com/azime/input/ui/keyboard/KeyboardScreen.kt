@@ -626,10 +626,7 @@ fun AzimeKeyboardScreen(
 
             // ── 悬浮窗（编码预览，参考 trime 悬浮窗 / 悬浮窗显示优化.lua）──
             // 输入时在键盘上方悬浮显示输入码；默认模式固定样式，自定义模式位置/字号/透明度可调
-            // 轮19.73：系统级浮窗（PopupWindow/2038）激活时不再画窗口内浮窗，避免两份 ✗
-            if (KeyboardManager.floatEnabled() && state.preedit.isNotEmpty() &&
-                !com.azime.input.ui.keyboard.FloatOverlayHost.active
-            ) {
+            if (KeyboardManager.floatEnabled() && state.preedit.isNotEmpty()) {
                 val density = LocalDensity.current
                 val custom = KeyboardManager.floatMode() == "custom"
                 val bgAlpha = if (custom) KeyboardManager.floatBgAlpha() / 100f else 0.92f
@@ -3492,91 +3489,4 @@ private fun onKeyAction(key: Key, onAction: (KeyAction) -> Unit) {
             }
         }
     }
-}
-
-
-/**
- * 轮19.73：**编码浮窗主体**（系统级浮窗与窗口内浮窗共用同一份内容）。
- *
- * 供 `AZimeService` 的自建 `PopupWindow`（TYPE_APPLICATION_OVERLAY=2038）渲染 ——
- * 这样"编码 + 候选 + 横/竖 + 竖向反向"两套窗口下的表现完全一致 ✓
- */
-@Composable
-fun FloatWindowBody(state: KeyboardUiState) {
-    val c = keyboardColors()
-    val fSp = KeyboardManager.fontSizeBar().toFloat()
-    val pSp = fSp * 0.7f
-    val showCandidates = state.candidates.take(KeyboardManager.floatCandCount())
-    val vertical = KeyboardManager.floatOrientation() == "v"
-    val firstAccent = KeyboardManager.floatFirstAccent()
-    val customFloatBg = KeyboardManager.floatBgColor()
-    val bgAlpha = if (KeyboardManager.floatMode() == "custom") KeyboardManager.floatBgAlpha() / 100f else 0.92f
-    val floatBg = if (customFloatBg != 0) Color(customFloatBg).copy(alpha = bgAlpha)
-    else c.barBg.copy(alpha = bgAlpha)
-
-    @Composable
-    fun Item(i: Int, text: String) {
-        val emphasize = i == 0 && firstAccent
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = if (emphasize) {
-                Modifier
-                    .background(c.accentKeyBg, RoundedCornerShape(6.dp))
-                    .padding(horizontal = 6.dp, vertical = 2.dp)
-            } else Modifier,
-        ) {
-            if (i < 9) {
-                Text(
-                    "${i + 1}",
-                    fontSize = (pSp * 0.8f).sp,
-                    color = if (emphasize) c.accentKeyText else c.subText,
-                )
-                Spacer(Modifier.width(3.dp))
-            }
-            Text(
-                text,
-                fontSize = fSp.sp,
-                color = if (emphasize) c.accentKeyText else c.text,
-            )
-        }
-    }
-
-    Column(
-        modifier = Modifier
-            .background(floatBg, RoundedCornerShape(10.dp))
-            .padding(horizontal = 12.dp, vertical = 7.dp),
-    ) {
-        Text(
-            text = state.preedit,
-            fontSize = pSp.sp,
-            lineHeight = (pSp * 1.16f).sp,
-            color = c.subText,
-            maxLines = 1,
-        )
-        if (showCandidates.isNotEmpty()) {
-            if (vertical) {
-                val vReverse = KeyboardManager.floatVerticalReverse()
-                Column {
-                    val order = if (vReverse) showCandidates.indices.reversed().toList()
-                    else showCandidates.indices.toList()
-                    order.forEachIndexed { pos, i ->
-                        if (pos > 0) Spacer(Modifier.height(3.dp))
-                        Item(i, showCandidates[i].text)
-                    }
-                }
-            } else {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    showCandidates.forEachIndexed { i, cand ->
-                        if (i > 0) Spacer(Modifier.width(10.dp))
-                        Item(i, cand.text)
-                    }
-                }
-            }
-        }
-    }
-}
-
-/** 系统级浮窗是否已接管绘制（由 AZimeService 维护；供窗口内浮窗让位）。 */
-object FloatOverlayHost {
-    @Volatile var active: Boolean = false
 }

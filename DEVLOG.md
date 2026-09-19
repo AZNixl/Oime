@@ -2030,3 +2030,22 @@ java.lang.IllegalStateException: ViewTreeLifecycleOwner not found from
 **修复**：
 - `onFinishInputView` **不再清光标坐标**（保留最后一次有效坐标 ✓）
 - 清零移到 **`onWindowHidden`**（键盘真正收起时才清 ✓）
+
+# 轮19.81（0.9.87-oime vc97）：**悬浮窗实现整体回退**到今早调查之前（保留横/竖与正反向设置）
+
+**用户要求**：回退到今天"闲鱼不跟随"调查之前的悬浮窗代码，但保留今晚做的横/竖 + 竖向正反向设置 ✓
+（那两项设置更早就有了，本就不受影响 ✓）
+
+## 回退内容（逐行对照 `551072ec`（19.66）校验 ✓）
+- **删除**：`AZimeService` 里整套系统级浮窗实现（字段 `floatPopup/floatRoot`、`canDrawOverlay`、`isDarkNow`、
+  `renderFloatContent`、`ensureFloatOverlay`、`hideFloatOverlay`、`syncFloatOverlay`）、主线程订阅、
+  `onWindowHidden` 覆写、`onDestroy` 的收网调用 ✓
+- **恢复**：`onFinishInputView` 里"清光标坐标"的原逻辑 ✓（浮窗仍是**窗口内 Compose Popup** ✓）
+- **删除**：`KeyboardScreen` 的 `FloatOverlayHost` 门控 + 共用的 `FloatWindowBody`/`FloatOverlayHost` ✓
+- **删除**：设置页「授予显示在其他应用上层权限」入口（回退后不再需要 ✓）
+- **保留**（与浮窗实现无关、且有益）：
+  · `CursorAnchor` 取坐标改进（字符外框扫描 + NaN/Infinity 过滤 ⇒ 坐标更稳、不再被 NaN 归零 ✓）
+  · 界面风格对比度兜底（`ensureLuminanceDelta` / `ensureTextReadable` ✓）
+  · Manifest 的 `SYSTEM_ALERT_WINDOW` 声明（此刻为惰性，不申请即不生效 ✓）
+
+校验方式：拉取 `551072ec` 的 `AZimeService.kt` / `KeyboardScreen.kt` 与本地逐行 diff ⇒ 剩余差异**仅上述两项** ✓

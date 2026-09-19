@@ -51,173 +51,6 @@ class AZimeService : InputMethodService() {
     private val scope = CoroutineScope(SupervisorJob() + engineDispatcher)
     private val uiState = MutableStateFlow(KeyboardUiState())
 
-    // ── 系统级编码浮窗（轮19.78：**纯 Android View** 实现）──
-    // 轮19.77 曾用 ComposeView 装内容，但 PopupWindow 的 PopupDecorView 链上没有 ViewTreeLifecycleOwner
-    // ⇒ `AbstractComposeView.onAttachedToWindow` 直接抛 IllegalStateException（打字即闪退）✗
-    // ⇒ 改用纯 View（LinearLayout + TextView），不依赖 Compose 生命周期 ✓（与 TRIME 报告里的做法一致）
-    private var floatPopup: android.widget.PopupWindow? = null
-    private var floatRoot: android.widget.LinearLayout? = null
-
-    private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
-
-    private fun canDrawOverlay(): Boolean =
-        android.os.Build.VERSION.SDK_INT < 23 ||
-            android.provider.Settings.canDrawOverlays(this)
-
-    private fun isDarkNow(): Boolean =
-        (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
-            android.content.res.Configuration.UI_MODE_NIGHT_YES
-
-    /** 轮19.78：按当前设置把浮窗内容（编码 + 候选，横/竖 + 竖向反向）画进容器。 */
-    private fun renderFloatContent(root: android.widget.LinearLayout, st: KeyboardUiState) {
-        val c = com.azime.input.ui.keyboard.buildKeyboardColors(isDarkNow())
-        val fSp = KeyboardManager.fontSizeBar().toFloat()
-        val pSp = fSp * 0.7f
-        val tf = com.azime.input.core.font.FontManager.keyboardTypeface()   // 轮19.79：同步字体设置 ✓
-        val customBg = KeyboardManager.floatBgColor()
-        val bgAlpha = if (KeyboardManager.floatMode() == "custom") KeyboardManager.floatBgAlpha() / 100f else 0.92f
-        val bgColor = if (customBg != 0) customBg else (c.barBg.toArgb() and 0xFFFFFF) or (0xFF shl 24)
-        root.removeAllViews()
-        root.orientation = android.widget.LinearLayout.VERTICAL
-        root.setPadding(dp(12), dp(7), dp(12), dp(7))
-        root.background = android.graphics.drawable.GradientDrawable().apply {
-            cornerRadius = dp(10).toFloat()
-            setColor(bgColor)
-            alpha = (bgAlpha * 255).toInt().coerceIn(0, 255)
-        }
-
-        // 编码行
-        root.addView(android.widget.TextView(this).apply {
-            text = st.preedit
-            typeface = tf
-            textSize = pSp
-            setTextColor(c.subText.toArgb())
-            maxLines = 1
-        })
-
-        val cands = st.candidates.take(KeyboardManager.floatCandCount())
-        if (cands.isEmpty()) return
-
-        fun makeItem(i: Int, text: String): android.widget.TextView =
-            android.widget.TextView(this).apply {
-                this.text = if (i < 9) "${i + 1} $text" else text
-                typeface = tf
-                textSize = fSp
-                setTextColor(if (i == 0 && KeyboardManager.floatFirstAccent()) c.accentKeyText.toArgb() else c.text.toArgb())
-                setPadding(dp(6), dp(2), dp(6), dp(2))
-                if (i == 0 && KeyboardManager.floatFirstAccent()) {
-                    background = android.graphics.drawable.GradientDrawable().apply {
-                        cornerRadius = dp(6).toFloat()
-                        setColor(c.accentKeyBg.toArgb())
-                    }
-                }
-            }
-
-        if (KeyboardManager.floatOrientation() == "v") {
-            val order = if (KeyboardManager.floatVerticalReverse()) cands.indices.reversed().toList()
-            else cands.indices.toList()
-            val col = android.widget.LinearLayout(this).apply { orientation = android.widget.LinearLayout.VERTICAL }
-            order.forEach { i ->
-                col.addView(makeItem(i, cands[i].text))
-            }
-            root.addView(col)
-        } else {
-            val row = android.widget.LinearLayout(this).apply { orientation = android.widget.LinearLayout.HORIZONTAL }
-            cands.forEachIndexed { i, cand -> row.addView(makeItem(i, cand.text)) }
-            root.addView(row)
-        }
-    }
-
-    private fun ensureFloatOverlay(): android.view.View? = runCatching {
-        floatRoot?.let { return@runCatching it }
-        val root = android.widget.LinearLayout(this)
-        val pw = android.widget.PopupWindow(
-            root,
-            android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
-            android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
-            false,
-        ).apply {
-            isClippingEnabled = false
-            inputMethodMode = android.widget.PopupWindow.INPUT_METHOD_NOT_NEEDED
-            if (android.os.Build.VERSION.SDK_INT >= 23) {
-                setWindowLayoutType(if (android.os.Build.VERSION.SDK_INT >= 26) 2038 else 1003)
-            }
-            isOutsideTouchable = false
-            isFocusable = false
-        }
-        floatRoot = root
-        floatPopup = pw
-        root
-    }.getOrNull()
-
-    private fun hideFloatOverlay() {
-        com.azime.input.core.diag.Diag.log("FloatOv", "hide")
-        com.azime.input.ui.keyboard.FloatOverlayHost.active = false
-        runCatching { floatPopup?.dismiss() }
-        // PopupWindow 一旦 dismiss，contentView 已 detach，同实例不能再 show（静默失败）⇒ 丢弃重建 ✓
-        floatPopup = null
-        floatRoot = null
-    }
-
-    /** 每次 uiState 变化：按需显示 / 用**屏幕坐标**定位 / 隐藏系统级浮窗。 */
-    private fun syncFloatOverlay(st: KeyboardUiState) {
-        val want = KeyboardManager.floatEnabled() && st.preedit.isNotEmpty() && canDrawOverlay()
-        if (!want) {
-            if (com.azime.input.ui.keyboard.FloatOverlayHost.active) hideFloatOverlay()
-            return
-        }
-        val v = ensureFloatOverlay() as? android.widget.LinearLayout ?: return
-        val pw = floatPopup ?: return
-        runCatching { renderFloatContent(v, st) }
-        val validCursor = st.cursorLeft >= 0 && st.cursorBottom > 0
-        val x = st.cursorLeft.coerceAtLeast(0)
-        val anchor = window?.window?.decorView ?: v
-        if (!pw.isShowing) {
-            val ok = runCatching {
-                pw.showAtLocation(anchor, android.view.Gravity.NO_GRAVITY, x, st.cursorBottom)
-                true
-            }.getOrElse { e ->
-                com.azime.input.core.diag.Diag.log("FloatOv", "show-failed: ${e.message}")
-                false
-            }
-            if (!ok) {
-                com.azime.input.ui.keyboard.FloatOverlayHost.active = false
-                return
-            }
-            com.azime.input.core.diag.Diag.log("FloatOv", "shown at ($x,${st.cursorBottom})")
-        }
-        val showing = pw.isShowing
-        com.azime.input.ui.keyboard.FloatOverlayHost.active = showing
-        if (!showing) return
-        v.post {
-            val h = if (v.height > 0) v.height else 0
-            // 轮19.79：**光标不可用时的兜底位置**（闲鱼等自定义搜索栏根本不发 anchor info ✗）
-            // 退到"键盘上沿之上"，至少是个合理位置，不再跑到 (0,0) 左上角 ✗
-            val imeTopScreen = runCatching {
-                val loc = IntArray(2)
-                (window?.window?.decorView)?.getLocationOnScreen(loc)
-                loc[1]
-            }.getOrDefault(0)
-            val ux: Int
-            val uy: Int
-            if (validCursor) {
-                ux = x
-                uy = (st.cursorBottom - h - dp(6)).coerceAtLeast(0)
-            } else {
-                ux = dp(8)
-                uy = if (imeTopScreen > 0) (imeTopScreen - h - dp(6)).coerceAtLeast(dp(8))
-                else dp(8)
-                com.azime.input.core.diag.Diag.log("FloatOv", "cursor-invalid -> fallback ($ux,$uy)")
-            }
-            runCatching {
-                if (pw.isShowing) {
-                    pw.update(ux, uy, android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
-                        android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
-                    com.azime.input.core.diag.Diag.log("FloatOv", "update -> ($ux,$uy) h=$h")
-                }
-            }
-        }
-    }
 
 
     /** 语音输入 RMS（dB）：高频回调独立 State，只供声纹 Canvas 读取，不走 uiState 重组链。 */
@@ -274,14 +107,6 @@ class AZimeService : InputMethodService() {
     override fun onCreate() {
         super.onCreate()
         lifecycleOwner.onCreate()
-        // 轮19.77：**必须在主线程**订阅 —— PopupWindow / ComposeView 都是窗口操作，
-        // 在 DefaultDispatcher/IO 上会抛 "Can't create handler inside thread ... Looper.prepare()" ✗
-        // （19.73~19.76 系统级浮窗一次都没显示成功的真因）
-        runCatching {
-            scope.launch(kotlinx.coroutines.Dispatchers.Main.immediate) {
-                uiState.collect { syncFloatOverlay(it) }
-            }
-        }
         // 沉浸式圆角：IME 窗口透明，键盘顶部圆角下透出应用内容；
         // 底部导航条增高区涂键盘背景色（随深浅色主题），实现底部沉浸
         runCatching {
@@ -560,12 +385,11 @@ class AZimeService : InputMethodService() {
                 showSchemaPanel = false,
             )
         }
-        // 轮19.80：**这里不能清光标坐标** —— 不少 App（如闲鱼）打字中途会反复触发 onFinishInputView，
-        // 清零 ⇒ 浮窗被判"无坐标" ⇒ 从光标处闪一下、掉到兜底位置（用户实测"先闪现一下再跳回"）✗
-        // 保留最后一次有效坐标即可；真正收起键盘时在 onWindowHidden 里清 ✓
+        // 轮19.11：停止光标监听 + 清掉光标坐标
         runCatching {
             getCurrentInputConnection()?.requestCursorUpdates(0)
         }
+        uiState.update { it.copy(cursorLeft = -1, cursorBottom = -1) }
         // 语音 = 最重的可选资源：闲置后卸载（90s 宽限）
         scheduleSpeechEngineRelease()
         super.onFinishInputView(finishingInput)
@@ -577,17 +401,7 @@ class AZimeService : InputMethodService() {
         super.onFinishInput()
     }
 
-    override fun onWindowHidden() {
-        super.onWindowHidden()
-        // 轮19.76：键盘窗口真正隐藏 ⇒ 收起系统级浮窗（替代原来放在 onFinishInputView 的错误时机）
-        // 轮19.80：顺手在这里清光标坐标 —— 这才是"真的不再输入"的时机 ✓
-        com.azime.input.core.diag.Diag.log("FloatOv", "onWindowHidden -> hide")
-        runCatching { hideFloatOverlay() }
-        uiState.update { it.copy(cursorLeft = -1, cursorBottom = -1) }
-    }
-
     override fun onDestroy() {
-        runCatching { hideFloatOverlay() }
         runCatching { clipboardManager.removePrimaryClipChangedListener(clipboardListener) }
         SpeechEngineManager.cancel()
         // 轮19.9（省电，对齐 trime2 / Xime 的退出释放）：服务真的被系统销毁时，
