@@ -1958,3 +1958,13 @@ if (!pw.isShowing) { runCatching { pw.showAtLocation(...) } } // ← 再去显�
 - `update -> (x,y) h=?`（每次实际落点）
 - `shown at (x,y)` / `show-failed: …` / `ensure-failed`
 ⇒ 下次在闲鱼打字后，一次日志即可判定："有没有走系统级窗口 / 落点是否跟着光标" ✓
+
+# 轮19.76（0.9.82-oime vc92）：修"打两个字母浮窗就消失" —— 收网时机放错了回调
+
+**现象**（用户实测）：浮窗**出现**后，**打两个字母就消失** ✗
+**真因**：我把"收起浮窗"挂在了 `onFinishInputView` ✗ —— 不少 App 在**组合变化 / 自绘输入框刷新**时
+会**反复触发** `onFinishInputView` ⇒ 打两个字就把浮窗关掉了 ✗✓
+
+**修复**：
+- `onFinishInputView` **不再收浮窗**（保留空实现 + 注释说明原因）
+- 收网改到 **`onWindowHidden()`**（键盘窗口**真正隐藏**时才触发一次）✓ 与 `onDestroy()` 双保险 ✓

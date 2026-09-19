@@ -467,8 +467,9 @@ class AZimeService : InputMethodService() {
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
-        // 轮19.73：键盘收起 ⇒ 系统级浮窗也要收（否则会留在屏幕上）
-        runCatching { hideFloatOverlay() }
+        // 轮19.76：**这里不能收浮窗** —— 不少 App 在组合变化/自绘输入框刷新时会反复触发
+        // onFinishInputView ⇒ 打两个字母浮窗就被关掉（用户实测"打两个字母就消失"）✗
+        // 正确的收网时机是窗口真正隐藏（onWindowHidden）或服务销毁（onDestroy）✓
         lifecycleOwner.pause()
         // 键盘收起时若在听写中，取消识别
         if (uiState.value.voiceState == "listening") {
@@ -500,6 +501,13 @@ class AZimeService : InputMethodService() {
         RimeManager.clearComposition()
         scope.launch { refreshState() }
         super.onFinishInput()
+    }
+
+    override fun onWindowHidden() {
+        super.onWindowHidden()
+        // 轮19.76：键盘窗口真正隐藏 ⇒ 收起系统级浮窗（替代原来放在 onFinishInputView 的错误时机）
+        com.azime.input.core.diag.Diag.log("FloatOv", "onWindowHidden -> hide")
+        runCatching { hideFloatOverlay() }
     }
 
     override fun onDestroy() {
