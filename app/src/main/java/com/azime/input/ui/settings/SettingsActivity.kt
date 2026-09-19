@@ -992,12 +992,13 @@ private fun StatusCard(fillWidth: Boolean = false) {
                             ready -> "运行正常"
                             else -> "引擎未就绪 / 首次部署中…"
                         },
-                        // 轮19.64：文本改**白色** + 字号再加大一号（18 → 20）
-                        fontSize = 20.sp,
+                        // 轮19.70：**回退到换图标前那一版**（用户反馈写死白色在浅色强调色下看不清 ✗）
+                        // 改回 on 色：由主题按强调色自动给出对比色，任何界面风格下都清晰 ✓
+                        fontSize = 18.sp,
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        color = if (notEnabled) Color(0xFF3C4043) else Color.White,
+                        color = if (notEnabled) Color(0xFF3C4043) else cs.onPrimaryContainer,
                     )
                 }
                 // 轮19.15：第三行 = 当前方案
@@ -1005,11 +1006,11 @@ private fun StatusCard(fillWidth: Boolean = false) {
                     Spacer(Modifier.height(4.dp))
                     Text(
                         text = "方案 · $schema",
-                        // 轮19.64：字号再加大一号（14 → 15）+ 白色
-                        fontSize = 15.sp,
+                        // 轮19.70：同步回退（14sp + on 色）
+                        fontSize = 14.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        color = Color.White,
+                        color = cs.onPrimaryContainer,
                     )
                 }
             }
@@ -1605,6 +1606,7 @@ private fun KeyAppearanceSettings() {
 @Composable
 private fun FloatingWindowSettings() {
     val km = com.azime.input.core.keyboard.KeyboardManager
+    val context = androidx.compose.ui.platform.LocalContext.current
     var enabled by remember { mutableStateOf(km.floatEnabled()) }
     var mode by remember { mutableStateOf(km.floatMode()) }
     var x by remember { mutableStateOf(km.floatXDp().toFloat()) }
@@ -1614,6 +1616,49 @@ private fun FloatingWindowSettings() {
     val custom = mode == "custom"
     Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
         Text("悬浮窗", style = MaterialTheme.typography.titleSmall)
+        // 轮19.70：**系统级悬浮窗**需要「显示在其他应用上层」权限 —— 未授权时给出直达入口。
+        // 授权后浮窗可在屏幕任意位置跟随光标（含闲鱼顶部搜索栏那种 IME 窗口外的位置）✓
+        val canOverlay = remember {
+            android.os.Build.VERSION.SDK_INT < 23 ||
+                android.provider.Settings.canDrawOverlays(context)
+        }
+        if (!canOverlay) {
+            Spacer(Modifier.height(6.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.10f),
+                        androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+                    )
+                    .border(
+                        1.dp, MaterialTheme.colorScheme.primary,
+                        androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+                    )
+                    .clickable {
+                        runCatching {
+                            context.startActivity(
+                                android.content.Intent(
+                                    android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                    android.net.Uri.parse("package:" + context.packageName),
+                                ),
+                            )
+                        }
+                    }
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "授予「显示在其他应用上层」权限（浮窗才能跟随光标）",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.weight(1f),
+                )
+                Text("▸", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary)
+            }
+        }
         Spacer(Modifier.height(6.dp))
         SettingSwitchRow("启用悬浮窗（输入时显示编码）", enabled) {
             enabled = it

@@ -1833,3 +1833,31 @@ UI 判定「没有光标位置」⇒ 悬浮窗退化为**固定位置**，观感
 - 键盘列在浮窗模式下同样**上报自身矩形**（原来只在悬浮键盘模式上报）
 - 普通模式（未开浮窗）行为**完全不变**（矩形上报 -1 ⇒ 走系统默认 insets）✓
 - 新增埋点 `Float`：记录 cursor / imeTop / floatH / 最终 offset，便于下次一眼确认 ✓
+
+# 轮19.70（0.9.76-oime vc86）：撤销撑屏（修浮窗错乱）+ 工具栏勾选列表 123 + 界面风格回退 + 悬浮窗权限前置
+
+## 1. 撤销 19.69 的「撑满屏」（**浮窗错乱的真因**）
+用户在真机看到：浮窗被画在键盘区、与空格/候选重叠、还伴随小键盘残影 ✗
+⇒ 根因是我把 IME 窗口撑成整屏（内容顶到全屏高 + 键盘贴底），Popup 的坐标系与键盘布局互相错位 ✗
+⇒ **整段撤销**（UI 的 `floatFollow` 撑高 + 宽度上报；服务端的 insets 分支），回到 19.68 的状态 ✓
+
+## 2. 定制工具栏勾选列表里的「数字」也改文字 123
+19.67 只改了工具栏**按钮**那一处（`KeyboardScreen:1665`），
+勾选列表（`KeyboardScreen:2292`）是另一处渲染 ✗ ⇒ 一并改成文字 **123** ✓
+
+## 3. 界面风格：状态大方块回退到「换图标前那一版」
+19.64 我把状态卡文字写死为 **白色**（用户当时要求）⇒ 在**浅色强调色**的界面风格下看不清 ✗
+⇒ 按用户要求回退：颜色改回 **`onPrimaryContainer`**（由主题按强调色给对比色，任何风格都清晰 ✓），
+字号回退 **20→18sp / 15→14sp** ✓
+
+## 4. 悬浮窗权限前置（为"系统级悬浮窗"铺路，见下）
+- Manifest 新增 `<uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />` ✓
+- 设置 → 悬浮窗：未授权时显示**「授予『显示在其他应用上层』权限」**直达入口（跳 MANAGE_OVERLAY_PERMISSION）✓
+
+## 5. 下一步（依据用户提供的《TRIME 悬浮窗实现路径分析报告》）
+报告结论：**「中文输入法」(com.osfans.trime.accessibility) 的悬浮窗是
+`SYSTEM_ALERT_WINDOW` + `PopupWindow.setWindowLayoutType(TYPE_APPLICATION_OVERLAY=2038)` 的系统级窗口**，
+并配 `setClippingEnabled(false)` + `setInputMethodMode(2)`（显示时不拉起输入法）+ 反射 `setLayoutInScreenEnabled(true)`；
+**与无障碍服务无关**（无 AccessibilityService、无 2032）✓
+⇒ 我们要做的等价改造：把编码浮窗从「IME 窗口内的 Compose Popup」搬到**自建 PopupWindow（2038）**，
+用**屏幕坐标**定位（不再需要 imeTop 换算）；未授权时自动降级回窗口内浮窗 ✓（下一步实施）

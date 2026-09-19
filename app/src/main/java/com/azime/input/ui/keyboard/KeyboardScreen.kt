@@ -420,20 +420,12 @@ fun AzimeKeyboardScreen(
         // 只 setLayout(MATCH_PARENT) 会被系统覆盖回来 → 之前窗口只有键盘高，拖动被"框"在下半屏。
         // 让内容自己变高，窗口才真的高，才能自由拖动。
         val screenHdp = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp
-        // 轮19.69：**编码浮窗开启时把窗口撑满屏** —— IME 窗口高度只由内容决定，
-        // 窗口只有键盘高时，浮窗的 Y 偏移会是"光标Y - 窗口Y"这种大负数 ⇒ 被裁到窗口外 ⇒ App 里
-        // 顶部搜索栏（闲鱼）看不到浮窗 ✗。撑高后窗口覆盖全屏，浮窗才能贴到光标 ✓
-        // 注意：insets 仍报**键盘上沿**（见 AZimeService.onComputeInsets），App 照常让位 ✓
-        val floatFollow = KeyboardManager.floatEnabled() && !floating
         androidx.compose.foundation.layout.BoxWithConstraints(
             modifier = modifier
                 .fillMaxWidth()
                 .then(
-                    when {
-                        floating -> Modifier.height((screenHdp - 48).coerceAtLeast(320).dp)
-                        floatFollow -> Modifier.height(screenHdp.dp)
-                        else -> Modifier.background(c.bg)
-                    },
+                    if (floating) Modifier.height((screenHdp - 48).coerceAtLeast(320).dp)
+                    else Modifier.background(c.bg),
                 ),
             contentAlignment = boxAlign,
         ) {
@@ -473,17 +465,10 @@ fun AzimeKeyboardScreen(
                                 KeyboardManager.setFloatKbdRect(top, top + coords.size.height)
                             }
                     } else {
-                        // 轮19.69：浮窗模式下键盘**只占底部**，同样上报矩形 —— 让服务端把可触摸区域
-                        // 限定成键盘本身，其余（含浮窗所在的空白）触摸穿透给 App ✓
                         Modifier
                             .background(c.bg)
-                            .onGloballyPositioned { coords ->
-                                if (floatFollow) {
-                                    val top = coords.positionInWindow().y.toInt()
-                                    KeyboardManager.setFloatKbdRect(top, top + coords.size.height)
-                                } else {
-                                    KeyboardManager.setFloatKbdRect(-1, -1)
-                                }
+                            .onGloballyPositioned {
+                                KeyboardManager.setFloatKbdRect(-1, -1)
                             }
                     },
                 ),
@@ -2288,7 +2273,10 @@ private fun ToolbarCustomizePanel(
                             .padding(vertical = 10.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
-                        Icon(
+                        // 轮19.70：**数字**工具在勾选列表里也显示文字 123（与键面/工具栏一致）
+                        if (id == "numpad") {
+                            Text("123", fontSize = 15.sp, fontWeight = FontWeight.Medium, color = c.text)
+                        } else Icon(
                             toolbarToolIcon(id),
                             contentDescription = name,
                             tint = c.text.copy(alpha = 0.75f),

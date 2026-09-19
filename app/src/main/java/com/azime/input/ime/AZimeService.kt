@@ -218,27 +218,10 @@ class AZimeService : InputMethodService() {
     override fun onComputeInsets(outInsets: android.inputmethodservice.InputMethodService.Insets?) {
         super.onComputeInsets(outInsets)
         if (outInsets == null) return
-        val hm = resources.displayMetrics
-        if (!KeyboardManager.floatKeyboard()) {
-            // 轮19.69：**编码浮窗模式**（非悬浮键盘）——内容被撑到全屏高，这里必须把
-            // content/visible insets 报成**键盘上沿**，否则 App 会以为整屏可见、输入框被键盘盖住 ✗；
-            // 同时把可触摸区域限定成键盘，其余区域触摸穿透给 App（浮窗所在的空白也不吃触摸）✓
-            val kTop = KeyboardManager.floatKbdTop
-            val kBottom = KeyboardManager.floatKbdBottom
-            if (kTop in 1 until hm.heightPixels && kBottom > kTop) {
-                outInsets.contentTopInsets = kTop
-                outInsets.visibleTopInsets = kTop
-                outInsets.touchableInsets = android.inputmethodservice.InputMethodService.Insets.TOUCHABLE_INSETS_REGION
-                outInsets.touchableRegion.set(0, kTop, hm.widthPixels, kBottom)
-            } else {
-                // 未上报（普通模式）⇒ 保持系统默认 insets，不碰 touchableRegion
-                outInsets.touchableInsets = android.inputmethodservice.InputMethodService.Insets.TOUCHABLE_INSETS_CONTENT
-                outInsets.touchableRegion.setEmpty()
-            }
-            return
-        }
+        if (!KeyboardManager.floatKeyboard()) return
         val top = KeyboardManager.floatKbdTop
         val bottom = KeyboardManager.floatKbdBottom
+        val hm = resources.displayMetrics
         // 轮19.22：**关键**——contentTopInsets 报满屏高度，App 不会被键盘顶起/压扁，
         // 而是整屏铺开、键盘浮在它之上（19.20/19.21 只设了 touchableRegion，App 仍被让位）
         outInsets.contentTopInsets = hm.heightPixels

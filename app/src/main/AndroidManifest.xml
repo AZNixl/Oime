@@ -9,6 +9,9 @@
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
         tools:ignore="ScopedStorage" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- 轮19.70：编码浮窗改走**系统级悬浮窗**（TYPE_APPLICATION_OVERLAY），需要该权限；
+         未授权时自动降级回 IME 窗口内浮窗，不影响其它功能 -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <!-- 语音输入（轮15）：系统 SpeechRecognizer 录音授权 -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <!-- 轮19.6：O 圆环上滑快捷启动应用——需读取已安装应用列表（Android 11+ 必须显式声明） -->
