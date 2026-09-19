@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import com.azime.input.core.diag.Diag as DiagLog
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -702,6 +703,11 @@ fun SettingsScreen(
         }
         // ── 二级页：关于 ──
         if (subPage == "about") {
+            // 轮19.83：关于页**分卡片**（原来所有条目共用一个背景 ✗）+ 日志/许可/隐私
+            val km = com.azime.input.core.keyboard.KeyboardManager
+            var logRev by remember { mutableStateOf(0) }   // 日志列表/开关变更后强制重组 ✓
+            var showLicense by remember { mutableStateOf(false) }
+            var showPrivacy by remember { mutableStateOf(false) }
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
@@ -710,13 +716,14 @@ fun SettingsScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 contentPadding = PaddingValues(vertical = 8.dp),
             ) {
+                // ① 版本信息
                 item {
                     Card(colors = grayCardColors(), shape = settingsCardShape()) {
                         Column(Modifier.padding(vertical = 4.dp)) {
                             KsuItem(
                                 icon = OimeIcons.info,
                                 title = "版本",
-                                subtitle = "${appVersionName(context)} · 包名 com.oime.input · 平台 RIME",
+                                subtitle = "${appVersionName(context)} · 包名 com.oime.input · 平台 RIME (librime)",
                                 onClick = {},
                                 showChevron = false,
                             )
@@ -734,6 +741,75 @@ fun SettingsScreen(
                                 },
                                 showChevron = false,
                             )
+                        }
+                    }
+                }
+
+                // ② 日志（轮19.83）
+                item {
+                    Card(colors = grayCardColors(), shape = settingsCardShape()) {
+                        Column(Modifier.padding(vertical = 4.dp)) {
+                            var verbose by remember(logRev) { mutableStateOf(km.verboseLog()) }
+                            SettingSwitchRow("详细日志（记录按键/候选/光标等埋点）", verbose) { on ->
+                                verbose = on
+                                km.setVerboseLog(on)
+                                DiagLog.setVerbose(on)
+                            }
+                            Text(
+                                "默认只记「错误 / 警告 / 关键事件」（几乎不耗电）；" +
+                                    "排查问题时再打开详细日志即可。日志只存本地，按天分文件、自动保留 7 天。",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 20.dp),
+                            )
+                            KsuItem(
+                                icon = OimeIcons.manage,
+                                title = "日志目录",
+                                subtitle = "Documents/Oime/logs/",
+                                onClick = {},
+                                showChevron = false,
+                            )
+                            val logFiles = remember(logRev) { DiagLog.files() }
+                            if (logFiles.isEmpty()) {
+                                Text(
+                                    "（还没有日志文件）",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+                                )
+                            } else {
+                                logFiles.take(4).forEach { f ->
+                                    Text(
+                                        "· ${f.name}　${f.length() / 1024} KB",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 1.dp),
+                                    )
+                                }
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                OutlinedButton(onClick = {
+                                    DiagLog.clearAll()
+                                    Toast.makeText(context, "日志已清空", Toast.LENGTH_SHORT).show()
+                                    logRev++
+                                }) { Text("清空日志", fontSize = 12.sp) }
+                                OutlinedButton(onClick = {
+                                    DiagLog.info("Diag", "manual log entry from About page")
+                                    Toast.makeText(context, "已写入一条测试日志", Toast.LENGTH_SHORT).show()
+                                    logRev++
+                                }) { Text("写入测试日志", fontSize = 12.sp) }
+                            }
+                        }
+                    }
+                }
+
+                // ③ 数据与备份
+                item {
+                    Card(colors = grayCardColors(), shape = settingsCardShape()) {
+                        Column(Modifier.padding(vertical = 4.dp)) {
                             KsuItem(
                                 icon = Icons.Default.Backup,
                                 title = "备份设置",
@@ -748,29 +824,62 @@ fun SettingsScreen(
                                         ).show()
                                     }
                                 },
+                                showChevron = false,
                             )
                             KsuItem(
-                                icon = OimeIcons.refresh,
+                                icon = Icons.Default.Restore,
                                 title = "恢复备份",
-                                subtitle = "从 Oime_backup_*.json 恢复全部偏好（覆盖当前设置）",
-                                onClick = { restoreLauncher.launch(arrayOf("application/json", "*/*")) },
-                            )
-                            KsuItem(
-                                icon = Icons.Default.WavingHand,
-                                title = "重新运行首次启动向导",
-                                subtitle = "权限 / 启用 / 选择输入法引导",
-                                onClick = {
-                                    context.getSharedPreferences("wizard_prefs", android.content.Context.MODE_PRIVATE)
-                                        .edit().putBoolean("wizard_done", false).apply()
-                                    context.startActivity(
-                                        android.content.Intent(context, com.azime.input.ui.main.MainActivity::class.java)
-                                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                                    )
-                                },
+                                subtitle = "从之前的备份 JSON 覆盖写回（谨慎）",
+                                onClick = { restoreLauncher.launch(arrayOf("application/json")) },
+                                showChevron = false,
                             )
                         }
                     }
                 }
+
+                // ④ 开源许可
+                item {
+                    Card(colors = grayCardColors(), shape = settingsCardShape()) {
+                        KsuItem(
+                            icon = OimeIcons.code,
+                            title = "开源许可",
+                            subtitle = "librime · sherpa-onnx · Jetpack Compose 等",
+                            onClick = { showLicense = true },
+                        )
+                    }
+                }
+
+                // ⑤ 隐私条约
+                item {
+                    Card(colors = grayCardColors(), shape = settingsCardShape()) {
+                        KsuItem(
+                            icon = OimeIcons.check,
+                            title = "隐私条约",
+                            subtitle = "本地优先：不采集、不上传、无遥测",
+                            onClick = { showPrivacy = true },
+                        )
+                    }
+                }
+
+                // ⑥ 致谢
+                item {
+                    Card(colors = grayCardColors(), shape = settingsCardShape()) {
+                        KsuItem(
+                            icon = OimeIcons.emoji,
+                            title = "致谢",
+                            subtitle = "RIME / librime 社区 · sherpa-onnx · 以及所有测试反馈的朋友",
+                            onClick = {},
+                            showChevron = false,
+                        )
+                    }
+                }
+            }
+
+            if (showLicense) {
+                LongTextDialog("开源许可", LICENSE_TEXT) { showLicense = false }
+            }
+            if (showPrivacy) {
+                LongTextDialog("隐私条约", PRIVACY_TEXT) { showPrivacy = false }
             }
             return@Scaffold
         }
@@ -2855,4 +2964,83 @@ private val VOICE_HELP_TEXT = """
 【五、小贴士】
 · 模型文件较大，建议用数据线传；传完可点「刷新模型状态」复查
 · 首次识别会加载模型，可能有一两秒延迟；之后走缓存会快很多
+""".trimIndent()
+
+
+/** 轮19.83：通用长文本弹窗（许可 / 隐私条约等）。 */
+@Composable
+private fun LongTextDialog(title: String, body: String, onClose: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text(title) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                Text(body, style = MaterialTheme.typography.bodySmall)
+            }
+        },
+        confirmButton = { TextButton(onClick = onClose) { Text("知道了") } },
+    )
+}
+
+/** 轮19.83：开源许可清单。 */
+private val LICENSE_TEXT = """
+○输入法（Oime）是开源软件，使用了以下开源项目，在此致谢：
+
+【librime】BSD 3-Clause
+· RIME 输入法引擎，本项目的输入核心
+· github.com/rime/librime
+
+【sherpa-onnx】Apache License 2.0
+· 语音识别（SenseVoice / 流式 Zipformer）与 TTS
+· github.com/k2-fsa/sherpa-onnx
+
+【AndroidX / Jetpack Compose】Apache License 2.0
+· 界面与生命周期
+· developer.android.com/jetpack
+
+【LuaJ / AndroLua 兼容层】MIT
+· 方案脚本（如被使用）
+
+【opencc】Apache License 2.0
+· 简繁转换（随 RIME 方案提供）
+
+【RIME 方案与词库】（虎码 / 白霜等）版权归各自作者所有，
+  随本应用分发时保留其原始许可与说明文件。
+
+如需完整许可文本，见仓库内 LICENSE 及各子目录中的许可文件。
+""".trimIndent()
+
+/** 轮19.83：隐私条约。 */
+private val PRIVACY_TEXT = """
+○输入法 隐私条约（本地优先）
+
+一、我们不采集什么
+· 不采集你的输入内容（按键、候选、上屏文字）
+· 不采集通讯录、短信、位置、设备标识
+· **没有**任何统计/遥测 SDK，不连接自家服务器
+
+二、数据在哪里
+· 输入方案、词库、字体、音效、备份、日志：全部在
+  Documents/Oime/ 下，**只存在你的设备上**
+· 日志仅用于排查问题，默认只记错误与关键事件；
+  详细日志需你手动开启，且随时可清空
+
+三、什么时候会联网
+· **只有**你主动做以下事情时才联网：
+  1) 点开 GitHub 链接；
+  2) 使用「联网 API」语音识别（请求发往你自己填写的服务地址）；
+  3) 手动下载/更新方案、模型。
+· 以上都可选择不用 ⇒ 全部功能可离线运行
+
+四、权限说明
+· 录音：仅在你长按 ○ 键听写时使用
+· 使用情况/存储：仅用于读写 Documents/Oime/ 下的文件
+· 网络：仅用于上面第三条列出的场景
+
+五、第三方
+· 语音识别所用的 sherpa-onnx 在**本地**运行；
+  若你选择「联网 API」，数据将发送到**你自己配置**的服务，请自行确认其隐私政策。
+
+六、联系
+· 问题与建议：github.com/AZNixl/Oime（Issues）
 """.trimIndent()

@@ -680,6 +680,18 @@ object KeyboardManager {
     fun setHintOffPressX(v: Int) = setHintOffX("press_x", v)
     fun setHintOffPressY(v: Int) = setHintOffY("press_y", v)
 
+    // ── 详细日志开关（轮19.83）──
+    // 默认关：只记 错误/警告/关键事件；开启后额外记按键/候选/光标等高频埋点 ✓
+
+    private const val PREF_VERBOSE_LOG = "verbose_log"
+
+    fun verboseLog(): Boolean = prefs.getBoolean(PREF_VERBOSE_LOG, false)
+
+    fun setVerboseLog(v: Boolean) {
+        synchronized(lock) { prefs.edit().putBoolean(PREF_VERBOSE_LOG, v).apply() }
+        com.azime.input.core.diag.Diag.setVerbose(v)
+    }
+
     // ── 第二 / 第三候选键（轮19.55）──
     // 值 = 触发键的 code（字符如 "." ","；或 "shift" / "symbols"），空串 = 无（不拦截，保持现状）。
     // 命中且候选数足够时，按下该键直接上屏第 2 / 第 3 个候选。

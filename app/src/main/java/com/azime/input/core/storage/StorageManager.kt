@@ -14,6 +14,7 @@ object StorageManager {
     private const val MODELS_DIR = "models"
     private const val SOUNDS_DIR = "sounds"
     private const val BACKUP_DIR = "backup"
+    private const val LOGS_DIR = "logs"
 
     lateinit var externalRootDir: File
         private set
@@ -30,6 +31,10 @@ object StorageManager {
 
     /** 轮19.55：备份目录（设置备份 JSON 写到这里）。 */
     lateinit var backupDir: File
+        private set
+
+    /** 轮19.83：日志目录（oime-*.log / crash-*.log）。 */
+    lateinit var logsDir: File
         private set
 
     /** 轮19.56：键面提示坐标文件（外置可改，改了直接生效）。 */
@@ -51,6 +56,7 @@ object StorageManager {
         modelsDir = File(externalRootDir, MODELS_DIR)
         soundsDir = File(externalRootDir, SOUNDS_DIR)
         backupDir = File(externalRootDir, BACKUP_DIR)
+        logsDir = File(externalRootDir, LOGS_DIR)
 
         // Create all directories
         externalRootDir.mkdirs()
@@ -60,6 +66,7 @@ object StorageManager {
         modelsDir.mkdirs()
         soundsDir.mkdirs()
         backupDir.mkdirs()
+        logsDir.mkdirs()
 
         // 轮19.46：把内置默认音效释放到外置目录（不覆盖用户自己的文件）
         copyDefaultSounds(context)

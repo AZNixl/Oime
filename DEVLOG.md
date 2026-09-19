@@ -2061,3 +2061,30 @@ java.lang.IllegalStateException: ViewTreeLifecycleOwner not found from
    说明重写得更细：两种本地模型（目录/文件/语言/交互差异）· 三步使用流程 · 联网 API · 下载地址 · 小贴士 ✓
    页脚那段长文本已移除 ✓
    （踩坑：`verticalScroll`/`rememberScrollState` 是**扩展函数**，必须 import 后直调 ✗ —— 本项目已知坑又踩了一次 ✓）
+
+# 轮19.83（0.9.89-oime vc99）：日志系统（入口在关于）+ 关于页分卡与许可/隐私
+
+## 一、日志系统（先做了口头+设备调研，再动手 ✓）
+**调研**（直接看设备上 trime / xime 的实际产物）：
+- **Xime**：`Documents/Xime/logs/kime_YYYYMMDD.log`，格式 `yyyy-MM-dd HH:mm:ss.SSS [I] TAG: msg`
+  —— 一整天**只有 4 行**（只记 FileLogger 初始化 / ModelRuntime attached 等事件 ⇒ **轻量按需** ✓）
+- **trime（同文）**：`Documents/rime/logs/crash-<时间戳>.log` —— 崩溃单独成文件，且**先打一整块设备信息**
+  （versionName/versionCode/BARND/BOARD/CPU_ABI …）再跟堆栈 ⇒ 经典 ACRA 式报告 ✓
+
+**结论（也是我们的实现）**：**默认轻量 + 详细按需开** ✓ —— 高频埋点最耗 IO/电，绝不能默认常开 ✗
+
+**实现**：
+- 目录 **`Documents/Oime/logs/`** ✓（`StorageManager.logsDir`，随其它目录一起创建 ✓）
+- 文件：`oime-YYYY-MM-DD.log`（按天 ✓）+ `crash-YYYY-MM-DD.log`（崩溃单独 ✓）
+- 级别：`err/warn/info` **常开**（错误/警告/关键事件：生命周期、部署、切引擎…）；
+  `log()` **仅详细模式**记录（按键/候选/光标/复制条等埋点 ✓）
+- **崩溃日志带设备信息块**（吸收 trime 的做法 ✓：版本/型号/Android/ABI/时间）+ 全局崩溃捕获 ✓
+- 轮转：只保留 **最近 7 天** ✓ + 单文件 **2MB** 上限 ✓
+- 入口在 **设置 → 关于 → 「日志」卡片**：详细日志开关 + 目录路径 + 文件列表（名/大小）+ 清空 + 写入测试日志 ✓
+
+## 二、关于页重排（原来所有条目共用一个背景 ✗）
+拆成 **6 张独立卡片** ✓：① 版本信息 ② 日志 ③ 数据与备份 ④ 开源许可 ⑤ 隐私条约 ⑥ 致谢
+- **开源许可**（弹窗，可滚动）：librime BSD-3 / sherpa-onnx Apache-2.0 / AndroidX·Compose Apache-2.0 /
+  LuaJ·AndroLua MIT / opencc Apache-2.0 / RIME 方案词库归属说明 ✓
+- **隐私条约**（弹窗）：不采集输入内容与设备标识、无遥测、数据只在 `Documents/Oime/`、
+  联网仅在用户主动操作时发生（GitHub / 自填的联网语音 API / 手动下载）· 权限逐条说明 ✓

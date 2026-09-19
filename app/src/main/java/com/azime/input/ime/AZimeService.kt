@@ -107,6 +107,7 @@ class AZimeService : InputMethodService() {
     override fun onCreate() {
         super.onCreate()
         lifecycleOwner.onCreate()
+        com.azime.input.core.diag.Diag.info("IME", "onCreate (service started)")
         // 沉浸式圆角：IME 窗口透明，键盘顶部圆角下透出应用内容；
         // 底部导航条增高区涂键盘背景色（随深浅色主题），实现底部沉浸
         runCatching {
@@ -402,6 +403,7 @@ class AZimeService : InputMethodService() {
     }
 
     override fun onDestroy() {
+        com.azime.input.core.diag.Diag.info("IME", "onDestroy (service stopped)")
         runCatching { clipboardManager.removePrimaryClipChangedListener(clipboardListener) }
         SpeechEngineManager.cancel()
         // 轮19.9（省电，对齐 trime2 / Xime 的退出释放）：服务真的被系统销毁时，
