@@ -285,6 +285,36 @@ data class KeyboardColors(
 )
 
 /** 按深浅色 + 当前主题强调色构建配色。 */
+/**
+ * 轮19.72：**对比度兜底** —— 各风格 token（尤其 **Material You 的动态取色**）不保证键面与底色有差异，
+ * 实测 Material You / Nothing OS 会出现"按键看不见"、iOS / One UI 出现"功能键与背景糊在一起" ✗
+ * ⇒ 统一在配色解析出口做兜底：亮度差不足就朝远侧推色（保持色相，只调明度）✓
+ */
+private fun ensureLuminanceDelta(fg: Color, ref: Color, minDelta: Float, preferLight: Boolean): Color {
+    var c = fg
+    var guard = 0
+    while (guard++ < 14 && kotlin.math.abs(c.luminance() - ref.luminance()) < minDelta) {
+        c = androidx.compose.ui.graphics.lerp(
+            c,
+            if (preferLight) Color.White else Color.Black,
+            0.16f,
+        )
+    }
+    return c
+}
+
+/** 文字压在键面上必须可读：对比不足时朝黑/白推（哪个离键底更远用哪个）。 */
+private fun ensureTextReadable(fg: Color, keyBg: Color): Color {
+    var c = fg
+    var guard = 0
+    while (guard++ < 14 && kotlin.math.abs(c.luminance() - keyBg.luminance()) < 0.32f) {
+        val toWhite = Color.White.luminance() - keyBg.luminance()
+        val toBlack = kotlin.math.abs(Color.Black.luminance() - keyBg.luminance())
+        c = androidx.compose.ui.graphics.lerp(c, if (toWhite > toBlack) Color.White else Color.Black, 0.16f)
+    }
+    return c
+}
+
 fun buildKeyboardColors(dark: Boolean): KeyboardColors {
     val accent = Color(
         if (dark) com.azime.input.core.theme.KeyboardTheme.accentDark()
@@ -307,33 +337,39 @@ fun buildKeyboardColors(dark: Boolean): KeyboardColors {
     val pureAccent = theme.accentPureEffective(dark)
     val baseKey = customKeyBg ?: Color(palette.keyBg)
     val border = if (tokens.keyBorderAlpha > 0f) Color(palette.text).copy(alpha = tokens.keyBorderAlpha) else null
+    // 轮19.72：统一兜底（浅/深两套都用）
+    val palBg = Color(palette.bg)
+    val palKey = ensureLuminanceDelta(baseKey, palBg, 0.055f, preferLight = true)
+    val palFunc = ensureLuminanceDelta(customFuncBg ?: Color(palette.funcKeyBg), palBg, 0.045f, preferLight = true)
+    val palText = ensureTextReadable(Color(palette.text), palKey)
+    val palSub = ensureTextReadable(Color(palette.subText), palKey)
     return if (dark) {
         KeyboardColors(
-            bg = Color(palette.bg),
+            bg = palBg,
             barBg = Color(palette.barBg),
-            keyBg = baseKey,
-            funcKeyBg = customFuncBg ?: Color(palette.funcKeyBg),
+            keyBg = palKey,
+            funcKeyBg = palFunc,
             // 原色模式直接用强调色；柔和模式仍与键底做半透明混合（默认观感）
-            accentKeyBg = if (pureAccent) accent else accent.copy(alpha = 0.35f).compositeOver(baseKey),
+            accentKeyBg = if (pureAccent) accent else accent.copy(alpha = 0.35f).compositeOver(palKey),
             accentKeyText = onAccent,
             accentActive = accent, accentActiveText = onAccent,
-            text = Color(palette.text),
-            subText = Color(palette.subText),
+            text = palText,
+            subText = palSub,
             joystick = Color(0xFFE57373),
             keyBorder = border, keyShadowDp = tokens.keyShadowDp,
             keyBold = tokens.boldKeys, monoFont = tokens.monospace,
         )
     } else {
         KeyboardColors(
-            bg = Color(palette.bg),
+            bg = palBg,
             barBg = Color(palette.barBg),
-            keyBg = baseKey,
-            funcKeyBg = customFuncBg ?: Color(palette.funcKeyBg),
+            keyBg = palKey,
+            funcKeyBg = palFunc,
             accentKeyBg = if (pureAccent) accent else accent.copy(alpha = 0.28f).compositeOver(baseKey),
             accentKeyText = onAccent,
             accentActive = accent, accentActiveText = onAccent,
-            text = Color(palette.text),
-            subText = Color(palette.subText),
+            text = palText,
+            subText = palSub,
             joystick = Color(0xFFD32F2F),
             keyBorder = border, keyShadowDp = tokens.keyShadowDp,
             keyBold = tokens.boldKeys, monoFont = tokens.monospace,

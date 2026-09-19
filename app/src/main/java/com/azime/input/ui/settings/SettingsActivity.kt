@@ -1717,7 +1717,8 @@ private fun FloatingWindowSettings() {
             }
             var orient by remember { mutableStateOf(km.floatOrientation()) }
             Text("候选排列", style = MaterialTheme.typography.bodyMedium)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            // 轮19.72：补 fillMaxWidth —— 原来没宽度约束，chips（weight 子项）可能量成 0 宽而不显示 ✗
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf("h" to "横向", "v" to "竖向").forEach { (id, label) ->
                     val on = orient == id
                     Box(
@@ -1743,11 +1744,21 @@ private fun FloatingWindowSettings() {
             }
             }
             var showFloatColorPick by remember { mutableStateOf(false) }
+            // 轮19.72：入口做明显（与其它设置行同规格：标题 + 右侧色块/箭头）
             Row(
-                modifier = Modifier.fillMaxWidth().clickable { showFloatColorPick = true }.padding(vertical = 6.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { showFloatColorPick = true }
+                    .padding(vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("悬浮窗背景色（默认跟随主题）", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                Text("悬浮窗背景色", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                Text(
+                    if (km.floatBgColor() != 0) "自定义" else "跟随主题",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.size(8.dp))
                 Box(
                     modifier = Modifier
                         .size(24.dp)
@@ -1768,11 +1779,6 @@ private fun FloatingWindowSettings() {
             }
             TextButton(onClick = { km.setFloatBgColor(0); floatRev++ }) { Text("背景色恢复跟随主题") }
         }
-        Text(
-            "参考 trime 悬浮窗：输入时在键盘上方悬浮显示当前输入码；默认样式固定位置与字号，自定义样式按上面参数渲染。下次键盘弹出即生效。",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
 }
 
