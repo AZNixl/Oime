@@ -2049,3 +2049,15 @@ java.lang.IllegalStateException: ViewTreeLifecycleOwner not found from
   · Manifest 的 `SYSTEM_ALERT_WINDOW` 声明（此刻为惰性，不申请即不生效 ✓）
 
 校验方式：拉取 `551072ec` 的 `AZimeService.kt` / `KeyboardScreen.kt` 与本地逐行 diff ⇒ 剩余差异**仅上述两项** ✓
+
+# 轮19.82（0.9.88-oime vc98）：chips 选中色 / 背景色入口加强调 / 语音使用说明改弹窗
+
+1. **「候选排列」横向·竖向选中时文字不明显** —— 又是"底色改了、文字没换 on 色" ✗（同类第 5 次）
+   ⇒ 选中：`primaryContainer` 底 + **`onPrimaryContainer` 字** + 1.5dp `primary` 描边 + 加粗 ✓
+   ⇒ 未选中：`surfaceVariant` 底 + `onSurfaceVariant` 字 ✓
+2. **悬浮窗背景色入口再加强调**：改成与「设置候选快捷键」同款 —— 强调色 10% 底 + `primary` 描边 +
+   调色板图标 + 半粗强调色文字 ✓
+3. **语音输入「使用方法」改为弹窗**：标题右侧加 **「使用说明」按钮** ⇒ 点开弹窗看详细说明 ✓
+   说明重写得更细：两种本地模型（目录/文件/语言/交互差异）· 三步使用流程 · 联网 API · 下载地址 · 小贴士 ✓
+   页脚那段长文本已移除 ✓
+   （踩坑：`verticalScroll`/`rememberScrollState` 是**扩展函数**，必须 import 后直调 ✗ —— 本项目已知坑又踩了一次 ✓）

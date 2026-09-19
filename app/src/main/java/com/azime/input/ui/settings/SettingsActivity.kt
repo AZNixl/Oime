@@ -15,6 +15,8 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -410,11 +412,33 @@ fun SettingsScreen(
                 // 父级菜单③：语音输入（轮19：本地模型 + 联网 API 点选；系统接口已删除）
                 item {
                     Card(colors = grayCardColors(), shape = settingsCardShape()) { Column(Modifier.padding(vertical = 4.dp)) {
-                        Text(
-                            "语音输入",
-                            style = MaterialTheme.typography.titleSmall,
-                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 20.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text("语音输入", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                            // 轮19.82：长说明改为「使用说明」按钮 + 弹窗（原来一大段压在页面底部 ✗）
+                            var showVoiceHelp by remember { mutableStateOf(false) }
+                            TextButton(onClick = { showVoiceHelp = true }) { Text("使用说明", fontSize = 12.sp) }
+                            if (showVoiceHelp) {
+                                AlertDialog(
+                                    onDismissRequest = { showVoiceHelp = false },
+                                    title = { Text("语音输入使用说明") },
+                                    text = {
+                                        Column(
+                                            modifier = Modifier.verticalScroll(rememberScrollState()),
+                                        ) {
+                                            Text(VOICE_HELP_TEXT, style = MaterialTheme.typography.bodySmall)
+                                        }
+                                    },
+                                    confirmButton = {
+                                        TextButton(onClick = { showVoiceHelp = false }) { Text("知道了") }
+                                    },
+                                )
+                            }
+                        }
                         val micGranted = remember {
                             mutableStateOf(
                                 androidx.core.content.ContextCompat.checkSelfPermission(
@@ -508,16 +532,6 @@ fun SettingsScreen(
                             title = "刷新模型状态",
                             subtitle = "模型放 Documents/Oime/models/（sense-voice / zipformer）",
                             onClick = { modelCheck++ },
-                        )
-                        Text(
-                            "模型下载（PC 端解压后推入手机）：\n" +
-                                "SenseVoice: github.com/k2-fsa/sherpa-onnx/releases → asr-models →\n" +
-                                "  sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8（model.int8.onnx + tokens.txt）\n" +
-                                "Zipformer: sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20\n" +
-                                "  （encoder*.int8.onnx + decoder*.onnx + joiner*.int8.onnx + tokens.txt）",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
                         )
                     } }
                 }
@@ -1681,14 +1695,29 @@ private fun FloatingWindowSettings() {
                     Box(
                         modifier = Modifier
                             .weight(1f)
+                            // 轮19.82：选中态原来只换底色、文字还是默认色 ⇒ 对比不足（同类问题第 5 次 ✗）
+                            // ⇒ 底色用 primaryContainer、文字用**对应的 on 色** ✓ 未选中也补 on 色 ✓
                             .background(
                                 if (on) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                                androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+                            )
+                            .border(
+                                if (on) 1.5.dp else 0.dp,
+                                if (on) MaterialTheme.colorScheme.primary else Color.Transparent,
                                 androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
                             )
                             .clickable { orient = id; km.setFloatOrientation(id); floatRev++ }
                             .padding(vertical = 8.dp),
                         contentAlignment = Alignment.Center,
-                    ) { Text(label, style = MaterialTheme.typography.bodySmall) }
+                    ) {
+                        Text(
+                            label,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = if (on) FontWeight.Bold else FontWeight.Normal,
+                            color = if (on) MaterialTheme.colorScheme.onPrimaryContainer
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             }
             // 轮19.73：**补回丢失的 `}`** —— 19.71 删重复块时把 Row 的闭合括号一起删了 ✗
@@ -1705,11 +1734,32 @@ private fun FloatingWindowSettings() {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .background(
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.10f),
+                        androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+                    )
+                    .border(
+                        1.dp, MaterialTheme.colorScheme.primary,
+                        androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+                    )
                     .clickable { showFloatColorPick = true }
-                    .padding(vertical = 10.dp),
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("悬浮窗背景色", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                Icon(
+                    com.azime.input.ui.icons.OimeIcons.palette,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(Modifier.size(8.dp))
+                Text(
+                    "悬浮窗背景色",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.weight(1f),
+                )
                 Text(
                     if (km.floatBgColor() != 0) "自定义" else "跟随主题",
                     style = MaterialTheme.typography.bodySmall,
@@ -2766,3 +2816,43 @@ private fun CandidateKeyEditorPage(padding: androidx.compose.foundation.layout.P
         }
     }
 }
+
+
+/** 轮19.82：语音输入使用说明（弹窗用，写得比原来底部那段更细）。 */
+private val VOICE_HELP_TEXT = """
+语音输入使用说明
+
+【一、两种本地模型（离线，推荐）】
+· SenseVoice —— 准确率优先
+  · 目录：Documents/Oime/models/sense-voice/
+  · 文件：model.int8.onnx + tokens.txt
+  · 语言：中文 / 英文 / 日文 / 韩文 / 粤语
+  · 交互：**松手后**给出整段文字（适合短句、要求准确）
+
+· 流式 Zipformer —— 边说边出
+  · 目录：Documents/Oime/models/zipformer/
+  · 文件：encoder*.int8.onnx + decoder*.onnx + joiner*.int8.onnx + tokens.txt
+  · 语言：中英混说
+  · 交互：**边说边显示**（适合长句、实时性要求高）
+
+【二、怎么用】
+1. 先在「麦克风权限」里授权录音（不授权无法听写）
+2. 键盘上**长按 ○ 键**开始听写，松开结束
+3. 想换引擎：在上面的「识别引擎」里点选即可（切换会释放旧模型缓存）
+4. 放好模型后，点「刷新模型状态」→ 看到「模型就绪」即可使用
+
+【三、联网 API（可选，不想下载模型时用）】
+· 点「联网 API 配置」填一个 OpenAI 兼容的 /audio/transcriptions 服务
+  （baseUrl + apiKey + 模型名），识别走网络 ✓
+
+【四、模型下载地址（PC 端解压后推入手机）】
+· SenseVoice：
+  github.com/k2-fsa/sherpa-onnx/releases → asr-models →
+  sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8
+· Zipformer：
+  sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20
+
+【五、小贴士】
+· 模型文件较大，建议用数据线传；传完可点「刷新模型状态」复查
+· 首次识别会加载模型，可能有一两秒延迟；之后走缓存会快很多
+""".trimIndent()
