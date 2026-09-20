@@ -1,0 +1,70 @@
+name: Release
+
+# 轮19.84：打 tag（v1.0.0 这种）时自动构建**发行 APK** 并创建 GitHub Release ✓
+# 全程只用内置 GITHUB_TOKEN ⇒ 不需要任何自定义 secrets ⇒ fork 也能直接用 ✓
+on:
+  push:
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v6
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      # sherpa-onnx AAR 不入库（49MB 超 API 限制）⇒ 从官方 release 下载 ✓
+      - name: Download sherpa-onnx AAR
+        run: |
+          mkdir -p app/libs
+          curl -sSL --retry 5 --retry-all-errors -o app/libs/sherpa-onnx-1.13.5.aar \
+            https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.5/sherpa-onnx-1.13.5.aar
+          ls -la app/libs/
+
+      - name: Build release APK
+        run: ./gradlew assembleRelease --stacktrace
+
+      - name: Rename APK
+        run: |
+          mkdir -p out
+          cp app/build/outputs/apk/release/app-release.apk \
+             "out/oime-${GITHUB_REF_NAME#v}.apk"
+          ls -la out/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ○输入法 ${{ github.ref_name }}
+          draft: false
+          generate_release_notes: true
+          files: out/*.apk
+          body: |
+            ○输入法（Oime）${{ github.ref_name }}
+
+            ## 支持
+            - **Android 5.0+**（minSdk 21）
+            - **arm64-v8a**（64 位 ARM，绝大多数手机）
+            - armeabi-v7a / x86 / x86_64 视构建内 ABI 而定（见下方文件说明）
+
+            ## 安装
+            1. 下载下面的 `oime-*.apk`
+            2. 安装后到「系统设置 → 语言与输入法 → 输入法」里**启用 ○输入法**并切换
+            3. 首次使用会自动在 `Documents/Oime/` 下建立目录（schemas / models / fonts / sounds / backup / logs）
+
+            ## 说明
+            - 本包为**社区发行版**，使用 debug 密钥签名（升级到将来换正式密钥的版本需要先卸载）
+            - 不含任何统计/遥测；日志只写在本机 `Documents/Oime/logs/`
+            - 语音识别默认离线（需自行放入模型，见「设置 → 关于 → 使用说明」）

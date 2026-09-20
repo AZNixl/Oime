@@ -238,6 +238,53 @@
 - 界面风格调研：[UI_STYLE_RESEARCH.md](UI_STYLE_RESEARCH.md)
 - 语音联网方案调研：[DOUBAO_ASR_REPORT.md](DOUBAO_ASR_REPORT.md)
 
+
+---
+
+## 下载与安装（发行版）
+
+到 **[Releases](https://github.com/AZNixl/Oime/releases/latest)** 下载最新的 `oime-x.y.z.apk`：
+
+1. 下载 APK → 安装（系统可能提示"未知来源"，允许即可）
+2. 打开 **○输入法** App → 按引导启用并切换输入法
+3. 首次启动会在 `Documents/Oime/` 下自动建立目录：
+
+```
+Documents/Oime/
+├── schemas/     输入方案（虎码 / 双拼 / 白霜…，可直接往里放目录）
+├── models/      语音模型（sense-voice / zipformer，需自行下载）
+├── fonts/       键盘字体（放 .ttf / .otf 即可在设置里选）
+├── sounds/      按键音效
+├── backup/      设置备份（JSON）
+└── logs/        运行日志（按天分文件，自动保留 7 天）
+```
+
+## 兼容性
+
+| 项 | 支持 |
+|---|---|
+| **系统** | **Android 5.0+**（minSdk 21，targetSdk 34）|
+| **CPU** | **arm64-v8a** ✓（绝大多数手机）<br>**armeabi-v7a** —— 需 32 位 `librime_jni.so`（见下方说明）<br>x86 / x86_64 —— **暂不发布**（无设备测试）|
+| 屏幕 | 竖屏 / 横屏（横屏为分体布局）|
+
+> **关于 armeabi-v7a**：输入核心 `librime_jni.so` 取自 Xime 的预编译产物，目前只有 arm64-v8a 版本。
+> 构建脚本已做成**按 `app/src/main/jniLibs/` 实际内容自适应**：只要把 32 位 `librime_jni.so`
+> 放进 `app/src/main/jniLibs/armeabi-v7a/`，下一次构建就会自动把该 ABI 一起打包 ✓
+> （32 位 librime 需要在 CI 里自行交叉编译，欢迎 PR ✓）
+
+## 隐私与权限
+
+- **不采集任何输入内容、设备标识，无统计/遥测 SDK**；数据全部在 `Documents/Oime/`，只存在本机
+- 权限用途：**录音**（仅长按 ○ 键听写时）、**存储/使用情况**（读写 `Documents/Oime/`）、
+  **网络**（仅在你主动操作时：打开链接 / 自填的联网语音 API / 手动下载方案）
+- 详细条款见 App 内 **设置 → 关于 → 隐私条约**；开源组件与许可见 **关于 → 开源许可**
+
+## 日志（排查问题用）
+
+- 位置：`Documents/Oime/logs/oime-YYYY-MM-DD.log`（崩溃另有 `crash-YYYY-MM-DD.log`，含设备信息）
+- **默认只记错误 / 警告 / 关键事件**（几乎不耗电）；
+  需要详细埋点（按键/候选/光标）时到 **设置 → 关于 → 日志 → 详细日志** 打开即可 ✓
+
 ---
 
 ## Fork 后如何跑 CI（已验证无私有依赖）

@@ -2093,3 +2093,21 @@ java.lang.IllegalStateException: ViewTreeLifecycleOwner not found from
 - 装机后实测日志首行是字面量 `pkg=${packageName}` ✗ —— 生成脚本把 $ 吞成了字面量
   ⇒ 改为**字符串拼接**写法 ✓（以后写含 $ 的 Kotlin 字符串一律用拼接或 heredoc 生成 ✓）
 - 实测：`Documents/Oime/logs/` 已创建 ✓、`oime-2026-09-20.log` 已写入首行 ✓
+
+# 轮19.84（1.0.0 / vc101）：首个正式发行版 —— Release 构建 + 兼容性扩展 + README
+
+1. **版本定为 1.0.0**（versionCode 101）✓
+2. **兼容更多安卓版本**：`minSdk 24 → **21**`（Android 5.0+）✓
+   本地跑通 `assembleRelease`（含 lintVital）✓ ⇒ 21 没有 NewApi 问题 ✓
+3. **ABI**：`abiFilters` 改为**按 `jniLibs` 实际内容自适应** ✓
+   · arm64-v8a ✓（现成）
+   · armeabi-v7a：需要 32 位 `librime_jni.so` —— 查了 Xime 仓库/release/CI 与本机留存的
+     `Xime-2.6.2-arm64-v8a.apk`（内部也只有 arm64 ✗）⇒ **暂时没有**；
+     构建脚本已留好钩子：把 so 放进 `jniLibs/armeabi-v7a/` 即自动纳入 ✓
+   · x86 / x86_64 不发布（无设备测试 ✓）
+4. **发行签名**：release 用 **debug keystore** 签名 ⇒ **不需要任何 secrets**（fork 也能直接出包 ✓）；
+   代价是将来换正式密钥需卸载重装（已在 README/Release 说明里写明 ✓）
+5. **新增 `.github/workflows/release.yml`**：打 `v*` tag 时自动 `assembleRelease` →
+   重命名为 `oime-<版本>.apk` → 用内置 `GITHUB_TOKEN` 创建 **GitHub Release**（无自定义 secrets ✓）
+6. **README 更新**：下载安装步骤 / 目录结构说明 / 兼容性表（含 armeabi-v7a 现状与钩子）/
+   隐私与权限 / 日志说明（前两轮新增的能力都写进去了 ✓）
