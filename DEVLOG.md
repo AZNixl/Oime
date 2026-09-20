@@ -2088,3 +2088,8 @@ java.lang.IllegalStateException: ViewTreeLifecycleOwner not found from
   LuaJ·AndroLua MIT / opencc Apache-2.0 / RIME 方案词库归属说明 ✓
 - **隐私条约**（弹窗）：不采集输入内容与设备标识、无遥测、数据只在 `Documents/Oime/`、
   联网仅在用户主动操作时发生（GitHub / 自填的联网语音 API / 手动下载）· 权限逐条说明 ✓
+
+## 轮19.83b（0.9.90-oime vc100）：修正初始化日志的插值
+- 装机后实测日志首行是字面量 `pkg=${packageName}` ✗ —— 生成脚本把 $ 吞成了字面量
+  ⇒ 改为**字符串拼接**写法 ✓（以后写含 $ 的 Kotlin 字符串一律用拼接或 heredoc 生成 ✓）
+- 实测：`Documents/Oime/logs/` 已创建 ✓、`oime-2026-09-20.log` 已写入首行 ✓
