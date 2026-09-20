@@ -13,21 +13,26 @@ android {
         // 轮19.84：兼容更多安卓版本 —— minSdk 24 → **21**（Android 5.0+）
         minSdk = 21
         targetSdk = 34
-        versionCode = 102
+        versionCode = 103
         versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         
-        ndk {
-            // 轮19.84：**按 jniLibs 里实际存在的 ABI 自适应** —— 只有拿到对应 ABI 的 librime_jni.so
-            // 才会打包该 ABI（否则装了也加载不了 so ✗）。
-            // 目前：arm64-v8a ✓（提取自 Xime 2.6.2）；armeabi-v7a 一旦放入 jniLibs 会自动纳入 ✓
-            // x86 / x86_64 暂不发布（无设备测试 ✗）
+        // ABI 列表在下方 splits.abi 里按 jniLibs 实际内容配置（轮19.86 改为**按 ABI 拆分出包**）
+    }
+
+    // 轮19.86：**按 ABI 拆分** —— arm64-v8a 与 armeabi-v7a 各自出一个 APK（不合并 universal ✓）
+    // 好处：单个包体积更小；且只有拿到对应 ABI 的 librime_jni.so 才拆该 ABI ✓
+    splits {
+        abi {
+            isEnable = true
+            reset()
             val abis = mutableListOf("arm64-v8a")
             if (file("src/main/jniLibs/armeabi-v7a/librime_jni.so").exists()) {
                 abis += "armeabi-v7a"
             }
-            abiFilters += abis
+            include(*abis.toTypedArray())
+            isUniversalApk = false
         }
     }
 

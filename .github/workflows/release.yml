@@ -1,7 +1,8 @@
 name: Release
 
-# 轮19.84：打 tag（v1.0.0 这种）时自动构建**发行 APK** 并创建 GitHub Release ✓
-# 全程只用内置 GITHUB_TOKEN ⇒ 不需要任何自定义 secrets ⇒ fork 也能直接用 ✓
+# 轮19.86：打 tag（v1.0.0 这种）时自动构建**按 ABI 拆分的发行包**并创建 GitHub Release ✓
+# · 每个 ABI 一个 APK（arm64-v8a / armeabi-v7a），不含 universal 合并包 ✓
+# · 全程只用内置 GITHUB_TOKEN ⇒ 不需要任何自定义 secrets ⇒ fork 也能直接用 ✓
 on:
   push:
     tags: [ 'v*' ]
@@ -34,14 +35,20 @@ jobs:
             https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.5/sherpa-onnx-1.13.5.aar
           ls -la app/libs/
 
-      - name: Build release APK
+      - name: Build release APKs (per-ABI)
         run: ./gradlew assembleRelease --stacktrace
 
-      - name: Rename APK
+      # 按 ABI 重命名：app-<abi>-release.apk → oime-<版本>-<abi>.apk
+      - name: Rename APKs
         run: |
+          set -e
           mkdir -p out
-          cp app/build/outputs/apk/release/app-release.apk \
-             "out/oime-${GITHUB_REF_NAME#v}.apk"
+          VER="${GITHUB_REF_NAME#v}"
+          for apk in app/build/outputs/apk/release/*.apk; do
+            base=$(basename "$apk")
+            abi=$(echo "$base" | sed -E 's/^app-(.+)-release\.apk$/\1/')
+            cp "$apk" "out/oime-${VER}-${abi}.apk"
+          done
           ls -la out/
 
       - name: Create GitHub Release
@@ -54,17 +61,26 @@ jobs:
           body: |
             ○输入法（Oime）${{ github.ref_name }}
 
+            ## 下载（**按 CPU 架构分开发布**，选一个装即可）
+
+            | 架构 | 适用 |
+            |---|---|
+            | `oime-*-arm64-v8a.apk` | 绝大多数手机（2016 年后的 64 位机型）|
+            | `oime-*-armeabi-v7a.apk` | 32 位老设备 |
+
+            > 不确定选哪个：装 `arm64-v8a`；若提示「应用未安装/不兼容」，再装 `armeabi-v7a`。
+            > x86 / x86_64（模拟器、极少数平板）暂不发布。
+
             ## 支持
             - **Android 5.0+**（minSdk 21）
-            - **arm64-v8a**（64 位 ARM，绝大多数手机）
-            - armeabi-v7a / x86 / x86_64 视构建内 ABI 而定（见下方文件说明）
+            - 竖屏 / 横屏（横屏为分体布局）
 
             ## 安装
-            1. 下载下面的 `oime-*.apk`
-            2. 安装后到「系统设置 → 语言与输入法 → 输入法」里**启用 ○输入法**并切换
-            3. 首次使用会自动在 `Documents/Oime/` 下建立目录（schemas / models / fonts / sounds / backup / logs）
+            1. 下载对应架构的 APK 并安装
+            2. 到「系统设置 → 语言与输入法 → 输入法」里**启用 ○输入法**并切换
+            3. 首次使用会自动建立 `Documents/Oime/`（schemas / models / fonts / sounds / backup / logs）
 
             ## 说明
-            - 本包为**社区发行版**，使用 debug 密钥签名（升级到将来换正式密钥的版本需要先卸载）
+            - 本包为**社区发行版**，使用 debug 密钥签名（将来换正式密钥需先卸载再装）
             - 不含任何统计/遥测；日志只写在本机 `Documents/Oime/logs/`
             - 语音识别默认离线（需自行放入模型，见「设置 → 关于 → 使用说明」）

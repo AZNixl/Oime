@@ -2126,3 +2126,18 @@ java.lang.IllegalStateException: ViewTreeLifecycleOwner not found from
 
 **版本**：versionCode 101 → **102**（versionName 仍 1.0.0）—— 让装过旧 1.0.0 的机器也能更新 ✓
 **Release**：删掉旧 v1.0.0（release + tag）后重新打 tag 重发 ✓（用户要求 ✓）
+
+# 轮19.86（1.0.0 / vc103）：发行包**按 ABI 拆分**（arm64-v8a 与 armeabi-v7a 各自出包）
+
+**用户要求**：不要合并成一个包 ⇒ 改 `splits.abi` ✓（`isUniversalApk = false` ✓，ABI 列表仍按
+`jniLibs` 实际内容自适应 ✓）
+
+**产物**（本地 `assembleRelease` 验证）：
+- `app-arm64-v8a-release.apk` → 27.5 MB（仅含 arm64-v8a 的 librime / sherpa / onnx ✓）
+- `app-armeabi-v7a-release.apk` → 26.4 MB（仅含 v7a ✓）
+（对比：之前的合并包 39.4 MB ⇒ 单包小了约 12 MB ✓）
+
+**release.yml 同步改造**：`assembleRelease` 后把 `app-<abi>-release.apk` 重命名为
+`oime-<版本>-<abi>.apk` 一并上传 ✓；Release 正文改成"按架构选包"的说明表 ✓
+
+**版本**：vc 102 → **103** ✓（versionName 仍 1.0.0）· 旧 release/tag 已删除后重发 ✓
