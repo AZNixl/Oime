@@ -2,7 +2,7 @@
 
 **Android RIME 输入法** —— librime 引擎 + Jetpack Compose 声明式键盘（键面、图标与 ○ 圆环为手绘），方案组零拷贝架构，支持本地语音识别。
 
-> 
+> 有问题Issues，但更新时间不定。欢迎Fork后使用AI修改以使项目更符合自己的使用习惯。
 > 当前版本 **1.0.0（vc102）** · 最低 **Android 5.0（minSdk 21）** · **arm64-v8a + armeabi-v7a**
 > · 最新安装包见 **[Releases](https://github.com/AZNixl/Oime/releases/latest)**
 >
