@@ -2164,3 +2164,29 @@ java.lang.UnsatisfiedLinkError: dlopen failed: empty/missing DT_HASH in "librime
 原文件备份为 `librime_jni.so.orig` ✓
 
 **待办**：arm64 的 so 同样缺 DT_HASH（Android 5.x arm64 也会失败 ✗，但极罕见 ✓）—— 下轮补上同一手术 ✓
+
+# 轮19.92（1.0.0 / vc109）：正式发布签名 + 只发 arm64 + README/Release 说明更新
+
+## 1. 只发布 arm64-v8a（用户决定 ✓）
+- 撤下 `armeabi-v7a`：其 so 已移出仓库备份到工作区（`jniLibs-armeabi-v7a-backup/` ✓）
+- `splits.abi` 仍**按 jniLibs 自适应** ⇒ 将来把 so 放回即自动恢复 ✓
+- **v8a 的最低安卓版本 = Android 6.0（API 23）**：
+  随包分发的预编译 so（libonnxruntime / librime / sherpa）只带 `DT_GNU_HASH` ✗，
+  而 Android 5.x 的 linker 强制要求 `DT_HASH` ⇒ 5.x 上 dlopen 必失败
+- ⇒ **minSdk 21 → 23** ✓（诚实：21 能装但起不来 ✗，反而更糟）
+
+## 2. 正式发布签名（不再是 debug ✓）
+- 用 `keytool` 生成发布密钥 `oime-signing/oime-release.jks`（RSA 2048 / 有效期 30 年 ✓）
+- 密钥 base64 存入 GitHub **Secrets**（4 个：SIGNING_KEY / KEY_ALIAS / STORE_PASSWORD / KEY_PASSWORD ✓），
+  **不进仓库** ✓（用 PyNaCl 对仓库公钥加密后经 API 写入 ✓）
+- `app/build.gradle.kts`：新增 `signingConfigs.oimeRelease`，从**环境变量**读密钥；
+  没有 Secrets 时**回退 debug** ⇒ 本地/fork 仍可构建 ✓
+- `release.yml`：给 Gradle 步骤注入 4 个 env + **新增「Verify APK signature」步骤**（打印证书 DN 便于核对 ✓）
+- ⚠️ **踩坑**：第一次补丁把步骤名写成 `Build release APK`（实际是 `Build release APKs (per-ABI)` ✗）
+  ⇒ env 从未生效、线上仍是 debug 签名 ✗ ⇒ 用 apksigner 验出来才发现 ✓
+  **教训：配置类改动必须"验证产物"，不能只看补丁是否写进文件** ✓
+
+## 3. 文档
+- README 新增「**签名**」段（密钥在 Secrets / fork 回退 debug / 旧 debug 签名包需先卸载 ✓）
+- Release 正文同步说明 ✓
+- 日志与「关于 → 版本」都显示 **versionCode** ✓（便于核对装的是哪一版 ✓）

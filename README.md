@@ -298,6 +298,17 @@ Documents/Oime/
 > 构建脚本**按 `app/src/main/jniLibs/` 实际内容自适应**：放入哪个 ABI 就打哪个 ✓
 > （x86 / x86_64 暂无设备测试，故不发布 ✓）
 
+
+## 签名
+
+发行包使用**正式发布密钥**签名（不再使用 debug 密钥）✓
+
+- 密钥保存在 GitHub **Secrets**（`SIGNING_KEY` / `SIGNING_KEY_ALIAS` / `SIGNING_STORE_PASSWORD` / `SIGNING_KEY_PASSWORD`），
+  **不进仓库** ✓；CI 构建时通过环境变量注入
+- 本地或 fork 若没有配置这些 Secrets，会自动**回退 debug 签名**，仍然可以正常构建 ✓
+- ⚠️ **升级提示**：0.9.x / 早期 1.0.0 的包是 debug 签名的，与正式签名**不兼容** ⇒
+  首次安装正式签名版需要**先卸载旧版**（会清掉应用数据；输入方案与词库在 `Documents/Oime/` 下不受影响 ✓）
+
 ## 隐私与权限
 
 - **不采集任何输入内容、设备标识，无统计/遥测 SDK**；数据全部在 `Documents/Oime/`，只存在本机

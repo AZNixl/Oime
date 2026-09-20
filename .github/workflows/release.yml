@@ -37,7 +37,23 @@ jobs:
           ls -la app/libs/
 
       - name: Build release APKs (per-ABI)
+        env:
+          # 轮19.92：**正式发布签名** —— 密钥只存于 GitHub Secrets，不进仓库 ✓
+          # （上一版补丁写错了步骤名 ⇒ env 没生效 ⇒ 线上仍是 debug 签名 ✗，本次修正 ✓）
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
         run: ./gradlew assembleRelease --stacktrace
+
+      # 轮19.92：把签名指纹打出来，一眼可核对（应为 CN=Oime 而不是 Android Debug ✓）
+      - name: Verify APK signature
+        run: |
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | tail -1)
+          for apk in app/build/outputs/apk/release/*.apk; do
+            echo "--- $apk"
+            "$APKSIGNER" verify --print-certs "$apk" | grep -i "certificate DN" || true
+          done
 
       # 按 ABI 重命名：app-<abi>-release.apk → oime-<版本>-<abi>.apk
       - name: Rename APKs
@@ -81,6 +97,7 @@ jobs:
             3. 首次使用会自动建立 `Documents/Oime/`（schemas / models / fonts / sounds / backup / logs）
 
             ## 说明
-            - 本包为**社区发行版**，使用 debug 密钥签名（将来换正式密钥需先卸载再装）
+            - 本包使用**正式发布密钥**签名（同一密钥持续使用，后续版本可直接覆盖升级 ✓）
+            - 若你装过 **debug 签名**的旧版本（0.9.x / 早期 1.0.0），需**先卸载**再装本包 ✓
             - 不含任何统计/遥测；日志只写在本机 `Documents/Oime/logs/`
             - 语音识别默认离线（需自行放入模型，见「设置 → 关于 → 使用说明」）
