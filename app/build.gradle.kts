@@ -1,3 +1,5 @@
+import java.util.Base64
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -16,12 +18,29 @@ android {
         // ⇒ 与其"能装不能用"，不如把下限诚实地定在 6.0（API 23）✓
         minSdk = 23
         targetSdk = 34
-        versionCode = 107
+        versionCode = 108
         versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         
         // ABI 列表在下方 splits.abi 里按 jniLibs 实际内容配置（轮19.86 改为**按 ABI 拆分出包**）
+    }
+
+    // 轮19.91：**正式发布签名**（密钥不进仓库 ⇒ 由 CI Secrets 注入环境变量 ✓；
+    // 本地或 fork 没设这些变量时自动回退 debug 签名，仍能构建 ✓）
+    signingConfigs {
+        create("oimeRelease") {
+            val b64 = System.getenv("SIGNING_KEY")
+            if (!b64.isNullOrBlank()) {
+                val ks = File(rootProject.layout.buildDirectory.asFile.get(), "oime-release.jks")
+                ks.parentFile?.mkdirs()
+                ks.writeBytes(Base64.getDecoder().decode(b64))
+                storeFile = ks
+                storePassword = System.getenv("SIGNING_STORE_PASSWORD")
+                keyAlias = System.getenv("SIGNING_KEY_ALIAS")
+                keyPassword = System.getenv("SIGNING_KEY_PASSWORD")
+            }
+        }
     }
 
     // 轮19.90：**只发布 arm64-v8a**（用户决定：v7a 撤回，老设备场景不划算 ✓）
@@ -46,9 +65,12 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            // 轮19.84：发行包用 **debug keystore** 签名 —— 好处是**不需要任何 secrets**（fork 也能直接出包 ✓），
-            // 缺点是签名与"正式密钥"不同（将来换正式密钥需卸载重装）。个人开源项目这样做最常见 ✓
-            signingConfig = signingConfigs.getByName("debug")
+            // 轮19.91：有 SIGNING_KEY 时用**正式发布密钥** ✓；否则回退 debug（本地开发/fork ✓）
+            signingConfig = if (!System.getenv("SIGNING_KEY").isNullOrBlank()) {
+                signingConfigs.getByName("oimeRelease")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
     

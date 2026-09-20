@@ -2,7 +2,8 @@ name: Release
 
 # 轮19.86：打 tag（v1.0.0 这种）时自动构建**按 ABI 拆分的发行包**并创建 GitHub Release ✓
 # · 每个 ABI 一个 APK（arm64-v8a / armeabi-v7a），不含 universal 合并包 ✓
-# · 全程只用内置 GITHUB_TOKEN ⇒ 不需要任何自定义 secrets ⇒ fork 也能直接用 ✓
+# · Release 创建用内置 GITHUB_TOKEN ✓；APK 用 **正式密钥签名**（密钥在 Secrets 里，不进仓库 ✓）
+#   fork 若没有配置这些 Secrets 会自动回退 debug 签名，仍可构建 ✓
 on:
   push:
     tags: [ 'v*' ]
