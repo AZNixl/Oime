@@ -2141,3 +2141,26 @@ java.lang.IllegalStateException: ViewTreeLifecycleOwner not found from
 `oime-<版本>-<abi>.apk` 一并上传 ✓；Release 正文改成"按架构选包"的说明表 ✓
 
 **版本**：vc 102 → **103** ✓（versionName 仍 1.0.0）· 旧 release/tag 已删除后重发 ✓
+
+# 轮19.87（1.0.0 / vc104）：修 Android 5.x 32 位闪退 —— 给 v7a 的 so 补 DT_HASH
+
+**用户实测**（老设备 motorola XT1085 / Android 5.1 / SDK 22）：装 v7a 包后过启动页即闪退 ✗
+
+**崩溃日志**（我们新加的 crash 日志**带设备信息**，一眼看清 ✓）：
+```
+java.lang.UnsatisfiedLinkError: dlopen failed: empty/missing DT_HASH in "librime_jni.so"
+  (built with --hash-style=gnu?)
+```
+
+**根因**：Android **5.x 的 linker 强制要求 ELF 带 SysV `DT_HASH`** ✗，而 Xime 用新 NDK 编的 so 只有
+`DT_GNU_HASH` ✗（`--hash-style=gnu`，API 23+ 才放开 ✓）⇒ dlopen 直接拒绝 ✓
+
+**修法（ELF 手术，本地可验证 ✓）**：补一个合法的 SysV hash 表：
+1. 解析 ELF32 的 program headers / `PT_DYNAMIC`（严格用「落在 LOAD 文件部分」的 vaddr→offset 映射 ✓）
+2. 从 dynsym（89462 项）+ dynstr（18250 个具名符号）**重建 SysV hash**：nbucket=18250、bucket[]、chain[]
+3. 表追加到文件尾；把覆盖文件尾的那个 `PT_LOAD` 扩到包含它（跨过 1900 字节未映射间隙 ✓）
+4. 把一个 `DT_NULL` 槽改成 `DT_HASH -> vaddr` ✓
+5. **本地验证**：模拟查找 Java_* 符号 **5/5 命中** ✓（表正确 ✓）；成品 APK 里 `DT_HASH=True` ✓
+原文件备份为 `librime_jni.so.orig` ✓
+
+**待办**：arm64 的 so 同样缺 DT_HASH（Android 5.x arm64 也会失败 ✗，但极罕见 ✓）—— 下轮补上同一手术 ✓
