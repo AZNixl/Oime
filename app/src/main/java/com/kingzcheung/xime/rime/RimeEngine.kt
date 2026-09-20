@@ -50,6 +50,18 @@ data class RimeComposition(
     }
 }
 
+/** 轮19.88：引擎不可用时返回的空结果（守卫用 ✓） */
+fun emptyProcessResult(): RimeProcessResult = RimeProcessResult(
+    processed = false,
+    committedText = "",
+    inputText = "",
+    preeditText = "",
+    candidates = emptyArray(),
+    isAsciiMode = false,
+    hasNextPage = false,
+    hasPrevPage = false,
+)
+
 data class RimeProcessResult(
     val processed: Boolean,
     val committedText: String,
@@ -123,8 +135,24 @@ class RimeEngine {
         /** 全局 Rime 引擎锁 — 所有 native 调用必须通过此锁同步 */
         val rimeLock = ReentrantLock()
 
+        /**
+         * 轮19.88：**库是否加载成功**。
+         * 老设备（如 Android 5.1 + 新 NDK 编译的 so 缺 DT_HASH ✗）会让 loadLibrary 抛
+         * UnsatisfiedLinkError；原实现直接抛在 <clinit> 里 ⇒ 任何引擎调用都变成闪退 ✗✗
+         * 现在吞掉异常并置 false ⇒ RimeManager 各处守卫会让功能降级，但 **App 不崩** ✓
+         */
+        @Volatile var libLoaded: Boolean = false
+            private set
+
         init {
-            System.loadLibrary("rime_jni")
+            libLoaded = runCatching { System.loadLibrary("rime_jni"); true }.getOrElse { t ->
+                com.azime.input.core.diag.Diag.err(
+                    "Rime",
+                    "loadLibrary(rime_jni) 失败 ⇒ 输入引擎不可用（其余功能照常，App 不会闪退）",
+                    t,
+                )
+                false
+            }
         }
 
         fun getInstance(): RimeEngine {

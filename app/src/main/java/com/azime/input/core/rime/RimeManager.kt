@@ -5,6 +5,7 @@ import android.util.Log
 import com.kingzcheung.xime.rime.RimeCandidate
 import com.kingzcheung.xime.rime.RimeEngine
 import com.kingzcheung.xime.rime.RimeProcessResult
+import com.kingzcheung.xime.rime.emptyProcessResult
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -40,7 +41,11 @@ object RimeManager {
      * 幂等：内容未变化时跳过拷贝；引擎已初始化时跳过初始化。
      * 耗时操作（词典部署由 librime 在后台维护线程执行），必须在 IO 线程调用。
      */
+    /** 轮19.88：引擎库没加载成功 ⇒ 全部入口降级为 no-op/默认值（绝不闪退 ✓） */
+    private val engineOk: Boolean get() = com.kingzcheung.xime.rime.RimeEngine.libLoaded
+
     suspend fun ensureReady(context: Context): Boolean = withContext(Dispatchers.IO) {
+        if (!engineOk) return@withContext false
         val sharedDir = sharedDirOf(context)
         // 轮18（trime2 架构）：userDataDir = 当前组目录，方案/lua/models 原样加载，零拷贝
         val userDir = userDirForGroup(context, currentGroupId(context))
@@ -87,10 +92,10 @@ object RimeManager {
     }
 
     fun isReady(): Boolean =
-        RimeEngine.isInitialized() && RimeEngine.getInstance().getAvailableSchemas().isNotEmpty()
+        engineOk && RimeEngine.isInitialized() && RimeEngine.getInstance().getAvailableSchemas().isNotEmpty()
 
     /** 部署完成、可建会话。首次运行会触发词典编译，可能耗时数十秒。 */
-    fun ensureSession(): Boolean = RimeEngine.getInstance().ensureSession()
+    fun ensureSession(): Boolean = engineOk && RimeEngine.getInstance().ensureSession()
 
     @Volatile private var sessionReady = false
 
@@ -99,6 +104,7 @@ object RimeManager {
 
     /** 建立输入会话（幂等，维护完成后快速返回）。 */
     fun ensureSessionNow(): Boolean {
+        if (!engineOk) return false
         sessionReady = RimeEngine.getInstance().ensureSession()
         return sessionReady
     }
@@ -110,6 +116,7 @@ object RimeManager {
      * 修复：先等待维护真正结束，再调用 ensureSession。
      */
     suspend fun ensureSessionAfterMaintenance(): Boolean = withContext(Dispatchers.IO) {
+        if (!engineOk) return@withContext false
         // 等待维护完成（最多 180 秒）
         var waited = 0L
         while (RimeEngine.getInstance().isMaintaining() && waited < 180_000L) {
@@ -128,43 +135,48 @@ object RimeManager {
 
     /** 处理一次 X11 键值按键，返回完整状态（候选/上屏文本/preedit）。 */
     fun processKey(keycode: Int, mask: Int = 0): RimeProcessResult =
-        RimeEngine.getInstance().processKeyAndGetResult(keycode, mask)
+        if (!engineOk) emptyProcessResult() else RimeEngine.getInstance().processKeyAndGetResult(keycode, mask)
 
     /** 选择候选词。 */
     fun selectCandidate(index: Int): Boolean =
-        RimeEngine.getInstance().selectCandidate(index)
+        engineOk && RimeEngine.getInstance().selectCandidate(index)
 
     /** 取当前候选（未按键时刷新 UI 用）。 */
     fun getProcessResult(): RimeProcessResult =
-        RimeEngine.getInstance().getProcessResult(false)
+        if (!engineOk) emptyProcessResult() else RimeEngine.getInstance().getProcessResult(false)
 
     /** 切换中英文模式，返回切换后的状态。 */
     fun toggleAsciiMode(): Boolean {
+        if (!engineOk) return false
         val engine = RimeEngine.getInstance()
         engine.toggleAsciiMode()
         return engine.isAsciiMode()
     }
 
-    fun isAsciiMode(): Boolean = RimeEngine.getInstance().isAsciiMode()
+    fun isAsciiMode(): Boolean = engineOk && RimeEngine.getInstance().isAsciiMode()
 
     /** 模拟物理 shift 键交给 RIME（ascii_composer 处理中英切换/大小写）。 */
     fun processShift(): RimeProcessResult = processKey(KEY_SHIFT)
 
-    fun clearComposition() = RimeEngine.getInstance().clearComposition()
+    fun clearComposition() { if (engineOk) RimeEngine.getInstance().clearComposition() }
 
-    fun currentSchema(): String = RimeEngine.getInstance().getCurrentSchema()
+    fun currentSchema(): String = if (!engineOk) "" else RimeEngine.getInstance().getCurrentSchema()
 
-    fun availableSchemas(): List<String> = RimeEngine.getInstance().getAvailableSchemas().toList()
+    fun availableSchemas(): List<String> =
+        if (!engineOk) emptyList() else RimeEngine.getInstance().getAvailableSchemas().toList()
 
-    fun switchSchema(schemaId: String): Boolean = RimeEngine.getInstance().switchSchema(schemaId)
+    fun switchSchema(schemaId: String): Boolean =
+        engineOk && RimeEngine.getInstance().switchSchema(schemaId)
 
-    fun isMaintaining(): Boolean = RimeEngine.getInstance().isMaintaining()
+    fun isMaintaining(): Boolean = engineOk && RimeEngine.getInstance().isMaintaining()
 
     // ── 方案 switches 开关（○ 菜单「方案开关」） ──────────────
 
-    fun getOption(name: String): Boolean = RimeEngine.getInstance().getOption(name)
+    fun getOption(name: String): Boolean = engineOk && RimeEngine.getInstance().getOption(name)
 
-    fun setOption(name: String, value: Boolean) = RimeEngine.getInstance().setOption(name, value)
+    fun setOption(name: String, value: Boolean) {
+        if (engineOk) RimeEngine.getInstance().setOption(name, value)
+    }
 
     /**
      * 查找方案的 .schema.yaml 源文件：
