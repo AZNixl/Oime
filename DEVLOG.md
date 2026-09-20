@@ -2111,3 +2111,18 @@ java.lang.IllegalStateException: ViewTreeLifecycleOwner not found from
    重命名为 `oime-<版本>.apk` → 用内置 `GITHUB_TOKEN` 创建 **GitHub Release**（无自定义 secrets ✓）
 6. **README 更新**：下载安装步骤 / 目录结构说明 / 兼容性表（含 armeabi-v7a 现状与钩子）/
    隐私与权限 / 日志说明（前两轮新增的能力都写进去了 ✓）
+
+# 轮19.85（1.0.0 / vc102）：**补上 armeabi-v7a**，Release 重发
+
+**来源**：Xime 的官方 release 里同时提供 `Xime-<ver>-armeabi-v7a-signed.apk`
+⇒ 取 **v2.6.2**（与现有 arm64 的 `librime_jni.so` **同一版本** ✓ 保证 JNI 接口一致）的
+`lib/armeabi-v7a/librime_jni.so`（3.86 MB，ELF class=1 / e_machine=40 = ARM 32 位 ✓）
+⇒ 放入 `app/src/main/jniLibs/armeabi-v7a/` ✓（构建脚本自适应 ⇒ 自动纳入 ✓）
+
+**验证**（本地 `assembleRelease`）：APK 39.4 MB，含
+· `lib/arm64-v8a/librime_jni.so` 5.52 MB ✓
+· `lib/armeabi-v7a/librime_jni.so` 3.86 MB ✓
+· 两套 sherpa-onnx / onnxruntime so ✓
+
+**版本**：versionCode 101 → **102**（versionName 仍 1.0.0）—— 让装过旧 1.0.0 的机器也能更新 ✓
+**Release**：删掉旧 v1.0.0（release + tag）后重新打 tag 重发 ✓（用户要求 ✓）

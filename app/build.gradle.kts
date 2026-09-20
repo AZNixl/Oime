@@ -13,7 +13,7 @@ android {
         // 轮19.84：兼容更多安卓版本 —— minSdk 24 → **21**（Android 5.0+）
         minSdk = 21
         targetSdk = 34
-        versionCode = 101
+        versionCode = 102
         versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

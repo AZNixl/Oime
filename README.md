@@ -264,13 +264,13 @@ Documents/Oime/
 | 项 | 支持 |
 |---|---|
 | **系统** | **Android 5.0+**（minSdk 21，targetSdk 34）|
-| **CPU** | **arm64-v8a** ✓（绝大多数手机）<br>**armeabi-v7a** —— 需 32 位 `librime_jni.so`（见下方说明）<br>x86 / x86_64 —— **暂不发布**（无设备测试）|
+| **CPU** | **arm64-v8a** ✓（绝大多数手机）<br>**armeabi-v7a** ✓（32 位老设备）<br>x86 / x86_64 —— **暂不发布**（无设备测试）|
 | 屏幕 | 竖屏 / 横屏（横屏为分体布局）|
 
-> **关于 armeabi-v7a**：输入核心 `librime_jni.so` 取自 Xime 的预编译产物，目前只有 arm64-v8a 版本。
-> 构建脚本已做成**按 `app/src/main/jniLibs/` 实际内容自适应**：只要把 32 位 `librime_jni.so`
-> 放进 `app/src/main/jniLibs/armeabi-v7a/`，下一次构建就会自动把该 ABI 一起打包 ✓
-> （32 位 librime 需要在 CI 里自行交叉编译，欢迎 PR ✓）
+> **关于 ABI**：输入核心 `librime_jni.so` 取自 **Xime v2.6.2** 的官方 release（arm64-v8a 与 armeabi-v7a
+> 两个版本，同一版本号保证 JNI 接口一致 ✓）。
+> 构建脚本**按 `app/src/main/jniLibs/` 实际内容自适应**：放入哪个 ABI 就打哪个 ✓
+> （x86 / x86_64 暂无设备测试，故不发布 ✓）
 
 ## 隐私与权限
 
