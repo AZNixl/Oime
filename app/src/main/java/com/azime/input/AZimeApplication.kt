@@ -29,6 +29,10 @@ class AZimeApplication : Application() {
         com.azime.input.core.diag.Diag.info(
             "App",
             "Application.onCreate · pkg=" + packageName +
+                " · vc=" + runCatching {
+                    @Suppress("DEPRECATION")
+                    packageManager.getPackageInfo(packageName, 0).versionCode
+                }.getOrDefault(-1) +
                 " · logs=" + StorageManager.logsDir.absolutePath +
                 " · verbose=" + KeyboardManager.verboseLog(),
         )

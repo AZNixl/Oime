@@ -723,7 +723,10 @@ fun SettingsScreen(
                             KsuItem(
                                 icon = OimeIcons.info,
                                 title = "版本",
-                                subtitle = "${appVersionName(context)} · 包名 com.oime.input · 平台 RIME (librime)",
+                                subtitle = "${appVersionName(context)}" + runCatching {
+                                    @Suppress("DEPRECATION")
+                                    " (vc" + context.packageManager.getPackageInfo(context.packageName, 0).versionCode + ")"
+                                }.getOrDefault("") + " · 包名 com.oime.input · 平台 RIME (librime)",
                                 onClick = {},
                                 showChevron = false,
                             )

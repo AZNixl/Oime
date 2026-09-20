@@ -10,10 +10,13 @@ android {
     defaultConfig {
         // 包名 Oime（原 com.azime.input；与旧版并存，需重新选择输入法）
         applicationId = "com.oime.input"
-        // 轮19.84：兼容更多安卓版本 —— minSdk 24 → **21**（Android 5.0+）
-        minSdk = 21
+        // 轮19.89：**minSdk 21 → 23**（Android 6.0+）。
+        // 原因：随包分发的预编译 so（libonnxruntime / librime / sherpa）只带 DT_GNU_HASH，
+        // 而 Android 5.x 的 linker 强制要求 DT_HASH ⇒ 5.x 上 dlopen 必失败（能装但起不来 ✗）
+        // ⇒ 与其"能装不能用"，不如把下限诚实地定在 6.0（API 23）✓
+        minSdk = 23
         targetSdk = 34
-        versionCode = 105
+        versionCode = 107
         versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -21,8 +24,8 @@ android {
         // ABI 列表在下方 splits.abi 里按 jniLibs 实际内容配置（轮19.86 改为**按 ABI 拆分出包**）
     }
 
-    // 轮19.86：**按 ABI 拆分** —— arm64-v8a 与 armeabi-v7a 各自出一个 APK（不合并 universal ✓）
-    // 好处：单个包体积更小；且只有拿到对应 ABI 的 librime_jni.so 才拆该 ABI ✓
+    // 轮19.90：**只发布 arm64-v8a**（用户决定：v7a 撤回，老设备场景不划算 ✓）
+    // ABI 列表仍按 jniLibs 实际内容自适应 ⇒ 将来把 armeabi-v7a 的 so 放回即自动恢复 ✓
     splits {
         abi {
             isEnable = true
