@@ -12,13 +12,15 @@ android {
     defaultConfig {
         // 包名 Oime（原 com.azime.input；与旧版并存，需重新选择输入法）
         applicationId = "com.oime.input"
+        // 轮19.95（**仅 dev/v7a 分支**）：minSdk 回到 **21** —— 目的就是在 Android 5.1(API 22)
+        // 老设备上验证「给 so 补 DT_HASH」是否真能跑起来；main 分支仍保持 23 ✓
         // 轮19.89：**minSdk 21 → 23**（Android 6.0+）。
         // 原因：随包分发的预编译 so（libonnxruntime / librime / sherpa）只带 DT_GNU_HASH，
         // 而 Android 5.x 的 linker 强制要求 DT_HASH ⇒ 5.x 上 dlopen 必失败（能装但起不来 ✗）
         // ⇒ 与其"能装不能用"，不如把下限诚实地定在 6.0（API 23）✓
-        minSdk = 23
+        minSdk = 21
         targetSdk = 34
-        versionCode = 109
+        versionCode = 110
         versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
