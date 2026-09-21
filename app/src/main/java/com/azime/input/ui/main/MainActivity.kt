@@ -47,7 +47,7 @@ import kotlinx.coroutines.launch
 class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+        com.azime.input.core.diag.Diag.info("Boot", "MainActivity.onCreate 开始")
         // 向导完成（跳过/完成/三步全部达成）后不再显示：直接进设置
         val wizardPrefs = getSharedPreferences("wizard_prefs", MODE_PRIVATE)
         val alreadyDone = runCatching {
@@ -66,6 +66,7 @@ class MainActivity : AppCompatActivity() {
         setContentView(
             ComposeView(this).apply {
                 setContent {
+            com.azime.input.core.diag.Diag.info("Boot", "MainActivity setContent 开始（Compose 即将组合）")
                     val dark = isSystemInDarkTheme()
                     val scheme = if (dark) darkColorScheme() else lightColorScheme()
                     MaterialTheme(

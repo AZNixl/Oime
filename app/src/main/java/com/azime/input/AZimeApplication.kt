@@ -15,6 +15,7 @@ class AZimeApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        com.azime.input.core.diag.Diag.info("Boot", "Application.onCreate 开始")
         
         // Initialize storage directories
         StorageManager.initializeDirectories(this)
@@ -25,6 +26,7 @@ class AZimeApplication : Application() {
         // 轮19.83：**日志系统**（Documents/Oime/logs/）+ 全局崩溃捕获
         com.azime.input.core.diag.Diag.init(StorageManager.logsDir, KeyboardManager.verboseLog())
         com.azime.input.core.diag.Diag.installCrashHandler()
+        com.azime.input.core.diag.Diag.info("Boot", "Application.onCreate 完成（崩溃捕获已装 ✓）")
         // 用字符串拼接而不是模板（避免 $ 在生成脚本里被吞成字面量 ✗）
         com.azime.input.core.diag.Diag.info(
             "App",

@@ -20,7 +20,7 @@ android {
         // ⇒ 与其"能装不能用"，不如把下限诚实地定在 6.0（API 23）✓
         minSdk = 21
         targetSdk = 34
-        versionCode = 110
+        versionCode = 111
         versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

@@ -235,6 +235,7 @@ class AZimeService : InputMethodService() {
     }
 
     override fun onCreateInputView(): View {
+        com.azime.input.core.diag.Diag.info("Boot", "onCreateInputView 开始（要建键盘视图了）")
         lifecycleOwner.resume() // 视图可能被重建（配置变化），确保 Compose 生命周期就绪
         val composeView = ComposeView(this)
         composeView.setViewTreeLifecycleOwner(lifecycleOwner)
@@ -275,6 +276,7 @@ class AZimeService : InputMethodService() {
     }
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
+        com.azime.input.core.diag.Diag.info("Boot", "onStartInputView 开始（键盘要显示了）")
         super.onStartInputView(info, restarting)
         lifecycleOwner.resume()
         currentEditorInfo = info
