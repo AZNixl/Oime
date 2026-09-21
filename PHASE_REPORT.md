@@ -588,3 +588,48 @@
 - 推送 token **统一走 `~/.gh_token` 文件**（内联会触发敏感审批超时 ✗）
 - 记录纪律：每轮 DEVLOG + BUILD_STATUS 跟版本；收工做**本地 ↔ 仓库逐文件 sha1 零差异**核对 ✓
 - 回退方法论：**用仓库历史提交做逐行 diff 校验**（本次回退以 `551072ec` 为基准 ✓，确认剩余差异仅两项）
+
+
+---
+
+# 第九阶段：2026-09-20 夜 ~ 09-21（发行工程：v7a 探索 → 收敛 arm64 → 正式签名）
+
+> 本阶段不做功能，专做**发行工程**：把"能跑"变成"能发、能升级、能复现" ✓
+
+## 一、1.0.0 正式发行（首个 Release）
+
+- 版本定为 **1.0.0** · 新增 `.github/workflows/release.yml`：**打 `v*` tag 自动构建并创建 Release** ✓
+- 兼容性：曾把 minSdk 降到 21（Android 5.0+），**随后修正为 23**（原因见下）✓
+- 产物命名明确标注架构（`oime-1.0.0-arm64-v8a.apk`）✓
+
+## 二、v7a（32 位）的探索与结论
+
+- 从 Xime 官方 release 取到 `armeabi-v7a` 的 `librime_jni.so` ✓（与其 arm64 版**同版本 2.6.2** ⇒ JNI 接口一致 ✓）
+- 老设备（Moto XT1085 / **Android 5.1**）实测**过启动页闪退** ✗
+- **崩溃日志（带设备信息）一击定性**：`UnsatisfiedLinkError: dlopen failed: empty/missing DT_HASH` ✓
+  ⇒ **Android 5.x 的 linker 强制要求 SysV `DT_HASH`** ✗，而新 NDK 编的 so 只有 `DT_GNU_HASH` ✗
+- **自研 ELF 手术脚本**给 so 补上合法的 SysV hash 表（重建 18250 个符号的 bucket/chain ✓
+  + 扩展最后一个 `PT_LOAD` 覆盖新表 ✓ + 改写一个 `DT_NULL` 槽 ✓），**本地模拟查找 5/5 命中** ✓
+- 但扫描全包发现 **`libonnxruntime.so` 同样缺 `DT_HASH`** ✗ ⇒ 5.x 上语音功能仍不可用 ✓
+- **最终决定（用户拍板）**：**只发布 arm64-v8a** ✓，v7a 撤回（其 so 已移出仓库备份 ✓）
+  · `splits.abi` 仍保留"按 jniLibs 自适应"⇒ 将来放回 so 即自动恢复 ✓
+
+## 三、minSdk 21 → 23（诚实原则）
+
+Android 5.x 上这些预编译 so **必然加载失败** ✗ ⇒ minSdk 21 等于"能装但起不来" ✗
+⇒ 改为 **23（Android 6.0+）**：arm64 机型基本都 ≥ 6.0 ✓，宁可装不上，不要装了就崩 ✓
+
+## 四、正式发布签名（不再 debug）
+
+- `keytool` 生成发布密钥（RSA 2048 / 30 年 ✓）⇒ base64 存 **GitHub Secrets**（4 项 ✓），**不进仓库** ✓
+- Gradle 新增 `signingConfigs.oimeRelease`（读环境变量 ✓）；**无 Secrets 时回退 debug** ⇒ 本地/fork 仍可构建 ✓
+- 工作流新增「**Verify APK signature**」步骤（打印证书 DN ✓），并在 Release 正文写明升级注意事项 ✓
+- ⚠️ **踩坑**：首版补丁把步骤名写错（`Build release APK` vs 实际 `Build release APKs (per-ABI)`）
+  ⇒ env 没生效、**线上仍是 debug 签名** ✗，靠 `apksigner` 验**产物**才发现 ✓
+  ⇒ **教训固化：配置/流程类改动必须验证产物，不能只看补丁是否写进文件** ✓
+
+## 五、协作约定（新增）
+
+- **README 以用户修改的版本为准** ✓：用户在 GitHub 网页直接编辑 ⇒ AI 不得单方面推送 README 改动，
+  需**先报批**；每次推送前先比对远程 README 是否更新，更新则先取回再推其它文件 ✓
+- 记录纪律：每轮 DEVLOG + BUILD_STATUS；收工做**逐文件 blob sha1 零差异**核对 ✓
