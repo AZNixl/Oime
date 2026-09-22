@@ -47,7 +47,10 @@ import kotlinx.coroutines.launch
 class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        com.azime.input.core.diag.Diag.info("Boot", "MainActivity.onCreate 开始")
+        // ⚠️ super 必须是第一句 —— 轮19.96 插入面包屑时把它漏掉了 ✗
+        // ⇒ Activity 未调 super ⇒ SuperNotCalledException ⇒ 一开 App 就崩 ✗（vc111 的老设备崩溃真因）
+        super.onCreate(savedInstanceState)
+        com.azime.input.core.diag.Diag.info("Boot", "MainActivity.onCreate 开始（super 已调 ✓）")
         // 向导完成（跳过/完成/三步全部达成）后不再显示：直接进设置
         val wizardPrefs = getSharedPreferences("wizard_prefs", MODE_PRIVATE)
         val alreadyDone = runCatching {

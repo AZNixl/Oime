@@ -276,8 +276,8 @@ class AZimeService : InputMethodService() {
     }
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
-        com.azime.input.core.diag.Diag.info("Boot", "onStartInputView 开始（键盘要显示了）")
         super.onStartInputView(info, restarting)
+        com.azime.input.core.diag.Diag.info("Boot", "onStartInputView 开始（super 已调 ✓，键盘要显示了）")
         lifecycleOwner.resume()
         currentEditorInfo = info
         // 主题深浅色可能已切换：每次弹键刷新导航条增高区颜色
