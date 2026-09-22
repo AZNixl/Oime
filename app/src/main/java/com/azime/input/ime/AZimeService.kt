@@ -108,6 +108,10 @@ class AZimeService : InputMethodService() {
         super.onCreate()
         lifecycleOwner.onCreate()
         com.azime.input.core.diag.Diag.info("IME", "onCreate (service started)")
+        // 轮19.99：给「打字振动 → 系统键盘触感」模式提供宿主 View（IME 窗口的 decorView ✓）
+        com.azime.input.core.haptic.HapticsManager.hostViewProvider = {
+            runCatching { window?.window?.decorView }.getOrNull()
+        }
         // 沉浸式圆角：IME 窗口透明，键盘顶部圆角下透出应用内容；
         // 底部导航条增高区涂键盘背景色（随深浅色主题），实现底部沉浸
         runCatching {
@@ -235,6 +239,7 @@ class AZimeService : InputMethodService() {
     }
 
     override fun onCreateInputView(): View {
+        com.azime.input.core.diag.Diag.info("Boot", "onCreateInputView 开始（要建键盘视图了）")
         lifecycleOwner.resume() // 视图可能被重建（配置变化），确保 Compose 生命周期就绪
         val composeView = ComposeView(this)
         composeView.setViewTreeLifecycleOwner(lifecycleOwner)
@@ -276,6 +281,7 @@ class AZimeService : InputMethodService() {
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
+        com.azime.input.core.diag.Diag.info("Boot", "onStartInputView 开始（super 已调 ✓，键盘要显示了）")
         lifecycleOwner.resume()
         currentEditorInfo = info
         // 主题深浅色可能已切换：每次弹键刷新导航条增高区颜色

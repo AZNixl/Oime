@@ -42,7 +42,8 @@ jobs:
       uses: actions/upload-artifact@v7
       with:
         name: app-debug
-        path: app/build/outputs/apk/debug/app-debug.apk
+        # 轮19.94：按 ABI 拆分后产物是 app-<abi>-debug.apk ⇒ 用通配符一并上传（原来是固定名 app-debug.apk ✗）
+        path: app/build/outputs/apk/debug/*.apk
         # 轮19.37：**产物保留 3 天**——之前累积 99 个 APK（2.4GB）撑爆免费账号的
         # 500MB 产物配额，导致「Upload APK」步骤失败（构建本身是成功的）。
         retention-days: 3

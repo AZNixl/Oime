@@ -1908,7 +1908,8 @@ private fun VibrationSettings() {
     var enabled by remember { mutableStateOf(HapticsManager.enabled()) }
     var pressOn by remember { mutableStateOf(HapticsManager.pressEnabled()) }
     var releaseOn by remember { mutableStateOf(HapticsManager.releaseEnabled()) }
-    var custom by remember { mutableStateOf(HapticsManager.mode() == "custom") }
+    var mode by remember { mutableStateOf(HapticsManager.mode()) }
+    val custom = mode == HapticsManager.MODE_CUSTOM
     var ms by remember { mutableStateOf(HapticsManager.customMs().toFloat()) }
 
     Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
@@ -1927,15 +1928,20 @@ private fun VibrationSettings() {
         Spacer(Modifier.height(6.dp))
         Text("震动模式", style = MaterialTheme.typography.bodyMedium)
         Spacer(Modifier.height(6.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilterChip(
-                selected = !custom,
-                onClick = { custom = false; HapticsManager.setMode("system") },
-                label = { Text("系统默认") },
+                selected = mode == HapticsManager.MODE_KEYBOARD,
+                onClick = { mode = HapticsManager.MODE_KEYBOARD; HapticsManager.setMode(HapticsManager.MODE_KEYBOARD) },
+                label = { Text("系统键盘触感") },
+            )
+            FilterChip(
+                selected = mode == HapticsManager.MODE_SYSTEM,
+                onClick = { mode = HapticsManager.MODE_SYSTEM; HapticsManager.setMode(HapticsManager.MODE_SYSTEM) },
+                label = { Text("系统轻点") },
             )
             FilterChip(
                 selected = custom,
-                onClick = { custom = true; HapticsManager.setMode("custom") },
+                onClick = { mode = HapticsManager.MODE_CUSTOM; HapticsManager.setMode(HapticsManager.MODE_CUSTOM) },
                 label = { Text("自定义") },
             )
         }
