@@ -20,8 +20,8 @@ android {
         // ⇒ 与其"能装不能用"，不如把下限诚实地定在 6.0（API 23）✓
         minSdk = 23
         targetSdk = 34
-        versionCode = 114
-        versionName = "1.0.1"
+        versionCode = 116
+        versionName = "1.0.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         
@@ -45,8 +45,8 @@ android {
         }
     }
 
-    // 轮19.90：**只发布 arm64-v8a**（用户决定：v7a 撤回，老设备场景不划算 ✓）
-    // ABI 列表仍按 jniLibs 实际内容自适应 ⇒ 将来把 armeabi-v7a 的 so 放回即自动恢复 ✓
+    // 轮19.105：**恢复发布 armeabi-v7a**（K20P 实测通过后回归 ✓，仍按 ABI **分开出包** ✓）
+    // ABI 列表按 jniLibs 实际内容自适应 ⇒ 放回 so 即自动纳入 ✓
     splits {
         abi {
             isEnable = true

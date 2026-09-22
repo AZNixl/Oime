@@ -182,7 +182,7 @@ class AZimeService : InputMethodService() {
                 it.copy(
                     ready = sessionOk,
                     schemaName = if (sessionOk) RimeManager.currentSchema() else "",
-                    statusMessage = if (!ok) "引擎初始化失败" else "",
+                    // 轮19.105：引擎初始化失败不再写 statusMessage（那个字段只在方案组面板里才可见 ✗）⇒ 走日志 ✓
                 )
             }
             refreshState()
@@ -381,6 +381,7 @@ class AZimeService : InputMethodService() {
             SpeechEngineManager.cancel()
             voiceRmsState.value = 0f
             uiState.update { it.copy(voiceState = "idle") }
+            clearVoiceComposing()   // 轮19.105：清掉语音预览 ✓
         }
         // 轮19.9（对齐 Xime clearInputState）：收起键盘即关闭残留面板——
         // 既避免下次弹出时渲染上一次的面板背景，也让面板持有的列表/图标引用可被回收。
@@ -461,7 +462,8 @@ class AZimeService : InputMethodService() {
             ) != android.content.pm.PackageManager.PERMISSION_GRANTED
         ) {
             // IME 无法弹权限对话框：跳设置页授权（语音输入大项里有申请按钮）
-            uiState.update { it.copy(statusMessage = "语音输入需要麦克风权限，请在设置中开启") }
+            // 轮19.105：同样改为可见提示 ✓
+            toast("语音输入需要麦克风权限，请在设置中开启")
             onKeyAction(KeyAction.OpenSettings)
             return
         }
@@ -494,23 +496,54 @@ class AZimeService : InputMethodService() {
                 override fun onResult(text: String) {
                     voiceRmsState.value = 0f
                     uiState.update { it.copy(voiceState = "idle") }
-                    if (text.isNotBlank()) {
-                        currentInputConnection?.commitText(text, 1)
+                    val ic = currentInputConnection
+                    runCatching { ic?.finishComposingText() }   // 定稿 composing 预览 ✓
+                    if (text.isNotBlank() && ic != null) {
+                        ic.commitText(text, 1)                  // 用最终文本替换预览 ✓
                         pushUndo(text)
                     }
                 }
 
                 override fun onError(message: String) {
                     voiceRmsState.value = 0f
-                    uiState.update { it.copy(voiceState = "idle", statusMessage = message) }
+                    uiState.update { it.copy(voiceState = "idle") }
+                    clearVoiceComposing()                       // 清掉预览 ✓
+                    // 轮19.105：原来写进 statusMessage ✗ —— 那个字段只在「方案组」子面板渲染 ✗
+                    // ⇒ 用户根本看不到 ✗；改为 **Toast（可见）+ Diag（可查）** ✓
+                    com.azime.input.core.diag.Diag.warn("Speech", "语音失败：$message")
+                    toast(message)
                 }
 
                 override fun onPartial(text: String) {
-                    // 流式 zipformer 增量文本：显示在工具栏 statusMessage（不打断输入）
-                    uiState.update { it.copy(statusMessage = text) }
+                    // 轮19.105：★ **真正的"边说边出"** —— 增量直接写进**输入区**（composing 预览 ✓），
+                    // 不再写那个看不见的 statusMessage ✗
+                    // ⚠️ zipformer 的增量是**整段重写**（不是追加 ✗）⇒ 必须 setComposingText(全文,1)
+                    //    做**替换** ✓，写成 append 会越说越乱 ✗
+                    val ic = currentInputConnection ?: return
+                    runCatching { ic.setComposingText(text, 1) }
                 }
             },
         )
+    }
+
+    // ── 语音辅助（轮19.105）─────────────────────────────────
+
+    /** 清掉语音的 composing 预览（取消 / 失败时用 ✓）。 */
+    private fun clearVoiceComposing() {
+        val ic = currentInputConnection ?: return
+        runCatching {
+            ic.setComposingText("", 1)
+            ic.finishComposingText()
+        }
+    }
+
+    /** 轻提示（IME 里 statusMessage 基本看不到 ✗ ⇒ 关键信息用 Toast 才可见 ✓）。 */
+    private fun toast(msg: String) {
+        runCatching {
+            android.os.Handler(mainLooper).post {
+                android.widget.Toast.makeText(applicationContext, msg, android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     // ── 剪贴板 ───────────────────────────────────────────────

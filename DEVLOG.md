@@ -2216,3 +2216,28 @@ java.lang.UnsatisfiedLinkError: dlopen failed: empty/missing DT_HASH in "librime
 4. 振动器获取对齐 Xime ✓：API 31+ 走 `VibratorManager.defaultVibrator` ✓
 5. 保留「按下 / 抬起」子开关与自定义时长（5~60ms ✓，幅度上限 160 ✓）
 6. main 保持 **只发 arm64-v8a** ✓（v7a 仍只在 dev/v7a 分支试验 ✓）· minSdk **23** ✓
+
+# 轮19.105（1.0.2 / vc116）：修「流式语音没有边说边出」+ v7a 正式回归 + 清理 statusMessage
+
+## 一、★ 流式语音「点了结束才出字」的真因（**不是模型** ✓）
+**逐环节核实**
+1. 模型/引擎**没问题** ✓：`zipformer` 是流式模型；`SpeechEngineManager` **每帧**都在
+   `acceptWaveform → decode → getResult(stream).text` 并回调 **`onPartial`** ✓
+   （且加载失败会**明确报错** ✗ 不会静默降级 ✓ —— 用户"语音能用"⇒ 说明它加载成功 ✓）
+2. **问题在显示** ✗：`onPartial` 把增量写进了 **`statusMessage`** ✗，而该字段**只在「方案组」子面板**
+   （`KeyboardScreen` 的 `MenuSubPanel("方案组")`）里渲染 ✗ ⇒ **语音时那个面板根本没开** ⇒ **看不到** ✓
+3. 只有停止后的 `onResult` 才 `commitText` 上屏 ✓ ⇒ 症状 **= "点结束才出字"** ✓✓ 完全吻合
+
+**修法**：增量改为写**输入区 composing 预览** —— `setComposingText(text, 1)` ✓
+（⚠️ zipformer 增量是**整段重写**、不是追加 ✗ ⇒ 必须**替换** ✓；写成 append 会越说越乱 ✗）
+- `onResult`：先 `finishComposingText()` ✓ 再 `commitText` 定稿 ✓
+- `onError` / 取消（`onFinishInputView` 等）：`setComposingText("", 1)` + `finishComposingText()` 清预览 ✓
+
+## 二、清理 `statusMessage`（用户要求：引擎初始化失败那处）
+- 该字段**只在方案组面板**可见 ✗ ⇒ 关键信息（引擎初始化失败 / 语音权限 / 语音失败）改为
+  **Toast（可见 ✓）+ `Diag.warn`（可查 ✓）**；"引擎初始化失败"那处不再写 statusMessage ✓
+
+## 三、v7a 正式回归（与 arm64 **分开构建** ✓）
+- 把**原始（未打补丁）**的 `librime_jni.so` 放回 `jniLibs/armeabi-v7a/` ✓（K20P 实测通过 ✓）
+- `splits.abi` 自适应 ⇒ 发布产出 **`oime-1.0.2-arm64-v8a.apk`** + **`oime-1.0.2-armeabi-v7a.apk`** 两个包 ✓
+- Release 正文补上双架构说明 ✓（v7a 要求 **Android 6.0+** ✓）
