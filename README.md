@@ -11,7 +11,7 @@
 
 ## 1.0.0 更新要点
 
-- **正式发行**：首个 1.0.0，目前仅支持 `arm64-v8a` 
+- **正式发行**：1.0.2 起提供 `arm64-v8a` 与 `armeabi-v7a`（32 位，**要求 Android 6.0+**）两种包 
 - **日志系统**：`Documents/Oime/logs/`（按天分文件；默认只记错误与关键事件，几乎零开销；
   排查问题可到「设置 → 关于 → 日志」打开详细日志）
 - **关于页**：拆成 版本 / 日志 / 备份 / **开源许可** / **隐私条约** / 致谢，各自独立卡片
@@ -194,7 +194,7 @@
 推送到 `main` 后，Actions 会自动出包。**开发期安装包**：仓库 Actions → 最新一次 run → 产物 `app-debug`（下载需登录 GitHub）；正式版会发布到 Releases。语音依赖 `sherpa-onnx-1.13.5.aar`（约 49MB）不入库，CI 在构建前从官方 release 下载到 `app/libs/`。
 
 - 技术栈：Kotlin 1.9.22 / AGP 8.3.0 / Gradle 8.4 / Compose BOM 2024.02.00 / JDK 17
-- 引擎：`librime_jni.so`（arm64-v8a）；方案导入用 zip4j
+- 引擎：`librime_jni.so`（arm64-v8a / armeabi-v7a 两套）；方案导入用 zip4j
 - 项目路径含非 ASCII 字符时，需要 `gradle.properties` 里的 `android.overridePathCheck=true`
 
 ---
@@ -245,9 +245,10 @@
 | 文件 | 适用 |
 |---|---|
 | `oime-<版本>-arm64-v8a.apk` | 绝大多数手机（2016 年后的 64 位机型）|
+| `oime-<版本>-armeabi-v7a.apk` | **32 位机型**（较老的设备；**要求 Android 6.0+**）|
 
 
-> 若提示「应用未安装 / 不兼容」，说明你的设备是 32 位（armeabi-v7a）—— 目前暂不发布该架构。
+> 不确定选哪个：先装 `arm64-v8a`；若提示「应用未安装 / 不兼容」，说明是 32 位机型，改装 `armeabi-v7a` ✓
 > x86 / x86_64（模拟器、极少数平板）暂不发布。
 
 1. 下载对应架构的 APK → 安装（系统可能提示"未知来源"，允许即可）
@@ -269,7 +270,7 @@ Documents/Oime/
 | 项 | 支持 |
 |---|---|
 | **系统** | **Android 5.0+**（minSdk 21，targetSdk 34）|
-| **CPU** | **arm64-v8a** ✓（64 位 ARM，2016 年后的机型；**当前只发布这一种**）<br>armeabi-v7a / x86 / x86_64 —— **暂不发布** |
+| **CPU** | **arm64-v8a** ✓ 与 **armeabi-v7a** ✓ —— **各自独立出包**（v7a 要求 **Android 6.0+**）<br>x86 / x86_64 —— **暂不发布**（无设备测试）|
 
 ## 签名
 
