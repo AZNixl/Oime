@@ -2190,3 +2190,29 @@ java.lang.UnsatisfiedLinkError: dlopen failed: empty/missing DT_HASH in "librime
 - README 新增「**签名**」段（密钥在 Secrets / fork 回退 debug / 旧 debug 签名包需先卸载 ✓）
 - Release 正文同步说明 ✓
 - 日志与「关于 → 版本」都显示 **versionCode** ✓（便于核对装的是哪一版 ✓）
+
+# 轮19.104（1.0.1 / vc114）：**震动手感修复正式发版**（按 B 版方案）
+
+## 一、问题与调研（详见 `HAPTIC_REPORT.md`）
+- 用户反馈（Redmi Note 12 Turbo / X 轴线性马达）：打字震动「嗡嗡嗡」✗
+- 读 Xime 源码对比 ⇒ **两边接入不一样** ✗：Xime 默认走「系统键盘触感」（`performHapticFeedback(KEYBOARD_TAP)` ✓），
+  我们发的是**满幅度裸 one-shot** ✗（`createOneShot(15ms, DEFAULT_AMPLITUDE)` ✗）
+- K20 Pro（HyperOS 2 / Android 15）平台数据印证：`defaultVibrationAmplitude = **255**` ✗ ⇒ 等于满驱 ✗
+- 客观取证（logcat 抓 `VibratorManagerService`）：
+  · 修复前 A 版：app 自己发 ✗ + `mUsage=**unknown usage 12**` ✗（传错常量 ✗）+ ≈14ms
+  · **搜狗**（机器上好手感基准）：**由系统代发（uid=1000 ✓）+ `mUsage=TOUCH` ✓ + ≈37ms** ✓✓
+  ⇒ 结论：**系统触感通道**才是对的路 ✓
+
+## 二、A/B 真机对比（K20 Pro）
+- **A** = `createPredefined(EFFECT_TICK)`（vc112）· **B** = `performHapticFeedback(KEYBOARD_TAP)`（vc113）
+- **用户实测：B 更好** ✓✓ ⇒ 定版采用 B ✓
+
+## 三、本版改动（1.0.1）
+1. 打字震动**默认改为「系统键盘触感」** ✓（`HapticsManager` 新增 `MODE_KEYBOARD` ✓；
+   取不到宿主 View 时**自动退回**系统轻点 ✓，绝不静默 ✗）
+2. 设置页「震动模式」改**三选一** ✓：系统键盘触感（默认）/ 系统轻点 / 自定义时长 ✓
+3. **修正振动通道 usage** ✓：之前传 `12`（AudioAttributes 的值 ✗，ROM 记 unknown ✗）
+   ⇒ 改为 API 33+ `USAGE_HARDWARE_FEEDBACK` ✓ / 31·32 `USAGE_TOUCH` ✓
+4. 振动器获取对齐 Xime ✓：API 31+ 走 `VibratorManager.defaultVibrator` ✓
+5. 保留「按下 / 抬起」子开关与自定义时长（5~60ms ✓，幅度上限 160 ✓）
+6. main 保持 **只发 arm64-v8a** ✓（v7a 仍只在 dev/v7a 分支试验 ✓）· minSdk **23** ✓

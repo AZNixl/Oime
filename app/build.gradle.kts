@@ -18,10 +18,10 @@ android {
         // 原因：随包分发的预编译 so（libonnxruntime / librime / sherpa）只带 DT_GNU_HASH，
         // 而 Android 5.x 的 linker 强制要求 DT_HASH ⇒ 5.x 上 dlopen 必失败（能装但起不来 ✗）
         // ⇒ 与其"能装不能用"，不如把下限诚实地定在 6.0（API 23）✓
-        minSdk = 21
+        minSdk = 23
         targetSdk = 34
-        versionCode = 112
-        versionName = "1.0.0"
+        versionCode = 114
+        versionName = "1.0.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         
