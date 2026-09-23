@@ -485,6 +485,7 @@ class AZimeService : InputMethodService() {
             uiState.update { it.copy(statusMessage = hint) }
             return
         }
+        voiceStreamed = false          // 轮19.109：开始新一轮听写，复位 ✓
         uiState.update { it.copy(voiceState = "listening", statusMessage = "") }
         SpeechEngineManager.start(
             engine = engine,
@@ -497,14 +498,26 @@ class AZimeService : InputMethodService() {
                     voiceRmsState.value = 0f
                     uiState.update { it.copy(voiceState = "idle") }
                     val ic = currentInputConnection
-                    runCatching { ic?.finishComposingText() }   // 定稿 composing 预览 ✓
-                    if (text.isNotBlank() && ic != null) {
-                        ic.commitText(text, 1)                  // 用最终文本替换预览 ✓
+                    if (ic != null && text.isNotBlank()) {
+                        if (voiceStreamed) {
+                            // 轮19.109：**流式过的场景** —— 预览已经在输入区里了 ⇒ 只**定稿** ✓
+                            // 旧实现先 finishComposingText 再 commitText ⇒ 预览定稿后又插一遍 ✗
+                            // ⇒ 一加 13 实测「语音测试」变成「语音测试语音测试」✗ 的真因 ✓
+                            runCatching {
+                                ic.setComposingText(text, 1)    // 用最终结果覆盖预览（可能有修正 ✓）
+                                ic.finishComposingText()        // 定稿，**不** 再 commitText ✓
+                            }
+                        } else {
+                            // 非流式（sense_voice / 联网 API）：没有预览 ⇒ 正常上屏 ✓
+                            runCatching { ic.finishComposingText() }
+                            ic.commitText(text, 1)
+                        }
                         pushUndo(text)
                     }
                 }
 
                 override fun onError(message: String) {
+                    voiceStreamed = false
                     voiceRmsState.value = 0f
                     uiState.update { it.copy(voiceState = "idle") }
                     clearVoiceComposing()                       // 清掉预览 ✓
@@ -520,11 +533,15 @@ class AZimeService : InputMethodService() {
                     // ⚠️ zipformer 的增量是**整段重写**（不是追加 ✗）⇒ 必须 setComposingText(全文,1)
                     //    做**替换** ✓，写成 append 会越说越乱 ✗
                     val ic = currentInputConnection ?: return
+                    voiceStreamed = true          // 轮19.109：标记已流式预览过（结束时要定稿而非插入 ✗）
                     runCatching { ic.setComposingText(text, 1) }
                 }
             },
         )
     }
+
+    /** 轮19.109：本次语音是否已经用 composing **预览**流过字（决定结束时"定稿"还是"插入"✓）。 */
+    @Volatile private var voiceStreamed = false
 
     // ── 语音辅助（轮19.105）─────────────────────────────────
 

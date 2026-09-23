@@ -2241,3 +2241,23 @@ java.lang.UnsatisfiedLinkError: dlopen failed: empty/missing DT_HASH in "librime
 - 把**原始（未打补丁）**的 `librime_jni.so` 放回 `jniLibs/armeabi-v7a/` ✓（K20P 实测通过 ✓）
 - `splits.abi` 自适应 ⇒ 发布产出 **`oime-1.0.2-arm64-v8a.apk`** + **`oime-1.0.2-armeabi-v7a.apk`** 两个包 ✓
 - Release 正文补上双架构说明 ✓（v7a 要求 **Android 6.0+** ✓）
+
+# 轮19.112（1.0.3 / vc118）：修「流式语音结束重复上屏」+ 使用说明补硬件提示
+
+## 一、修复：结束语音时把已流式预览的内容**又插一遍**
+- 现象（一加 13 实测）：说「语音测试」→ 已经边说边出 ✓ → **点结束再插一遍** ⇒ 「语音测试语音测试」✗
+- 根因：`onResult` 先 `finishComposingText()`（把 composing 预览**定稿** ✓）**再** `commitText(全文)` ✗
+  ⇒ 定稿 + 再插入 = 两遍 ✓
+- 修法：新增 `voiceStreamed` 标记 ✓，`onResult` 分两条路 ✓
+  · **流过字** ⇒ `setComposingText(最终文本)` + `finishComposingText()` —— 只**定稿**，不再 commitText ✓
+  · **没流过**（SenseVoice / 联网 API）⇒ 照旧 `commitText` ✓（无预览，不会重复 ✓）
+  · `onError` / 新一轮听写 ⇒ 复位 ✓
+
+## 二、使用说明增补（经用户审核通过 ✓）
+- 「流式 Zipformer」小节加「⚠️ 对硬件（CPU）要求较高，见【六】」✓
+- 新增 **【六、硬件性能提示】**：老机型"不出字"多为 **CPU 不足**（模型能加载、解不出结果 ✓）
+  **非模型文件损坏** ✓；建议 ① 优先 SenseVoice ✓ ② 或换更小模型 ✓ 并**注明精度可能下降** ✓
+
+## 三、v7a 流式语音真机结论（K20P 实测 ✓）
+- **v7a + 流式 = 可用** ✓（只是模型加载/首字**偏慢** ✓ —— SD855 正常表现 ✓，用户判定"硬件问题，无碍" ✓）
+- 修正上一轮推测 ✗：不是"算力不够不可用"，而是"**能用但慢**" ✓
