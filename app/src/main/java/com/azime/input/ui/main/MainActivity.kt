@@ -31,18 +31,30 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import com.azime.input.core.net.NetPrefs
+import com.azime.input.core.net.NetState
+import com.azime.input.core.net.netState
+import com.azime.input.core.net.netStateLabel
 import com.azime.input.ui.keyboard.keyboardAccentActiveColor
 import com.azime.input.ui.keyboard.keyboardAccentKeyColor
 import com.azime.input.ui.settings.SettingsActivity
 import kotlinx.coroutines.launch
 
 /**
- * 首次启动向导：4 页（HorizontalPager）
+ * 首次启动向导：6 页（HorizontalPager）
  *  1. 读取本地文件权限（方案 / 字体在外部 Documents/Oime）
  *  2. 启用输入法（系统设置里勾选）
  *  3. 选择输入法（切换为当前输入法）
- *  4. 进入设置（方案导入、键盘、外观）
+ *  4. 联网与模型下载（轮19.145 新增 ✓ 见下方说明）
+ *  5. 进入设置（方案导入、键盘、外观）
+ *  6. O 圆环快捷应用
  * 每页实时检测完成状态，可自由前后翻页或跳过。
+ *
+ * ## 轮19.145：为什么第 4 页不是"联网权限索取弹窗"（用户反馈"没有索取界面"✗）
+ * Android 的 `INTERNET` 是 **normal 权限** ⇒ **装机时自动授予** ✓ 系统**不提供**运行时开关 ✗
+ * ⇒ 任何 App 都做不出联网权限弹窗 ✗（不是本应用漏写 ✗）。
+ * 能做的、也该做的是**知情与选择**：明说"要联网下模型" + 给显式开关 + 默认仅 Wi-Fi ✓
+ * （模型 200~240MB ✗ 走流量代价高 ✗）——这就是本页的内容 ✓
  */
 class MainActivity : AppCompatActivity() {
 
@@ -100,6 +112,10 @@ class MainActivity : AppCompatActivity() {
                             requestStoragePermission = { launcher ->
                                 launcher.launch(Manifest.permission.READ_EXTERNAL_STORAGE)
                             },
+                            // 轮19.139：向导**补申请麦克风** ✓（用户要求检查启动页权限完整性 ✓）
+                            requestMicPermission = { launcher ->
+                                launcher.launch(Manifest.permission.RECORD_AUDIO)
+                            },
                             // 跳过向导 / 完成：记录标志 + 进设置 + 关闭向导
                             finishWizard = {
                                 wizardPrefs.edit().putBoolean("wizard_done", true).apply()
@@ -128,6 +144,17 @@ private fun storageGranted(context: android.content.Context): Boolean = if (
     ) == PackageManager.PERMISSION_GRANTED
 }
 
+/**
+ * 语音（麦克风）权限是否已授予 ✓（轮19.146）
+ *
+ * `RECORD_AUDIO` 是 **dangerous 权限** ⇒ 有运行时弹窗 ✓（与 INTERNET 不同 ✗），
+ * 语音输入 / 流式识别全都要它 ✓ 所以向导里必须有一步把它要到手 ✓。
+ */
+private fun micGranted(context: android.content.Context): Boolean =
+    ContextCompat.checkSelfPermission(
+        context, Manifest.permission.RECORD_AUDIO
+    ) == PackageManager.PERMISSION_GRANTED
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun OnboardingScreen(
@@ -135,25 +162,43 @@ fun OnboardingScreen(
     pickIme: () -> Unit,
     openAppSettings: () -> Unit,
     requestStoragePermission: (androidx.activity.result.ActivityResultLauncher<String>) -> Unit,
+    requestMicPermission: (androidx.activity.result.ActivityResultLauncher<String>) -> Unit,
     finishWizard: () -> Unit,
     openSettings: () -> Unit,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val cs = MaterialTheme.colorScheme
-    val pagerState = rememberPagerState(pageCount = { 5 })
+    val pagerState = rememberPagerState(pageCount = { 7 })
     val scope = rememberCoroutineScope()
+    // 轮19.146：麦克风授权从「进向导就自动弹」改成**向导里的独立一页** ✓
+    // 为什么改 ✗：原来 `LaunchedEffect(Unit)` 一进向导就弹系统框 ⇒
+    //   ① 用户还没看到「语音」的说明就被告知要权限 ✗ 不知道要它干嘛 ✗
+    //   ② 弹框时机与页面内容无关（停在第 1 页也照样弹 ✗）⇒ 太唐突 ✗
+    // 现在：第 4 页（索引 3）专门讲语音输入 + 一个「授予麦克风权限」按钮 ✓ 状态实时可见 ✓
 
     // 实时状态：回到前台 / 翻页时刷新
     var storageOk by remember { mutableStateOf(storageGranted(context)) }
     var enabledOk by remember { mutableStateOf(false) }
     var selectedOk by remember { mutableStateOf(false) }
     var settingsVisited by remember { mutableStateOf(false) }
+    // 轮19.146：语音（麦克风）授权状态 ✓
+    var micOk by remember { mutableStateOf(micGranted(context)) }
     // 轮19.6：O 圆环上滑快捷应用需要读取应用列表（QUERY_ALL_PACKAGES）
     var appsOk by remember { mutableStateOf(false) }
     var appCount by remember { mutableStateOf(0) }
+    // 轮19.145：联网与模型下载（第 4 页 ✓）
+    var netAllowed by remember { mutableStateOf(NetPrefs.allowDownload(context)) }
+    var netWifiOnly by remember { mutableStateOf(NetPrefs.wifiOnly(context)) }
+    var netNow by remember { mutableStateOf(netState(context)) }
 
     fun refreshStatus() {
         storageOk = storageGranted(context)
+        // 轮19.146：麦克风状态（用户在系统设置里改过也要跟上 ✓）
+        micOk = micGranted(context)
+        // 轮19.145：网络类型每次都重读 ✓（用户可能刚切了 Wi-Fi ✓）
+        netAllowed = NetPrefs.allowDownload(context)
+        netWifiOnly = NetPrefs.wifiOnly(context)
+        netNow = netState(context)
         // 注意：targetSdk 34 上读 Settings.Secure.ENABLED_INPUT_METHODS 会抛 SecurityException
         // （Android 14 限制 targetSdk ≤ 33 才能读），改用 InputMethodManager 公开 API。
         val imm = context.getSystemService(
@@ -174,6 +219,11 @@ fun OnboardingScreen(
     }
 
     val runtimePermLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { refreshStatus() }
+
+    // 轮19.139：向导用**麦克风**权限 launcher ✓（契约按权限固定 ⇒ 必须单独注册 ✓）
+    val micPermLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { refreshStatus() }
 
@@ -235,7 +285,9 @@ fun OnboardingScreen(
                                 0 -> "📂"
                                 1 -> "⌨"
                                 2 -> "✓"
-                                3 -> "⚙"
+                                3 -> "🎤"
+                                4 -> "🌐"
+                                5 -> "⚙"
                                 else -> "◎"
                             },
                             fontSize = 44.sp,
@@ -247,7 +299,9 @@ fun OnboardingScreen(
                             0 -> "读取本地文件"
                             1 -> "启用输入法"
                             2 -> "选择输入法"
-                            3 -> "进入设置"
+                            3 -> "语音输入权限"
+                            4 -> "联网与模型下载"
+                            5 -> "进入设置"
                             else -> "O 圆环快捷应用"
                         },
                         style = MaterialTheme.typography.titleLarge,
@@ -262,7 +316,15 @@ fun OnboardingScreen(
                                 "允许它在你的设备上使用。"
                             2 -> "把当前输入法切换为 ○输入法。" +
                                 "在弹出的选择框中选中它即可。"
-                            3 -> "导入方案、编辑键盘布局、调整字体与打字振动，都从这里开始。"
+                            3 -> "语音输入（长按麦克风说话、流式边说边出）需要**麦克风权限**。" +
+                                "这是系统级的运行时权限，必须由你亲手点一下「允许」——" +
+                                "点下面的按钮会弹出系统授权框。授权后，语音输入才能工作；" +
+                                "不授权也不影响打字，随时可以在系统设置里补授。"
+                            4 -> "语音/手写模型需要联网下载（约 200~240MB）。" +
+                                "Android 的联网权限属于「安装即授权」，系统**没有**运行时开关，" +
+                                "所以这里不会弹授权框 —— 这是正常的。下面给你两个开关，" +
+                                "用来决定本应用能否联网下载、以及是否只在 Wi-Fi 下下载。"
+                            5 -> "导入方案、编辑键盘布局、调整字体与打字振动，都从这里开始。"
                             else -> "从 ○ 圆环**向上滑**可呼出 5 个应用图标（半圆弧分布），" +
                                 "滑动选择、松手直接打开。需要读取已安装应用列表" +
                                 "（QUERY_ALL_PACKAGES，安装时已声明，无需额外授权）。" +
@@ -278,12 +340,19 @@ fun OnboardingScreen(
                         0 -> storageOk
                         1 -> enabledOk
                         2 -> selectedOk
-                        3 -> settingsVisited
+                        3 -> micOk
+                        4 -> netAllowed
+                        5 -> settingsVisited
                         else -> appsOk
                     }
                     Text(
                         when {
-                            page == 4 && done -> "✓ 可读 $appCount 个应用"
+                            page == 3 && micOk -> "✓ 已授予麦克风权限"
+                            page == 3 -> "未授权（不影响打字）"
+                            page == 4 && netAllowed ->
+                                if (netWifiOnly) "✓ 已允许联网下载 · 仅 Wi-Fi" else "✓ 已允许联网下载 · 任意网络"
+                            page == 4 -> "未允许联网下载"
+                            page == 6 && done -> "✓ 可读 $appCount 个应用"
                             done -> "✓ 已完成"
                             else -> "未完成"
                         },
@@ -297,6 +366,55 @@ fun OnboardingScreen(
                             )
                             .padding(horizontal = 14.dp, vertical = 6.dp),
                     )
+                    // 轮19.145：第 5 页的两个开关 ✓（Android 给不了联网权限弹窗 ⇒ 用 App 内显式选择 ✓）
+                    if (page == 4) {
+                        Spacer(Modifier.height(16.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text("允许联网下载模型", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                Text(
+                                    "关闭后，语音/手写模型的「下载」会被拦下",
+                                    fontSize = 12.sp, color = cs.onSurfaceVariant,
+                                )
+                            }
+                            Switch(
+                                checked = netAllowed,
+                                onCheckedChange = {
+                                    netAllowed = it
+                                    NetPrefs.setAllowDownload(context, it)
+                                },
+                            )
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text("仅 Wi-Fi 下载（推荐）", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                Text(
+                                    "语音模型约 200~240MB，避免消耗手机流量",
+                                    fontSize = 12.sp, color = cs.onSurfaceVariant,
+                                )
+                            }
+                            Switch(
+                                checked = netWifiOnly,
+                                onCheckedChange = {
+                                    netWifiOnly = it
+                                    NetPrefs.setWifiOnly(context, it)
+                                },
+                            )
+                        }
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            "当前网络：${netStateLabel(netNow)}",
+                            fontSize = 12.sp,
+                            color = cs.onSurfaceVariant,
+                        )
+                    }
                     Spacer(Modifier.height(20.dp))
                     // 动作按钮
                     Button(
@@ -311,7 +429,15 @@ fun OnboardingScreen(
                                 }
                                 1 -> openImeSettings()
                                 2 -> pickIme()
-                                3 -> { settingsVisited = true; finishWizard() }
+                                // 第 4 页（语音权限）：未授权就弹系统框 ✓ 已授权直接往下走 ✓
+                                3 -> if (micOk) {
+                                    scope.launch { pagerState.animateScrollToPage(4) }
+                                } else {
+                                    requestMicPermission(micPermLauncher)
+                                }
+                                // 第 5 页（联网）：两个开关就在上面 ✓ 这个按钮只负责往下走 ✓
+                                4 -> scope.launch { pagerState.animateScrollToPage(5) }
+                                5 -> { settingsVisited = true; finishWizard() }
                                 else -> { settingsVisited = true; finishWizard() }
                             }
                         },
@@ -323,7 +449,9 @@ fun OnboardingScreen(
                                     "授予所有文件访问" else "授予存储权限"
                                 1 -> "去启用"
                                 2 -> "选择输入法"
-                                3 -> "进入设置"
+                                3 -> if (micOk) "已授权 · 继续" else "授予麦克风权限"
+                                4 -> "继续"
+                                5 -> "进入设置"
                                 else -> if (appsOk) "去排布应用（已就绪）" else "去排布应用"
                             }
                         )
@@ -339,7 +467,7 @@ fun OnboardingScreen(
                     .padding(vertical = 12.dp),
                 horizontalArrangement = Arrangement.Center,
             ) {
-                repeat(5) { i ->
+                repeat(7) { i ->
                     Box(
                         modifier = Modifier
                             .padding(horizontal = 5.dp)
@@ -370,7 +498,7 @@ fun OnboardingScreen(
                 Button(
                     onClick = {
                         scope.launch {
-                            if (pagerState.currentPage < 4) {
+                            if (pagerState.currentPage < 6) {
                                 pagerState.animateScrollToPage(pagerState.currentPage + 1)
                             } else {
                                 finishWizard()
@@ -378,7 +506,7 @@ fun OnboardingScreen(
                         }
                     },
                 ) {
-                    Text(if (pagerState.currentPage == 3) "完成" else "下一步")
+                    Text(if (pagerState.currentPage == 5) "完成" else "下一步")
                 }
             }
         }

@@ -2,6 +2,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- 轮19.136：模型下载（GitHub 直连/加速镜像）与「联网 API」语音需要 ✓ -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- 轮19.145：读「当前是 Wi-Fi 还是移动网络」⇒ 大模型（200~240MB）要拦流量下载 ✓
+         （同为 normal 权限 ⇒ 装机即授予 ✓ 不弹窗 ✓ 也没有弹窗可弹 ✓） -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />

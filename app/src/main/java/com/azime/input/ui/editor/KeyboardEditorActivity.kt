@@ -694,6 +694,9 @@ private val BUILTIN_ACTIONS_HELP = """
 【组合】esc（=escape）清空输入码 · clear 同上
 【页面】page:main 主键盘 · page:symbols 符号 · page:numpad 数字 · page:emoji 表情
 【内置】deploy 部署 · switch_ime 切换输入法 · clipboard 剪贴板 · menu ○ 菜单
+【手写】handwriting（=handwrite / hand_write）**打开手写板** —— 写在一个按键上即可唤出 ✓
+        · 手写板覆盖主键盘区，可在上面书写（识别将在手写模型就绪后接入 ✓）
+        · 也可把「手写」放进工具栏：○ 菜单 → 定制工具栏 → 勾选「手写」✓
 
 —— 成对符号（上屏后光标停在中间）——
 写为  （）{Left}   或   (){Left}

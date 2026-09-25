@@ -1,9 +1,43 @@
 import java.util.Base64
+import java.util.Properties
+import java.util.zip.ZipFile
+// 注：本文件里**不要**用 `java.util.X` 这种全限定写法 —— Gradle Kotlin DSL 的 `java`
+// 是项目扩展访问器（JavaPluginExtension），会把 `java.util` 解析成扩展上的属性 ✗
+// ⇒ 必须像上面这样显式 import 后用短名 ✓
 
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 轮19.147：**NDK 版本自适应**
+//   · CI（ubuntu-latest）自带 NDK：27.3.13750724 / 28.2.13676358 / 29.0.14206865
+//   · 开发机上装的是：28.0.13004108 / 29.0.14206865
+//   ⇒ 两边都**没有**任何一个是"共同写死值"能覆盖的（28.0 与 28.2 互不相同 ✗），
+//     写死任一个都会让另一边去 dl.google.com 下 ~1GB 的 NDK（本机网络还不一定放行 ✗）。
+//   ⇒ 规则：**用当前机器已装的最高版本**；一个都没装才退回写死值（交给 AGP 自行下载 ✓）。
+//     两边的"最高版本"恰好都是 29.0.14206865 ✓ ⇒ 本地与 CI 工具链一致 ✓
+// ─────────────────────────────────────────────────────────────────────────────
+val sdkPath: String? = System.getenv("ANDROID_HOME")?.takeIf { it.isNotBlank() }
+    ?: System.getenv("ANDROID_SDK_ROOT")?.takeIf { it.isNotBlank() }
+    ?: runCatching {
+        val f = rootProject.file("local.properties")
+        if (!f.exists()) return@runCatching null
+        val props = Properties()
+        f.inputStream().use { props.load(it) }
+        props.getProperty("sdk.dir")
+    }.getOrNull()
+
+val installedNdkVersions: List<String> = sdkPath
+    ?.let { runCatching { File(it, "ndk").listFiles()?.filter { d -> d.isDirectory }?.map { d -> d.name } }.getOrNull() }
+    .orEmpty()
+
+/** 已装的最高 NDK；没装则退回这个（AGP 会联网下载） */
+val ndkVersionToUse: String = installedNdkVersions
+    .sortedWith(compareBy({ it.substringBefore('.').toIntOrNull() ?: 0 }, { it }))
+    .lastOrNull()
+    ?: "29.0.14206865"
 
 android {
     namespace = "com.azime.input"
@@ -20,8 +54,10 @@ android {
         // ⇒ 与其"能装不能用"，不如把下限诚实地定在 6.0（API 23）✓
         minSdk = 23
         targetSdk = 34
-        versionCode = 118
-        versionName = "1.0.3"
+        // 轮19.145：143 → 144（本机出的 debug 测试包，便于装机核对 ✓）
+        // 测试通过后再统一升到正式版 1.0.4 ✓
+        versionCode = 146
+        versionName = "1.0.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         
@@ -47,6 +83,26 @@ android {
 
     // 轮19.105：**恢复发布 armeabi-v7a**（K20P 实测通过后回归 ✓，仍按 ABI **分开出包** ✓）
     // ABI 列表按 jniLibs 实际内容自适应 ⇒ 放回 so 即自动纳入 ✓
+    // 轮19.124：手写推理 JNI（薄壳 ✓ 链接 AAR 里的 onnxruntime ✓）
+    // 轮19.147：NDK 版本**不再写死** —— 原因见文件末尾 `ndkVersionToUse` 的注释
+    // （CI ubuntu-latest 与开发机的 NDK 集合不同，写死任一个都会让另一边去联网下 ~1GB ✗）
+    ndkVersion = ndkVersionToUse
+
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+        }
+    }
+
+    defaultConfig {
+        externalNativeBuild {
+            cmake {
+                // 静态链接 libc++ ✓ ⇒ 不额外依赖 libc++_shared.so ✓
+                arguments += "-DANDROID_STL=c++_static"
+            }
+        }
+    }
+
     splits {
         abi {
             isEnable = true
@@ -95,6 +151,56 @@ android {
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 轮19.147：**给 cpp/CMakeLists.txt 准备链接用的 libonnxruntime.so**
+//   · 手写推理 JNI（app/src/main/cpp/handwriting_jni.cpp）要链接 onnxruntime；
+//     CMakeLists 从 `app/build/ort-link/<abi>/libonnxruntime.so` 取它 ✓
+//   · 而 app/build/ 是**构建产物目录、不进仓库** ✗ ⇒ 全新克隆（CI / fork）里这个文件不存在
+//     ⇒ CMake 配置阶段直接 `FATAL_ERROR: 缺少链接用 libonnxruntime.so` ✗
+//     （本机之所以一直能出包，是因为本机 app/build/ort-link/ 早有存量文件 —— 属于"看不见的依赖"）
+//   ⇒ 这里把 sherpa-onnx AAR 里的 `jni/<abi>/libonnxruntime.so` 解出来 ✓
+//   注：**只用于链接** ✓；运行时用的是 AGP 从 AAR 自动打进 APK 的那一份 ⇒ 不重复占体积 ✓
+// ─────────────────────────────────────────────────────────────────────────────
+val ortLinkDir = layout.buildDirectory.dir("ort-link")
+
+val extractOrtForLink = tasks.register("extractOrtForLink") {
+    group = "build"
+    description = "从 app/libs/sherpa-onnx-*.aar 解出 libonnxruntime.so（CMake 链接用）"
+    val aarFiles = fileTree("libs") { include("sherpa-onnx-*.aar") }
+    inputs.files(aarFiles).withPropertyName("sherpaAar")
+    outputs.dir(ortLinkDir).withPropertyName("ortLinkDir")
+    doLast {
+        val aar = aarFiles.files.maxByOrNull { it.lastModified() }
+            ?: error("缺少 app/libs/sherpa-onnx-*.aar —— CI 会在构建前从官方 release 下载它")
+        val root = ortLinkDir.get().asFile
+        var n = 0
+        ZipFile(aar).use { zip ->
+            zip.entries().asSequence()
+                .filter { it.name.startsWith("jni/") && it.name.endsWith("/libonnxruntime.so") }
+                .forEach { entry ->
+                    val abi = entry.name.substringAfter("jni/").substringBefore('/')
+                    if (abi != "arm64-v8a" && abi != "armeabi-v7a") return@forEach
+                    val dst = File(root, "$abi/libonnxruntime.so")
+                    dst.parentFile?.mkdirs()
+                    if (dst.exists() && dst.length() == entry.size) return@forEach
+                    zip.getInputStream(entry).use { ins -> dst.outputStream().use { ins.copyTo(it) } }
+                    logger.lifecycle("  ort-link: $abi/libonnxruntime.so (${entry.size / 1024 / 1024} MB)")
+                    n++
+                }
+        }
+        logger.lifecycle("extractOrtForLink: 新解出 $n 个（已存在的跳过）")
+    }
+}
+
+// CMake 的配置任务必须先跑 —— 否则 configure 阶段就因缺 so 报 FATAL_ERROR
+// AGP 的原生任务名：configureCMake<BuildType>[<abi>] / buildCMake<BuildType>[<abi>]
+tasks.configureEach {
+    val taskName = name
+    if (taskName.startsWith("configureCMake") || taskName.startsWith("buildCMake")) {
+        dependsOn(extractOrtForLink)
+    }
+}
+
 dependencies {
     // AndroidX Core
     implementation("androidx.core:core-ktx:1.12.0")
@@ -136,6 +242,8 @@ dependencies {
     // sherpa-onnx 本地语音识别（轮19：SenseVoice 离线 / zipformer 流式）
     // 官方 release AAR（含 Kotlin API + 全 ABI so），jitpack 拉取不稳定故提交进 repo
     implementation(files("libs/sherpa-onnx-1.13.5.aar"))
+    // 轮19.127：解压 .tar.bz2 用（语音模型是 tar.bz2 ✗ Android 原生解不了 ✓）
+    implementation("org.apache.commons:commons-compress:1.26.2")
     
     // Testing
     testImplementation("junit:junit:4.13.2")

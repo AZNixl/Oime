@@ -153,6 +153,33 @@ object OimeIcons {
         )
     }
 
+    // ── 语音 + 手写（混合图标 ✓ 用户要求："语音和手写的图标混合在一起" ✓）──
+    val voiceHandwriting by lazy {
+        Icon(
+            "oime_voice_hw",
+            // 左下：斜置铅笔（笔身 + 笔尖 ✓）
+            P("M2.6 21.4l3.3-.9L17.6 8.8a2 2 0 0 0-2.9-2.9L2.9 17.6l-.3 3.8z"),
+            // 笔箍（靠近笔尖的短线 ✓）
+            P("M13.2 7.5l2.6 2.6", w = 1.5f),
+            // 右上：两道声波弧（语音 ✓ 与笔分开、不挤 ✓）
+            P("M18.5 4.4a5.4 5.4 0 0 1 0 7.6", w = 1.6f),
+            P("M21.2 2.2a8.4 8.4 0 0 1 0 12", w = 1.6f),
+        )
+    }
+
+    // ── 手写（笔 + 纸上的行；与工具栏描边风一致 ✓）────────────
+    val handwriting by lazy {
+        Icon(
+            "oime_handwriting",
+            // 笔身（斜置铅笔轮廓 ✓）
+            P("M4.2 19.8l3.9-1 10.6-10.6a2.1 2.1 0 0 0-3-3L5.1 15.8 4.2 19.8z"),
+            // 笔箍（靠近笔尖的横线 ✓）
+            P("M14.8 6.2l3 3", w = 1.5f),
+            // 书写基线（纸上的字迹 ✓）
+            P("M4.6 22.2h8.2", w = 1.5f),
+        )
+    }
+
     // ── 云端（联网语音）──────────────────────────────────────
     val cloud by lazy {
         Icon(
@@ -421,6 +448,7 @@ object OimeIcons {
         "onehand", "hand" -> oneHand
         "trash", "deleteall" -> trash
         "voice" -> mic
+        "handwriting" -> handwriting   // 轮19.138：**专用手写笔图标** ✓（原来是键盘图标 ✗）
         "float" -> pip
         "floatkbd" -> floatKbd
         "lua" -> code

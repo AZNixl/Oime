@@ -184,6 +184,14 @@ sealed interface KeyAction {
     /** 收起键盘（工具栏末尾关闭键）。 */
     data object HideKeyboard : KeyAction
     data object ToggleClipboardPanel : KeyAction
+    /** 轮19.116：**打开手写板**（工具栏工具 / 键盘编辑器动作 / 内置功能 handwriting 都走它 ✓） */
+    data object OpenHandwriting : KeyAction
+    /** 轮19.116：关闭手写板 */
+    data object CloseHandwriting : KeyAction
+    /** 轮19.124：上屏任意文本（手写识别结果用 ✓） */
+    data class CommitText(val text: String) : KeyAction
+    /** 轮19.126：手写识别结果回传（由工具栏显示 ✓） */
+    data class HwCandidates(val items: List<String>) : KeyAction
     data object ToggleMenuPanel : KeyAction
     /** 轮19.11：工具栏「方案」按钮 → 剪贴板同款悬浮栏，方案横向排布、点击切换。 */
     data object ToggleSchemaPanel : KeyAction
@@ -235,6 +243,12 @@ data class KeyboardUiState(
     val clipText: String = "",
     val clipAtMs: Long = 0L,
     val showClipboardPanel: Boolean = false,
+    /** 轮19.116：手写板是否展开（与候选/菜单/剪贴板面板同级，覆盖主键盘区 ✓）。 */
+    val showHandwritingPad: Boolean = false,
+    /** 轮19.126：手写识别结果（显示在**工具栏** ✓ 点选上屏 ✓）。 */
+    val hwCandidates: List<String> = emptyList(),
+    /** 轮19.127：手写板清空信号 —— 上屏后 +1 ⇒ 面板清画布 ✓（用户要求「上屏后要清空」✓）*/
+    val hwClearSignal: Int = 0,
     val showMenuPanel: Boolean = false,
     val showCandidatePanel: Boolean = false,
     /** 轮19.11：方案快捷面板。 */
@@ -564,6 +578,15 @@ fun AzimeKeyboardScreen(
                 )
             } else if (state.showClipboardPanel) {
                 ClipboardPanel(state = state, onAction = onAction, totalHeight = areaH)
+            } else if (state.showHandwritingPad) {
+                // 轮19.116：手写板（覆盖主键盘区 ✓，与剪贴板/菜单同级）
+                HandwritingPadPanel(
+                    totalHeight = areaH,
+                    hwClearSignal = state.hwClearSignal,
+                    onAction = onAction,
+                ) {
+                    onAction(KeyAction.CloseHandwriting)
+                }
 
             } else if (state.page == "emoji" || state.page == "symgrid") {
                 CategoryGridPane(
@@ -1027,6 +1050,35 @@ private fun ToolbarRow(
     // 剪贴板条：复制后常驻，点击直接上屏；打字/新复制时消亡（参考 复制自动添加到候选.lua）
     val clipFresh = state.clipText.isNotBlank()
 
+    // 轮19.126：手写板打开时的**手写候选**（不能和拼音组合混在一起 ✓ 优先显示 ✓）
+    if (state.showHandwritingPad && state.hwCandidates.isNotEmpty() && state.preedit.isEmpty()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(barHeight)
+                .background(c.bg)
+                .horizontalScroll(rememberScrollState()),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            val candSp2 = ((barHeight.value - 6f) / 1.4f).coerceIn(12f, 30f)
+            state.hwCandidates.forEachIndexed { i, ch ->
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .clickable {
+                            onAction(KeyAction.CommitText(ch))
+                            onAction(KeyAction.HwCandidates(emptyList()))   // 上屏后清空 ✓
+                        }
+                        .padding(horizontal = 9.dp, vertical = 2.dp),
+                ) {
+                    if (i < 9) Text("${i + 1} ", fontSize = (candSp2 * 0.6f).sp, color = c.subText)
+                    Text(ch, fontSize = candSp2.sp, color = c.text, maxLines = 1)
+                }
+            }
+        }
+        return
+    }
+
     // 打字中（有输入码或候选）：输入码 + 候选上下排布覆盖整个工具栏（反馈轮9）
     val composing = state.preedit.isNotEmpty() || state.candidates.isNotEmpty()
 
@@ -1051,7 +1103,14 @@ private fun ToolbarRow(
             // 轮19.11：悬浮窗生效时，前三码交给悬浮窗显示，工具栏只显示余下的
             val floatOn = KeyboardManager.floatEnabled() && state.preedit.isNotEmpty()
             // 轮19.55：悬浮窗已显示完整输入码 ⇒ 工具栏**不再重复显示**（原来显示第 4 码起的部分）
-            val preeditForBar = if (floatOn) "" else state.preedit
+            // 轮19.114：**嵌入模式**同理 —— 输入码已进「文本输入框」⇒ 工具栏也不再显示 ✓
+            // 轮19.121：只有「嵌入输入码(code)」才把输入码挪出工具栏 ✓
+            // 「嵌入首选(top)」反而**要在工具栏显示输入码** ✓（首选字去了输入框 ✓）
+            val embedMode = com.azime.input.core.keyboard.KeyboardManager.embedMode()
+            // 轮19.123：`top` 模式也**不**单独显示输入码行 ✓ —— 码改为占「候选行的首选位」✓
+            // （用户要求：效果与「嵌入输入码」同排布，只是**输入码与首选对调位置** ✓）
+            val embedCodeOn = (embedMode == "code" || embedMode == "top") && state.preedit.isNotEmpty()
+            val preeditForBar = if (floatOn || embedCodeOn) "" else state.preedit
             if (preeditForBar.isNotEmpty()) {
                 Text(
                     text = preeditForBar,
@@ -1069,7 +1128,24 @@ private fun ToolbarRow(
                     .horizontalScroll(rememberScrollState()),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                // 轮19.121/19.123：**嵌入首选** —— 输入码**占住首选的位置** ✓（首选已进输入框 ✓）
+                // ⚠️ 序号仍用**原下标** ✓ —— 否则 select_2/3 这类候选键会错位 ✗
+                val codeInFirstSlot = embedMode == "top" && state.preedit.isNotEmpty()
+                if (codeInFirstSlot) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            // 点它 = 选首选（此时首选就是输入框里那个字 ✓）
+                            .clickable { onAction(KeyAction.Candidate(0)) }
+                            .padding(horizontal = 8.dp, vertical = 1.dp),
+                    ) {
+                        Text("1 ", fontSize = (candSp * 0.62f).sp, color = c.subText)
+                        Text(state.preedit, fontSize = candSp.sp, maxLines = 1, color = c.subText)
+                    }
+                }
+                val candStart = if (codeInFirstSlot && state.candidates.isNotEmpty()) 1 else 0
                 state.candidates.forEachIndexed { index, candidate ->
+                    if (index < candStart) return@forEachIndexed
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
@@ -1702,6 +1778,7 @@ private fun RowScope.toolbarToolItem(id: String, state: KeyboardUiState, onActio
                     "symbols" -> onAction(KeyAction.SwitchPage("symgrid"))
                     "settings" -> onAction(KeyAction.OpenSettings)
                     "voice" -> onAction(KeyAction.ToggleVoiceInput)
+                    "handwriting" -> onAction(KeyAction.OpenHandwriting)   // 轮19.116
                     "candidates" -> onAction(KeyAction.ToggleCandidatePanel)
                     "keyboard" -> onAction(KeyAction.OpenKeyboardEditor)
                     "deploy" -> onAction(KeyAction.Deploy)
@@ -3418,6 +3495,165 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
 
 /** 滑动方向上的键面预览文本。 */
 /** 轮19.56：内置动作的**中文显示名**（键面提示与长按气泡都用它，避免"Time 就显示 Time"）。 */
+
+/**
+ * 轮19.126：**手写板面板**（覆盖主键盘区 ✓ 大面积书写 ✓）
+ * · **自动识别**：抬笔后停顿即识别（无需点按钮 ✓）
+ * · 结果**送到工具栏**显示（点选上屏 ✓ 见 KeyboardScreen 顶部的 hwCandidates 分支 ✓）
+ * · 悬浮栏**只留一个返回键**，置于**左下角** ✓
+ */
+@Composable
+private fun HandwritingPadPanel(
+    totalHeight: androidx.compose.ui.unit.Dp,
+    hwClearSignal: Int,
+    onAction: (KeyAction) -> Unit,
+    onClose: () -> Unit,
+) {
+    val c = keyboardColors()
+    val strokes = remember {
+        androidx.compose.runtime.mutableStateListOf<MutableList<androidx.compose.ui.geometry.Offset>>()
+    }
+    var rev by remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    var recognizing by remember { androidx.compose.runtime.mutableStateOf(false) }
+    var hint by remember { androidx.compose.runtime.mutableStateOf("") }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    // 自动识别任务句柄（新增笔画就重排计时 ✓ = 停顿即识别 ✓）
+    var job by remember { androidx.compose.runtime.mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    // 轮19.127：上屏后自动清画布 ✓（用户反馈：上屏后手写板没清空 ✗）
+    androidx.compose.runtime.LaunchedEffect(hwClearSignal) {
+        if (hwClearSignal > 0) { strokes.clear(); rev++ }
+    }
+
+    fun runRecognize() {
+        if (strokes.isEmpty()) return
+        val snapshot = strokes.map { s2 ->
+            FloatArray(s2.size * 2).also { arr ->
+                s2.forEachIndexed { i, o -> arr[i * 2] = o.x; arr[i * 2 + 1] = o.y }
+            }
+        }
+        recognizing = true
+        scope.launch(kotlinx.coroutines.Dispatchers.Default) {
+            val r = com.azime.input.core.handwriting.HandwritingEngine.recognize(snapshot, topK = 8)
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                recognizing = false
+                if (r.isEmpty()) {
+                    hint = "识别失败：" + com.azime.input.core.handwriting.HandwritingEngine.errorText()
+                } else {
+                    hint = ""
+                    onAction(KeyAction.HwCandidates(r.map { it.first }))
+                }
+            }
+        }
+    }
+
+    // ⚠️ 铁律：面板高度一律用传入的 totalHeight（= 键盘区 areaH ✓）
+    // 之前写了 fillMaxSize() ⇒ **整个面板全屏** ✗（用户两次反馈 ✓）
+    Box(modifier = Modifier.fillMaxWidth().height(totalHeight).background(c.bg)) {
+        // 大面积画布（铺满整个键盘区 ✓）
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(4.dp)
+                .background(c.keyBg, RoundedCornerShape(12.dp))
+                .pointerInput(Unit) {
+                    awaitPointerEventScope {
+                        while (true) {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            // 新一笔 ⇒ 先清掉上一轮结果（避免旧候选误导 ✓）
+                            onAction(KeyAction.HwCandidates(emptyList()))
+                            hint = ""
+                            val cur = mutableListOf(down.position)
+                            strokes.add(cur)
+                            rev++
+                            var ev = awaitPointerEvent()
+                            while (ev.changes.any { it.pressed }) {
+                                ev.changes.firstOrNull()?.let { ch ->
+                                    cur.add(ch.position); ch.consume()
+                                }
+                                rev++
+                                ev = awaitPointerEvent()
+                            }
+                            rev++
+                            // 抬笔 ⇒ 排定 800ms 后的自动识别（期间再写就重新计时 ✓）
+                            job?.cancel()
+                            job = scope.launch {
+                                kotlinx.coroutines.delay(800)
+                                runRecognize()
+                            }
+                        }
+                    }
+                },
+        ) {
+            androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
+                @Suppress("UNUSED_EXPRESSION")
+                rev
+                strokes.forEach { one ->
+                    if (one.size > 1) {
+                        val path = androidx.compose.ui.graphics.Path()
+                        path.moveTo(one[0].x, one[0].y)
+                        for (i in 1 until one.size) path.lineTo(one[i].x, one[i].y)
+                        drawPath(
+                            path, color = c.text,
+                            style = androidx.compose.ui.graphics.drawscope.Stroke(
+                                width = 7f,
+                                cap = androidx.compose.ui.graphics.StrokeCap.Round,
+                                join = androidx.compose.ui.graphics.StrokeJoin.Round,
+                            ),
+                        )
+                    }
+                }
+            }
+            if (strokes.isEmpty()) {
+                Text(
+                    "在此书写（写完停一下即自动识别）",
+                    fontSize = 13.sp, color = c.subText,
+                    modifier = Modifier.align(androidx.compose.ui.Alignment.Center),
+                )
+            }
+            if (recognizing) {
+                Text("识别中…", fontSize = 11.sp, color = c.subText,
+                    modifier = Modifier.align(androidx.compose.ui.Alignment.TopCenter).padding(top = 6.dp))
+            }
+            if (hint.isNotEmpty()) {
+                Text(hint, fontSize = 11.sp,
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.error,
+                    modifier = Modifier.align(androidx.compose.ui.Alignment.TopCenter).padding(top = 6.dp))
+            }
+        }
+        // 悬浮栏：**只留一个返回键**，置**左下角** ✓
+        Text(
+            "← 返回",
+            fontSize = 13.sp, fontWeight = FontWeight.Bold, color = c.accentActive,
+            modifier = Modifier
+                .align(androidx.compose.ui.Alignment.BottomStart)
+                .padding(start = 8.dp, bottom = 8.dp)
+                .background(c.keyBg.copy(alpha = 0.92f), RoundedCornerShape(18.dp))
+                .clickable {
+                    com.azime.input.core.haptic.HapticsManager.press()
+                    onAction(KeyAction.HwCandidates(emptyList()))
+                    onClose()
+                }
+                .padding(horizontal = 14.dp, vertical = 7.dp),
+        )
+        // 轮19.129：右下角「清空」（用户要求 ✓ 只清画布，不退出 ✓）
+        Text(
+            "清空",
+            fontSize = 13.sp, fontWeight = FontWeight.Bold, color = c.accentActive,
+            modifier = Modifier
+                .align(androidx.compose.ui.Alignment.BottomEnd)
+                .padding(end = 8.dp, bottom = 8.dp)
+                .background(c.keyBg.copy(alpha = 0.92f), RoundedCornerShape(18.dp))
+                .clickable {
+                    com.azime.input.core.haptic.HapticsManager.press()
+                    strokes.clear()
+                    onAction(KeyAction.HwCandidates(emptyList()))
+                    rev++
+                }
+                .padding(horizontal = 14.dp, vertical = 7.dp),
+        )
+    }
+}
+
 fun actionDisplayName(action: String): String = when (action.trim().lowercase()) {
     "date" -> "日期"
     "time" -> "时间"
@@ -3435,6 +3671,7 @@ fun actionDisplayName(action: String): String = when (action.trim().lowercase())
     "delete_all" -> "全删"
     "newline" -> "换行"
     "escape", "esc" -> "清空"
+    "handwriting", "handwrite", "hand_write" -> "手写"
     else -> action
 }
 

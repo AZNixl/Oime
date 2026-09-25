@@ -2261,3 +2261,187 @@ java.lang.UnsatisfiedLinkError: dlopen failed: empty/missing DT_HASH in "librime
 ## 三、v7a 流式语音真机结论（K20P 实测 ✓）
 - **v7a + 流式 = 可用** ✓（只是模型加载/首字**偏慢** ✓ —— SD855 正常表现 ✓，用户判定"硬件问题，无碍" ✓）
 - 修正上一轮推测 ✗：不是"算力不够不可用"，而是"**能用但慢**" ✓
+
+---
+
+> 以下为 **1.0.3（vc118）→ 1.0.4（vc146）** 的开发记录（19.113 ~ 19.146）。
+> 这一段的主体是**手写输入整条线**（调研 → 模型转换 → JNI → 手写板 → 嵌入模式 → 模型下载）。
+
+# 轮19.113 ~ 19.119：手写输入从调研到「识别接通」
+
+## 一、路线选定（19.113 / 19.114）
+- 调研两条路：**在线 API** ✗ vs **离线图片识别** ✓ ⇒ 选离线（不依赖网络、不上传笔迹 ✓）
+- 模型选 **DeepHCCR**（GoogLeNet 结构，MIT 授权，论文精度 95.3%）✓
+  · 用户明确要求：**不用 Xime 的模型** ✗
+- 确认权重来源：`github.com/chongyangtao/DeepHCCR` 仓库内 `models/googlenet_hccr.caffemodel`（≈39MB）✓
+
+## 二、Caffe → ONNX（19.117 ~ 19.119）
+- 手机端只有 ONNX Runtime ⇒ 必须先把 `.caffemodel + deploy.prototxt` 转成 ONNX ✓
+- 19.118：转换脚本**结构性完成** ✓ 但形状语义待收尾 ✗
+- 19.119：★★ **转换成功并验证 4/4 命中** ✓✓ ⇒ 产出 `model.onnx`（量化后约 10MB）+ `labels.txt` ✓
+
+## 三、前端接线（19.115 / 19.116）
+- 19.115：嵌入式**重做** ✓ + 手写入口与检测 ✓（debug vc119）
+- 19.116：手写接进**工具栏** ✓ + 键盘编辑器动作 ✓（debug vc120）
+
+# 轮19.120 ~ 19.124：手写板手感 / 嵌入三态 / 识别全线接通
+
+- 19.120：用户实测反馈「手写板生涩、不顺滑」✗ ⇒ 调整画笔与采样
+- 19.121：确认「画板手感 + 路线本身」**都有问题** ✓（决策点）⇒ 嵌入模式扩成**三态**
+  （不嵌入 / 嵌入编码 / **嵌入首选**）+ 新增「嵌入首选」（debug vc122 ✓）
+- 19.123：★「嵌入首选」改为**输入码与首选候选位置对调** ✓（debug vc123 ✓）
+- 19.124：★★ **手写识别全线接通**（JNI + 模型 + 手写板 ✓ debug vc124）✓
+
+# 轮19.125 ~ 19.128：嵌入重复上屏真因 + 手写板重写 + 模型下载器
+
+## 一、★ 嵌入模式的「重复上屏 / 要按两次退格」= 同一个根因（19.126）
+- `AZimeService` 嵌入分支里调了 `finishComposingText()` ✗ ⇒ 把**预览定稿成真文本** ✗ ⇒
+  ① 结束时 `commitText` 只能**追加** ⇒ 「还还好吧」✗ ② 退格删预览删不掉 ⇒ **要按两次** ✗
+- 修法 ✓：嵌入模式（code / top）**一律禁用 `finishComposingText()`** ✗
+  · 组合结束用 `setComposingText("", 1)` 清预览 ✓；提交交给 `commitText`（自带**替换**语义 ✓）
+- 新增 `Embed` 埋点（mode / preedit / 预览 / 候选数 / 提交文本 ✓）⇒ 下次能直接还原时序 ✓
+
+## 二、手写板重写（19.126）
+- **自动识别** ✓：抬笔后 **800ms 停顿**即识别（期间再写重新计时 ✓ 不用点按钮 ✓）
+- **结果进工具栏** ✓：新增 `hwCandidates` + `KeyAction.HwCandidates` ✓；点选即上屏、上屏后自动清空 ✓
+- 去掉百分比 ✓（只显示字 + 序号）；**大面积书写** ✓（画布铺满整个键盘区）
+
+## 三、模型下载器 `core/handwriting/ModelDownloader.kt`（19.126 ~ 19.127）
+- **直连优先 → 失败自动依次试公益镜像** ✓（清单抄自 trime2「下载中心」`main.lua`，12 条 ✓ 全免费 ✓）
+- 进度回调（256KB 节流 ✓）+ zip 解压（带目录穿越防护 ✓）
+- 19.127：**只解需要的部分** ✓（`keepFilter` 默认只留 `.onnx` / `.txt` ✓）+ **解压完删下载包** ✓
+  + 临时目录 `Documents/Oime/downloads/` ✓
+- `extractTarBz2` ✓（commons-compress，**Maven 通** ✓）+ `VOICE_MODELS` 清单（SenseVoice 240MB / Zipformer 200MB）
+- 📌 模型托管到**自己的 GitHub Release**：上传必须走 **`uploads.github.com`** ✓
+  （`api.github.com` 的 assets 上传会 **404** ✗）
+- ⚠️ 踩坑：Python heredoc 里把 `'\n'` 写成 `'\\n'` ✗ ⇒ 生成的字面量把源码搞坏 ✗
+  ⇒ 教训：heredoc 里要真实换行就用单反斜杠，并在生成后**校验行数/行长** ✓
+
+## 四、19.127 / 19.128 的真机返工
+- 手写板变成**全屏** ✗ ⇒ 我重写面板时用了 `Modifier.fillMaxSize()` ✗（丢了原 `MenuSubPanel` 的高度约束 ✗）
+  ⇒ 改 `fillMaxWidth().height(totalHeight)` ✓ —— 再次验证铁律：**面板一律用 `areaH` / `totalHeight`** ✓
+- **上屏后画布没清空** ✗ ⇒ 新增 `hwClearSignal: Int` ✓：服务端提交后 `+1` → 面板 `LaunchedEffect` 清画布 ✓
+- **语音设置块已从「方案」页搬进「语音手写管理」** ✓（brace-matching 精确切块 ✓ + 去掉 `item{}` 外壳 ✓）
+- 19.128：手写板全屏**真修** ✓ + 管理页重写 ✓（debug vc128）
+
+# 轮19.129 ~ 19.135：设置页统一观感（并揪出「回调被吃掉」的真凶）
+
+- 19.129：手写板加**清空键** ✓ + 管理页版式对齐「输入方案」页 ✓
+- 19.130：**页面重叠修复** ✓ + 去掉编号 ✓ + **统一可选按钮样式** ✓
+- 19.132：版式回调 ✓ + 统一 `FilterChip` ✓ + 备份恢复 ✓
+- 19.133：模型选择行也统一为 `FilterChip` ✓ + 备份列表挂到「恢复备份」项下 ✓
+- 19.134：★ **无边框**选中样式 ✓ + 横向/竖向选项真改上了 ✓
+- 19.135：★★ 找到「样式没回调」的**真凶 = 同名函数重载** ✗（改了一处不生效的典型 ✓）
+  ⇒ 教训：Compose 里同名重载会导致**调用了另一个** ⇒ 改前先确认「点下去执行的是哪个函数」✓
+
+# 轮19.136 ~ 19.138：模型下载「必然失败」的真因 + 崩溃修复
+
+## 一、★★ 下载失败真因 = **manifest 少声明 `INTERNET`**（19.136）
+- 日志铁证（`Dl` 埋点，12 个通道**同一原因**）✓：
+  `[Dl] 直连 失败：Permission denied (missing INTERNET permission?)`
+- 顺带发现：**「联网 API」语音识别其实一直是坏的** ✗（同样没权限）
+- 修法 ✓：manifest 补 `<uses-permission android:name="android.permission.INTERNET" />` ✓
+  + 核验 APK 里真有（`aapt2 dump permissions` ✓）
+- 提示位置 ✓（用户要求）：写到**点击的那个模型行下方** ✓ ⇒ 新增 `msgFor`（按模型 id 存 ✓）
+- ★ 教训：**新功能依赖系统权限时必须先查 manifest** ✗ + 及时读埋点日志 ✓（比猜快得多 ✓）
+
+## 二、断点续传 + 完整性校验 + 闪退真因（19.137）
+- 闪退铁证 ✓：`Ort::Exception: Load model from …/sense-voice/model.onnx failed: Protobuf parsing failed.`
+  ⇒ 那个 `model.onnx`（**845MB** ✗）是**下载中断的残缺文件** ✗ ⇒ C++ 异常跨到 Java ⇒ **SIGABRT** ✗
+- 修法 ✓（`ModelDownloader`）：
+  · **全局作用域** ✓（`CoroutineScope(SupervisorJob()+IO)` 放在 object 里 ⇒ **切页不取消** ✓）
+  · **全局状态** ✓（`DlState` + `states: mutableStateMapOf` ⇒ 切回来还能看到进度 ✓）
+  · **断点续传** ✓（有 `.part` ⇒ `Range: bytes=N-` ✓ 206 续传 / 200 从头 ✓ + 追加写 ✓）
+  · **★ 完整性校验** ✓（`done < total` ⇒ **抛错** ✗ 以前断流被当成功 ⇒ 残缺模型 ⇒ 崩溃 ✗✗）
+  · 失败**保留 `.part`** ✓（以前删掉 ⇒ 永远从头 ✗）
+- 解压**只留需要的** ✓（`tokens.txt` + `*.int8.onnx`）；⚠️ **两个分支都要套过滤器** ✗（原来只套了一个 ✗）
+
+## 三、19.138：图标与过滤收严
+- 手写图标重绘 ✓（24 网格描边铅笔 + 书写基线）；`byName("handwriting")` 指向修正 ✓
+- zipformer 多解压一个 ✗ ⇒ 根因是我以为 "decoder 无 int8 版" ✗ 而放行了 `decoder*.onnx` ✗
+  ⇒ **实测它有 int8 版** ✓ ⇒ 删掉该例外 ✓（规则只剩 `tokens.txt` + `*.int8.onnx`）
+- 下载日志观察 ✓：代理通道断了很多次，但**最终成功** ⇒ 证明**断点续传生效** ✓
+
+# 轮19.139 ~ 19.140：UI 四项调整 + 并列三卡
+
+- 19.139：① 嵌入模式独立成方块 ✓ ② 新增 `OimeIcons.voiceHandwriting` ✓（「悬浮窗」同步改名
+  「悬浮窗及嵌入式」✓）③ 麦克风权限行缩进对齐 ✓ ④ 向导补麦克风申请 ✓ ⑤ 出 v8a + v7a 双包 ✓
+- 19.140：★ 拆分方式我上次**理解错了** ✗ —— 用户给的参照是「输入方案」页 ⇒ 要的是**并列卡片** ✓
+  ⇒ `FloatingWindowSettings()` 拆成 **3 张并列 Card**（① 悬浮窗 ② 嵌入式 ③ 样式与数值 ✓）
+  ⚠️ 收口括号：新增 Card/Column 要在函数末尾**补 2 个 `}`** ✓
+- 图标重画 ✓：上一版是"麦克风 + 铅笔挤在一起" ✗ ⇒ 改为 **斜置铅笔 + 两道声波弧** ✓
+
+# 轮19.141 ~ 19.143：闪退修复 + 卡片合并（连踩 3 次坑）
+
+## 一、★ 点「悬浮窗及嵌入式」闪退（19.141）
+- 崩溃铁证 ✓：`IllegalStateException: Vertically scrollable component was measured with an
+  infinity maximum height constraints`
+- 根因 ✗：我在 `FloatingWindowSettings()` 里加了 `fillMaxSize().verticalScroll(...)` ✗，
+  而**调用处外层就是 `LazyColumn`** ⇒ item 给无限高度 ⇒ 抛异常 ✗
+- 修法 ✓：删掉内层 `fillMaxSize` / `verticalScroll` / 重复 padding ⇒ 只留 `Column(spacedBy(12.dp))` ✓
+  ⇒ 铁律：**`LazyColumn` 的 item 里禁止再套滚动容器** ✗
+
+## 二、卡片合并的正确姿势（19.142 / 19.143）
+- 需求：悬浮窗**开关**与**样式**合并成同一张卡 ✓；**嵌入式单独一个方块** ✓
+- 踩坑 ✗✗✗：① **只 assert 没真删** ⇒ 卡片提前闭合 ⇒ 内容掉到卡外（**编译还能过** ✗ 只有看渲染才发现 ✗）
+  ② **按缩进找函数结尾** ✗（收尾 `}` 未必顶格）③ **凭空推理括号配对** ✗（被字符串里的花括号带偏 ✗）
+- 正解 ✓：**字符级扫描**（跳过字符串/注释）算**每行深度** ⇒ 用深度判断"卡内还是卡外" ✓；
+  **尾部整体重建** ✓；找函数结尾用 `strip()=='}'` 且**其后第一个非空行以 `/**` 开头** ✓；
+  改完复核 **EOF 深度 = 0** ✓ + **无负深度** ✓
+
+# 轮19.144 ~ 19.146：v7a 旧机验证 + 微信表情退格 + 向导补权限
+
+## 一、19.144：v7a 包装到旧机（红米 K20 Pro）
+- 设备 `f25441b5` = Redmi K20 Pro（raphael / Android 15）✓
+- 核对 ✓：`primaryCpuAbi=armeabi-v7a` ✓ / `secondaryCpuAbi=null` ✓（**确实吃到 v7a 那套 so** ✓）
+- ⚠️ MIUI 上 `pm grant RECORD_AUDIO` 被拒 ✗ ⇒ 只能靠 App 内向导自己弹框 ✓
+
+## 二、19.145：★★ 微信表情要按多次退格（根因定死 ✓）
+- 根因 ✓：微信表情在输入框里的**底层文本是短代码** `[微笑]` / `[让我看看]` ✓（渲染成图片靠 `ImageSpan` ✗）
+  老实现只判「1 码元」和「代理对」⇒ 一次只删掉 `]` ✗（前几次删的是**看不见的**修饰符 ✗）
+- 真机铁证 ✓（`[Del]` 埋点）：
+  · `[呲牙]` = 4 码元 ⇒ `chat=4 n=4` ✓
+  · `[让我看看]` = 6 码元 ⇒ `chat=6 n=6` ✓
+  · `[叹气]` = 4 码元 ⇒ `chat=4 n=4` ✓
+  ⇒ **`n` 恒等于整个表情长度** ⇒ 一个表情一次删净 ✓（用户实测通过 ✓）
+- 修法 ✓（`AZimeService.handleBackspace` 四级判定）：
+  1. `spanBackedLength()` —— 光标前紧邻 `ReplacementSpan`/`ImageSpan` ⇒ 按 span 长度删
+  2. `wechatEmoticonLength()` —— **仅 `com.tencent.mm`** ✓ + 光标前 `[...]` 且括号内 1~8 个
+     **纯汉字或纯 ASCII 字母** ⇒ 整段删（`[1]` / `[a/b]` / `[链接](url)` 都不匹配 ⇒ 不误伤 ✓）
+  3. `Grapheme.lastClusterLength()` 兜底 —— 扩展字素簇（变体选择符 / ZWJ / 国旗 / 肤色 / 键帽 ✓）
+  4. 读文本必须带 **`GET_TEXT_WITH_STYLES`** ✓（否则多数编辑器走 `TextUtils.substring` 把 span 丢掉 ✗）
+- 💡 实测反直觉的一点：微信这边 **`span=0` 而 `styled=true`** ⇒ **微信不走 ReplacementSpan** ✗
+  ⇒ 真正解题的是第 2 条（短代码）✓ 第 1 条留给其它 App ✓
+
+## 三、19.145 续：启动向导补「联网与模型下载」页
+- 用户诉求「启动界面没有联网权限的索取界面，直接就能联网下模型了」
+- **平台事实** ✓：`INTERNET` 是 **normal 权限** ⇒ 装机即授权 ✓，系统**不提供**运行时弹窗 ✗
+  ⇒ 任何 App 都做不出"联网权限索取界面" ✗ ⇒ 改成**知情 + 显式开关** ✓
+- 新增 `core/net/NetPrefs.kt` ✓（`net_allow_download` 默认开 ✓ / `net_wifi_only` **默认开** ✓
+  + `NetState{WIFI,MOBILE,NONE,UNKNOWN}` + `downloadBlockReason()`）
+- manifest 补 `ACCESS_NETWORK_STATE`（同为 normal ✓，只用来分辨 Wi-Fi/流量 ✓）
+- 向导 5 页 → 6 页；设置页语音/手写管理顶部加「〇、联网下载」卡 ✓ + 移动网络下载前**二次确认** ✓
+- 踩坑 ✗：`val net = com.azime.input.core.net`（**把包名当值用** ✗ Kotlin 不允许 ✗）
+
+## 四、19.146：向导把「语音权限」做成独立一页（6 页 → 7 页）
+- 改前 ✗：19.139 是「**进向导就 `LaunchedEffect` 自动弹**麦克风框」✗
+  ⇒ 用户还没看到「语音」的说明就被要权限 ✗ 而且弹框与页面无关（停在第 1 页也照弹 ✗）
+- 改法 ✓：新增第 4 页（索引 3）【语音输入权限】+ 删掉自动弹框逻辑 ✓
+  · 新增 `micGranted()`（`RECORD_AUDIO` 是 **dangerous** ⇒ 有运行时弹窗 ✓ 与 `INTERNET` 不同 ✓）
+  · 状态徽标「✓ 已授予麦克风权限 / 未授权（不影响打字）」+ 主按钮「授予麦克风权限 / 已授权 · 继续」
+  · 索引平移：联网页 `page==3`→`4` ✓ 圆点 `repeat(6)`→`repeat(7)` ✓ 底部边界 `<5`→`<6` ✓
+- 关于页新增「**本次更新**」条目（1.0.4 的新增/修改/修复 ✓）
+
+## 五、1.0.4 发版
+- `versionName = "1.0.4"` / `versionCode = 146` ✓（双 ABI：arm64-v8a + armeabi-v7a ✓）
+- 两个 ABI 均已真机验证 ✓（一加 13 = arm64 ✓ 微信表情退格通过 ✓；K20 Pro = v7a ✓ 向导 7 页正常 ✓）
+- 打 tag `v1.0.4` ⇒ 触发 Release 工作流（按 ABI 出正式签名包 ✓；fork 无 Secrets 自动回退 debug 签名 ✓）
+
+## 六、真机验证环境备忘（2026-09-25）
+- ⚠️ **红米 K20 Pro（MIUI/HyperOS）上 `adb shell input tap` 被拦** ✗：
+  `SecurityException: Injecting input events requires ... INJECT_EVENTS` ⇒ 该机不能程序化点击 ✗
+  （一加 13 可以 ✓）⇒ 老机只能**用户手点** ✓
+- ⚠️ 向导在**已配置好的机器上必然不出现** ✓（`alreadyDone` = `wizard_done` **或**
+  存储已授权 + IME 已启用 + 是默认输入法）⇒ 重现改用
+  `run-as <pkg> rm -f shared_prefs/wizard_prefs.xml` ✓（debug 包可用 ✓ 别用 `pm clear` ✗）
+

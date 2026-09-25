@@ -8,6 +8,7 @@ import android.inputmethodservice.InputMethodService
 import android.net.Uri
 import android.view.View
 import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputConnection
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.collectAsState
@@ -870,6 +871,26 @@ class AZimeService : InputMethodService() {
                     }
                 }
                 KeyAction.ToggleVoiceInput -> handleVoiceToggle()
+                // 轮19.116：手写板（工具栏「手写」/ 编辑器动作 handwriting / 内置功能都到这 ✓）
+                KeyAction.OpenHandwriting -> uiState.update { it.copy(showHandwritingPad = true) }
+                KeyAction.CloseHandwriting -> uiState.update {
+                    it.copy(showHandwritingPad = false, hwCandidates = emptyList())
+                }
+                // 轮19.124：上屏任意文本（手写识别结果 ✓ 走 composing 替换路径 ✓ 不会重复 ✓）
+                // 轮19.126：手写结果回传（工具栏显示 ✓）
+                is KeyAction.HwCandidates -> uiState.update {
+                    it.copy(hwCandidates = action.items.take(if (action.items.isEmpty()) 0 else 9))
+                }
+                is KeyAction.CommitText -> {
+                    val t = action.text
+                    if (t.isNotEmpty()) {
+                        currentInputConnection?.commitText(t, 1)
+                        pushUndo(t)
+                        // 上屏后：清候选 + **触发手写板清画布** ✓（用户要求 ✓）
+                        uiState.update { it.copy(hwCandidates = emptyList(), hwClearSignal = it.hwClearSignal + 1) }
+                        refreshState()
+                    }
+                }
                 is KeyAction.ToggleSwitch -> {
                     RimeManager.setOption(action.name, !RimeManager.getOption(action.name))
                     refreshState()
@@ -1136,6 +1157,8 @@ class AZimeService : InputMethodService() {
             "ascii_mode" -> onKeyAction(KeyAction.ToggleAscii)
             "switch_ime" -> onKeyAction(KeyAction.SwitchIme)
             "clipboard" -> onKeyAction(KeyAction.ToggleClipboardPanel)
+            // 轮19.116：手写板 —— 键盘编辑器里写 handwriting / handwrite 都能唤出 ✓
+            "handwriting", "handwrite", "hand_write" -> onKeyAction(KeyAction.OpenHandwriting)
             "menu" -> onKeyAction(KeyAction.ToggleMenuPanel)
             "deploy" -> onKeyAction(KeyAction.Deploy)
             // 轮19.52 新增内置动作
@@ -1362,7 +1385,13 @@ class AZimeService : InputMethodService() {
 
     /**
      * 退格：组合存在时 librime 消费（缩组合）；组合为空时 librime 返回 processed=false，
-     * 此时由输入连接删除光标前一个字符（emoji 代理对场景先按 2 个 code point 兜底）。
+     * 此时由输入连接删除光标前**一个完整的显示字符** ✓
+     *
+     * 轮19.145（用户反馈"微信表情要按多次退格才能删掉"✗）：
+     * 老实现只判了代理对一种情况 ✗ ⇒ 变体选择符（❤️）/ ZWJ（👨‍👩‍👧）/ 国旗（🇨🇳）/
+     * 肤色修饰（👍🏻）/ 键帽（1️⃣）都会被拆成多次 ✗ 且前几次**屏幕上看不出变化** ✗。
+     * 现在两级判定：① 先看光标前紧邻的**图片/替换 span**（微信表情就是 ImageSpan ✓）
+     * ② 否则按**扩展字素簇**删（见 [com.azime.input.utils.Grapheme] ✓）。
      */
     private suspend fun handleBackspace() {
         val result = RimeManager.processKey(KEY_BACKSPACE)
@@ -1372,16 +1401,111 @@ class AZimeService : InputMethodService() {
         }
         val ic = currentInputConnection
         if (ic != null) {
-            val before = (ic.getTextBeforeCursor(2, 0) ?: "").toString()
-            if (before.length == 2 && Character.isSurrogatePair(before[0], before[1])) {
-                pushDeleted(before) // 记录删除内容，下滑「撤回」可恢复
-                ic.deleteSurroundingText(2, 0)
-            } else {
-                pushDeleted(before.takeLast(1))
-                ic.deleteSurroundingText(1, 0)
+            val pre = textBeforeCursor(ic, BACKSPACE_LOOKAHEAD)
+            val spanLen = spanBackedLength(pre)
+            // 轮19.146：微信表情在输入框里的**底层文本**是 `[微笑]` 这种短代码 ✓（渲染成图片靠 ImageSpan ✓）
+            // 只删 1 码元 ⇒ 只删掉 `]` ⇒ 用户看到「表情没动」✗ 要按 4 次 ✗（用户实测复现 ✓）
+            val emojiLen = if (spanLen > 0) 0 else wechatEmoticonLength(pre)
+            val n = when {
+                spanLen > 0 -> spanLen
+                emojiLen > 0 -> emojiLen
+                else -> com.azime.input.utils.Grapheme.lastClusterLength(pre)
+            }
+            if (n > 0) {
+                // 诊断只在"值得看"时落盘 ✓（纯字母/汉字单码元不写 ✗ 退格是热路径 ✗）
+                if (spanLen > 0 || emojiLen > 0 || n > 1 || isWeChatTarget()) {
+                    com.azime.input.core.diag.Diag.warn(
+                        "Del",
+                        "pkg=${currentEditorInfo?.packageName} len=${pre.length} span=$spanLen " +
+                            "chat=$emojiLen n=$n styled=${pre is android.text.Spanned} " +
+                            "tail=${com.azime.input.utils.Grapheme.hexTail(pre)}",
+                    )
+                }
+                pushDeleted(pre.takeLast(n).toString()) // 记录删除内容，下滑「撤回」可恢复
+                ic.deleteSurroundingText(n, 0)
             }
         }
         refreshState()
+    }
+
+    /**
+     * 读光标前文本，**尽量把样式带出来** ✓
+     *
+     * 为什么：`getTextBeforeCursor(len, 0)` 在多数编辑器实现里走 `TextUtils.substring` ⇒
+     * **样式（ImageSpan / ReplacementSpan）会被丢掉** ✗，`spanBackedLength` 就永远返回 0 ✗。
+     * 传入 `GET_TEXT_WITH_STYLES` 才会返回带 span 的 `CharSequence` ✓（个别编辑器不支持 ⇒ 回落到 0 ✓）。
+     */
+    private fun textBeforeCursor(ic: InputConnection, len: Int): CharSequence {
+        runCatching {
+            ic.getTextBeforeCursor(len, InputConnection.GET_TEXT_WITH_STYLES)
+        }.getOrNull()?.let { if (it.isNotEmpty()) return it }
+        return runCatching { ic.getTextBeforeCursor(len, 0) }.getOrNull() ?: ""
+    }
+
+    /** 当前输入目标是不是微信 ✓ */
+    private fun isWeChatTarget(): Boolean = currentEditorInfo?.packageName == WECHAT_PKG
+
+    /**
+     * 光标前是不是**一个完整的微信表情短代码**（`[微笑]` ✓）⇒ 返回它占的码元数 ✓（否则 0 ✓）
+     *
+     * 判据（三条全中才算 ✓，避免误删用户手打的方括号 ✗）：
+     * 1. 目标 App 是微信 ✓（其它 App 一律不生效 ✓）
+     * 2. 光标前最后一码元是 `]`，且**紧邻前方能找到配对的 `[`** ✓（中间不得再有 `]` / 空白 ✗）
+     * 3. 括号内是 1~8 个**纯汉字**或**纯 ASCII 字母** ✓ —— 排除 `[1]` / `[a/b]` / `[链接](url)`
+     *    这类正常文本 ✗（微信表情名只由汉字或字母构成 ✓：`[微笑]` `[OK]` `[Emm]` ✓）
+     */
+    private fun wechatEmoticonLength(pre: CharSequence): Int {
+        if (!isWeChatTarget()) return 0
+        val n = pre.length
+        if (n < 3 || pre[n - 1] != ']') return 0
+        var i = n - 2
+        var scanned = 0
+        while (i >= 0 && scanned < WECHAT_EMOTICON_MAX_NAME + 1) {
+            val c = pre[i]
+            if (c == '[') {
+                val name = pre.subSequence(i + 1, n - 1)
+                return if (isEmoticonName(name)) n - i else 0
+            }
+            if (c == ']' || c.isWhitespace()) return 0
+            i--
+            scanned++
+        }
+        return 0
+    }
+
+    /** 括号内是不是合法的表情名（纯汉字 或 纯 ASCII 字母 ✓，长度已由调用方限制 ✓） */
+    private fun isEmoticonName(name: CharSequence): Boolean {
+        if (name.isEmpty()) return false
+        var allCjk = true
+        var allLetter = true
+        for (c in name) {
+            if (!(c.code in 0x4E00..0x9FFF || c.code in 0x3400..0x4DBF)) allCjk = false
+            if (!(c in 'A'..'Z' || c in 'a'..'z')) allLetter = false
+            if (!allCjk && !allLetter) return false
+        }
+        return true
+    }
+
+    /**
+     * 光标前**紧邻**的图片/替换 span 覆盖了多少码元 ✓
+     *
+     * 为什么需要：微信的「表情」是 `ImageSpan`（继承 `ReplacementSpan` ✓），底层文本可能是
+     * 1 个占位符、也可能是一串短代码 ✗ —— 按 span 长度删才能「一次删干净」✓
+     * @return 0 = 光标前不是 span 结尾（或编辑器没把 span 带出来 ⇒ 交给字素簇兜底 ✓）
+     */
+    private fun spanBackedLength(pre: CharSequence): Int {
+        if (pre.isEmpty()) return 0
+        val sp = pre as? android.text.Spanned ?: return 0
+        return runCatching {
+            var best = 0
+            for (s in sp.getSpans(pre.length - 1, pre.length, Any::class.java)) {
+                if (s !is android.text.style.ReplacementSpan) continue
+                val st = sp.getSpanStart(s)
+                val en = sp.getSpanEnd(s)
+                if (en >= pre.length && st in 0 until pre.length) best = maxOf(best, en - st)
+            }
+            minOf(best, pre.length)
+        }.getOrDefault(0)
     }
 
     /** 当前输入框的 EditorInfo（回车键行为判断用）。 */
@@ -1427,6 +1551,7 @@ class AZimeService : InputMethodService() {
     /** 把一次按键结果同步到输入框与 UI 状态。 */
     private fun applyResult(result: com.kingzcheung.xime.rime.RimeProcessResult) {
         if (result.committedText.isNotEmpty()) {
+            com.azime.input.core.diag.Diag.log("Embed", "提交 '${result.committedText}'")
             currentInputConnection?.commitText(result.committedText, 1)
             pushUndo(result.committedText)
         }
@@ -1441,6 +1566,28 @@ class AZimeService : InputMethodService() {
             cur.asciiMode == result.isAsciiMode && cur.hasNextPage == result.hasNextPage &&
             cur.hasPrevPage == result.hasPrevPage
         ) return
+        // 轮19.114：**嵌入模式** —— 把输入码写进「文本输入框」（composing 预览 ✓）
+        // 候选仍由工具栏显示 ✓；工具栏侧通过 preeditForBar 隐藏输入码 ✓（见 KeyboardScreen）
+        // 注：候选上屏走既有 commitText ✓ —— 它会**替换 composing 区** ✓ 不会重复 ✓
+        // 轮19.126：★ **嵌入模式一律不许 `finishComposingText()`** ✗✗
+        // 原因：它会把「预览」**定稿成真文本** ⇒
+        //   ① 结束时 commitText 只能**追加** ⇒ 「还还好吧」✗（重复）
+        //   ② 退格时预览变真文本、删不掉 ⇒ **要按两次退格** ✗
+        // 正确做法：组合结束用 `setComposingText("", 1)` **清预览**（不落字 ✓）；
+        // 提交由既有 `commitText` 负责 —— 它会**替换**组合区 ✓ 天然不重复 ✓
+        val embedMode = com.azime.input.core.keyboard.KeyboardManager.embedMode()
+        if (embedMode == "code" || embedMode == "top") {
+            val ic = currentInputConnection
+            val preview = if (embedMode == "code") {
+                result.preeditText
+            } else {
+                // 嵌入首选：有编码时才显示首选字（编码清空 ⇒ 预览也清空 ✓）
+                if (result.preeditText.isEmpty()) "" else (result.candidates.firstOrNull()?.text ?: "")
+            }
+            runCatching { ic?.setComposingText(preview, 1) }
+            com.azime.input.core.diag.Diag.log("Embed",
+                "mode=$embedMode preedit='${result.preeditText}' 预览='$preview' 候选=${result.candidates.size}")
+        }
         uiState.update {
             it.copy(
                 candidates = newList,
@@ -1482,5 +1629,17 @@ class AZimeService : InputMethodService() {
 
     companion object {
         private const val MAX_TEXT = 100000
+
+        /**
+         * 退格时往光标左侧看多少码元 ✓（轮19.145）
+         * 取 32 是因为要覆盖：ZWJ 家族 emoji（最多 11 码元）+ 前缀 ✓；不必取更多 ✗（热路径 ✓）
+         */
+        private const val BACKSPACE_LOOKAHEAD = 32
+
+        /** 微信包名 ✓（表情退格特判只对它生效 ✓，避免误伤其它 App 的正常方括号 ✗） */
+        private const val WECHAT_PKG = "com.tencent.mm"
+
+        /** 微信表情底层短代码的长度上限（`[` 与 `]` 之间的字符数 ✓，如 `[微笑]`=2 ✓ `[右太极]`=3 ✓） */
+        private const val WECHAT_EMOTICON_MAX_NAME = 8
     }
 }

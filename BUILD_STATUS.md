@@ -1,11 +1,11 @@
 # ○输入法 / Oime 项目状态
 
-> 最后更新：2026-09-20（轮19.86，**1.0.0** / vc103，按 ABI 拆分）
+> 最后更新：2026-09-25（轮19.146，**1.0.4** / vc146，手写输入 + 启动向导 7 页）
 
 ## 项目信息
 
 - **项目名称**：○输入法（Oime）
-- **版本**：1.0.3（versionCode 118）
+- **版本**：1.0.4（versionCode 146）
 - **包名**：`com.azime.input`
 - **仓库**：https://github.com/AZNixl/Oime （曾名 AZime，main 分支）
 - **技术栈**：Kotlin 1.9.22 / AGP 8.3.0 / Gradle 8.4 / Compose BOM 2024.02.00
@@ -41,19 +41,21 @@
 3. **本机 `.git` 已损坏**（`bad tree object HEAD`）：不能用 `git add/commit/push`；
    改用 `push_via_api_tree.py`（遍历工作树 + 内置忽略规则 → Git Data API）
 
-## 功能完成度（截至 vc30）
+## 功能完成度（截至 vc146）
 
 | 模块 | 状态 | 说明 |
 |---|---|---|
-| 输入法服务 `AZimeService` | ✅ 可用 | 全链路：按键 → librime → 候选 → 上屏；退格选区/撤回、剪贴板条、语音、工具栏 |
-| 键盘视图 `KeyboardScreen` | ✅ 可用 | 26键 / 九宫格 / 26键符号 / 全部符号 / emoji 五页；键面图标（OimeIcons 21 枚自绘） |
+| 输入法服务 `AZimeService` | ✅ 可用 | 全链路：按键 → librime → 候选 → 上屏；退格选区/撤回（含 emoji/微信表情整簇删）、剪贴板条、语音、工具栏、嵌入模式三态 |
+| 键盘视图 `KeyboardScreen` | ✅ 可用 | 26键 / 九宫格 / 26键符号 / 全部符号 / emoji 五页；键面图标（OimeIcons 自绘） |
 | RIME 引擎 `RimeManager` | ✅ 可用 | 方案组（组目录即 user 目录）、在线切组、部署、方案显示名缓存 |
 | 键盘编辑器 | ✅ 可用 | 可视化网格编辑：标签/code/宽度/长按/四向滑动/提示，增删键与行，保存即持久化 |
-| 设置页 | ✅ 可用 | KSU 风格主页；输入方案 / 键盘 / O 圆环 / 主题配色 / 悬浮窗 / 预设置 / 关于 |
-| 语音输入 | ✅ 可用 | SenseVoice（离线）/ 流式 zipformer / 联网 API；模型侧载 `Documents/Oime/models/` |
+| 设置页 | ✅ 可用 | KSU 风格主页；输入方案 / 键盘 / O 圆环 / 主题配色 / 悬浮窗及嵌入式 / 语音手写管理 / 预设置 / 关于（含「本次更新」） |
+| 语音输入 | ✅ 可用 | SenseVoice（离线）/ 流式 zipformer / 联网 API；**模型可在应用内一键下载**（镜像回退 + 断点续传 + 完整性校验） |
+| **手写输入** | ✅ 可用 | 离线识别（DeepHCCR → ONNX）· 手写板（铺满键盘区 / 抬笔 800ms 自动识别 / 清空键）· 结果进工具栏候选 · 模型可下载 |
+| **联网与下载** | ✅ 可用 | `NetPrefs` 两个开关（允许联网下载 / 仅 Wi-Fi 下载）+ 移动网络二次确认；向导第 5 页与设置页都可改 |
 | 剪贴板 | ✅ 可用 | 历史 + 收藏、分词、全清、置顶、图片落盘；复制条任意键消亡 |
 | O 圆环 | ✅ 可用 | 点击菜单 / 长按语音 / 拖动移光标（呼啦圈）/ 下滑收键盘 / **上滑横向悬浮栏**（5 应用居中排布）；三形状（圆环·圆角方·眼睛） |
-| 首次向导 | ✅ 可用 | 5 页：存储 / 启用 / 选择 / 进入设置 / O 圆环应用（含可读应用数） |
+| 首次向导 | ✅ 可用 | **7 页**：存储 / 启用 / 选择 / **语音权限** / **联网与模型下载** / 进入设置 / O 圆环应用 |
 | 字体管理 | ✅ 可用 | `Documents/Oime/fonts/` 扫描，键帽/候选双角色回退链 |
 | 单元测试 | ❌ 无 | junit/espresso 依赖在，零用例 |
 
@@ -85,8 +87,29 @@
 | 0.9.23-oime | 33 | 实测耗电定位（UI 渲染占 92%）+ 退出/收起释放策略 + 呼吸动画降帧 |
 | 0.9.24-oime | 34 | 定制工具栏保存移到标题右 / 修复「00」只出一个 0 / 主键盘 2·3 行对齐 / 设置大项拆卡 / 预设置等页面状态栏沉浸 |
 | 0.9.25-oime | 35 | ⇧/⌫ 回 1.5 / 悬浮窗跟随光标+候选+字号同步+前三码 / 工具栏 17 工具与默认为空 / 方案快捷面板 / ○ 菜单图标同步 / 眼睛 5 动作 / 上滑栏可下滑关闭 |
-| **1.0.3** | 118 | **流式语音重复上屏修复**（结束时只定稿、不再 commitText ✓）+ 使用说明新增【六、硬件性能提示】（老机型 CPU 不足的说明 + 换小模型并注明精度下降 ✓）|\n| 1.0.2 | 116 | **流式语音"边说边出"修复**（增量改写输入区 composing 预览 ✓，原来写进了只在方案组面板可见的 statusMessage ✗）+ statusMessage 清理（关键提示改 Toast+Diag ✓）+ **v7a 正式回归**（与 arm64 分开出包 ✓）|\n| 1.0.1 | 114 | **震动手感修复**：默认改「系统键盘触感」(`performHapticFeedback(KEYBOARD_TAP)` ✓，与系统键盘/搜狗同通道 ✓)+ 三模式 + 修正 usage（33+ `USAGE_HARDWARE_FEEDBACK` / 31·32 `USAGE_TOUCH`）+ 振动器走 `VibratorManager` |\n| 1.0.0 | 109 | **正式发布签名**（密钥走 GitHub Secrets）· **仅 arm64-v8a** · **minSdk 23（Android 6.0+）** · 日志/关于显示 versionCode |\n| 1.0.0 | 103 | **按 ABI 拆分出包**（arm64-v8a 27.5MB / armeabi-v7a 26.4MB，不再合并 universal）|\n| 1.0.0 | 102 | 含 **arm64-v8a + armeabi-v7a** 双 ABI（v7a 的 librime_jni.so 取自 Xime v2.6.2 官方 release）|\n| 1.0.0 | 101 | 🎉 **首个正式发行版**：minSdk 21（Android 5.0+）· ABI 自适应（arm64-v8a；v7a 待 32 位 so）· release 用 debug 签名免 secrets · 新增 `.github/workflows/release.yml`（打 tag 自动出 Release）· README 全面更新 |\n| 0.9.90-oime | 100 | 修正初始化日志插值（改拼接写法）|
-| 0.9.89-oime | 99 | **日志系统**（Documents/Oime/logs/ 按天分文件 + 崩溃带设备信息 + 详细日志开关；入口在关于）/ 关于页拆 6 张独立卡片 + 开源许可 · 隐私条约弹窗 |\n| 0.9.88-oime | 98 | 候选排列 chips 选中态改 on 色 + 描边 / 悬浮窗背景色入口改强调样式 / 语音「使用说明」改弹窗（内容写更细，页脚长文本移除）|\n| 0.9.87-oime | 97 | **悬浮窗实现整体回退**到 19.66（窗口内 Compose Popup；删除系统级浮窗整套代码与授权入口），**保留**横/竖·竖向正反向设置、CursorAnchor 取坐标改进、风格对比度兜底 |\n| 0.9.86-oime | 96 | 修"浮窗先闪一下再跳回"（光标坐标被 onFinishInputView 过早清零 ⇒ 改到 onWindowHidden 才清）|\n| 0.9.85-oime | 95 | 浮窗**字体同步**（纯 View 用 `FontManager.keyboardTypeface()`）/ 光标不可用时退到「键盘上沿之上」的合理位置（闲鱼不发 anchor info 的定性）|\n| 0.9.84-oime | 94 | 修"打字即闪退"（PopupWindow 里不能用 ComposeView：PopupDecorView 链上无 ViewTreeLifecycleOwner ⇒ 改用**纯 Android View** 渲染浮窗）|\n| 0.9.83-oime | 93 | ★ **系统级浮窗真因修复**：窗口操作被放在后台线程（DefaultDispatcher）⇒ show 全抛异常、一次没显示成功 ⇒ 改 `Dispatchers.Main.immediate`；光标无效时保持原位 |\n| 0.9.82-oime | 92 | 修"打两个字母浮窗就消失"（收网时机从 onFinishInputView 改到 onWindowHidden —— 前者会被 App 反复触发）|\n| 0.9.81-oime | 91 | 修"浮窗出一次不出一次"（PopupWindow 实例 dismiss 后不可复用 ⇒ 丢弃实例重建）+ FloatOv 全链路埋点 |\n| 0.9.80-oime | 90 | 修"浮窗不出现"（active 门控时机写反 ⇒ 两边都不画；改为显示成功后才让位 + 埋点）/ **删除 iOS · Nothing OS · Material You 三种风格**（保留 Material / Miuix / One UI）|\n| 0.9.79-oime | 89 | ★ **系统级编码浮窗**（PopupWindow + TYPE_APPLICATION_OVERLAY=2038 + 屏幕坐标定位，未授权自动降级）/ 补回丢失的 Row 括号（候选排列 chips 被挤成 0 宽的真因）/ 对比度兜底方向修正 + 按需压暗底色 |\n| 0.9.78-oime | 88 | **界面风格对比度兜底**（Material You 键不可见 / Nothing·OneUI 键消失 / iOS 功能键糊底 —— 统一在配色出口保底亮度差）/ 候选排列补宽度约束 / 悬浮窗背景色入口做明显 + 删说明 |\n| 0.9.77-oime | 87 | 界面风格改后立即生效（主题外壳改读 rev 状态）/ 候选排列去重（原来显示两遍）/ 状态大方块改回白字 + 20·15sp |\n| 0.9.76-oime | 86 | 撤销 19.69 撑屏（修浮窗错乱，回到 19.68 状态）/ 定制工具栏勾选列表「数字」也改文字 123 / 界面风格：状态大方块回退（白字改 on 色、字号回退）/ 新增 SYSTEM_ALERT_WINDOW 权限 + 授权直达入口（为系统级悬浮窗铺路）|
+| **1.0.4** | 146 | ★ **手写输入整条线**（离线识别 DeepHCCR→ONNX + 手写板抬笔自动识别 + 结果进工具栏候选 + 模型一键下载）· **嵌入式三态**（不嵌入/嵌入编码/**嵌入首选**）· 「语音手写管理」页（语音块搬入 + 模型下载）· **启动向导 5 页 → 7 页**（新增【语音输入权限】【联网与模型下载】+ 仅 Wi-Fi 开关）· **微信表情退格修复**（底层是 `[微笑]` 短代码，以前一次只删 1 码元 ✗）· **补 INTERNET 权限**（1.0.3 在线下载/联网 API 语音其实一直不可用）· 下载器（镜像回退/断点续传/完整性校验/只解 int8）· 设置页统一无边框选中 + FilterChip · 关于页新增「本次更新」|
+| **1.0.3** | 118 | **流式语音重复上屏修复**（结束时只定稿、不再 commitText ✓）+ 使用说明新增【六、硬件性能提示】（老机型 CPU 不足的说明 + 换小模型并注明精度下降 ✓）|
+| 1.0.2 | 116 | **流式语音"边说边出"修复**（增量改写输入区 composing 预览 ✓，原来写进了只在方案组面板可见的 statusMessage ✗）+ statusMessage 清理（关键提示改 Toast+Diag ✓）+ **v7a 正式回归**（与 arm64 分开出包 ✓）|
+| 1.0.1 | 114 | **震动手感修复**：默认改「系统键盘触感」(`performHapticFeedback(KEYBOARD_TAP)` ✓，与系统键盘/搜狗同通道 ✓)+ 三模式 + 修正 usage（33+ `USAGE_HARDWARE_FEEDBACK` / 31·32 `USAGE_TOUCH`）+ 振动器走 `VibratorManager` |
+| 1.0.0 | 109 | **正式发布签名**（密钥走 GitHub Secrets）· **仅 arm64-v8a** · **minSdk 23（Android 6.0+）** · 日志/关于显示 versionCode |
+| 1.0.0 | 103 | **按 ABI 拆分出包**（arm64-v8a 27.5MB / armeabi-v7a 26.4MB，不再合并 universal）|
+| 1.0.0 | 102 | 含 **arm64-v8a + armeabi-v7a** 双 ABI（v7a 的 librime_jni.so 取自 Xime v2.6.2 官方 release）|
+| 1.0.0 | 101 | 🎉 **首个正式发行版**：minSdk 21（Android 5.0+）· ABI 自适应（arm64-v8a；v7a 待 32 位 so）· release 用 debug 签名免 secrets · 新增 `.github/workflows/release.yml`（打 tag 自动出 Release）· README 全面更新 |
+| 0.9.90-oime | 100 | 修正初始化日志插值（改拼接写法）|
+| 0.9.89-oime | 99 | **日志系统**（Documents/Oime/logs/ 按天分文件 + 崩溃带设备信息 + 详细日志开关；入口在关于）/ 关于页拆 6 张独立卡片 + 开源许可 · 隐私条约弹窗 |
+| 0.9.88-oime | 98 | 候选排列 chips 选中态改 on 色 + 描边 / 悬浮窗背景色入口改强调样式 / 语音「使用说明」改弹窗（内容写更细，页脚长文本移除）|
+| 0.9.87-oime | 97 | **悬浮窗实现整体回退**到 19.66（窗口内 Compose Popup；删除系统级浮窗整套代码与授权入口），**保留**横/竖·竖向正反向设置、CursorAnchor 取坐标改进、风格对比度兜底 |
+| 0.9.86-oime | 96 | 修"浮窗先闪一下再跳回"（光标坐标被 onFinishInputView 过早清零 ⇒ 改到 onWindowHidden 才清）|
+| 0.9.85-oime | 95 | 浮窗**字体同步**（纯 View 用 `FontManager.keyboardTypeface()`）/ 光标不可用时退到「键盘上沿之上」的合理位置（闲鱼不发 anchor info 的定性）|
+| 0.9.84-oime | 94 | 修"打字即闪退"（PopupWindow 里不能用 ComposeView：PopupDecorView 链上无 ViewTreeLifecycleOwner ⇒ 改用**纯 Android View** 渲染浮窗）|
+| 0.9.83-oime | 93 | ★ **系统级浮窗真因修复**：窗口操作被放在后台线程（DefaultDispatcher）⇒ show 全抛异常、一次没显示成功 ⇒ 改 `Dispatchers.Main.immediate`；光标无效时保持原位 |
+| 0.9.82-oime | 92 | 修"打两个字母浮窗就消失"（收网时机从 onFinishInputView 改到 onWindowHidden —— 前者会被 App 反复触发）|
+| 0.9.81-oime | 91 | 修"浮窗出一次不出一次"（PopupWindow 实例 dismiss 后不可复用 ⇒ 丢弃实例重建）+ FloatOv 全链路埋点 |
+| 0.9.80-oime | 90 | 修"浮窗不出现"（active 门控时机写反 ⇒ 两边都不画；改为显示成功后才让位 + 埋点）/ **删除 iOS · Nothing OS · Material You 三种风格**（保留 Material / Miuix / One UI）|
+| 0.9.79-oime | 89 | ★ **系统级编码浮窗**（PopupWindow + TYPE_APPLICATION_OVERLAY=2038 + 屏幕坐标定位，未授权自动降级）/ 补回丢失的 Row 括号（候选排列 chips 被挤成 0 宽的真因）/ 对比度兜底方向修正 + 按需压暗底色 |
+| 0.9.78-oime | 88 | **界面风格对比度兜底**（Material You 键不可见 / Nothing·OneUI 键消失 / iOS 功能键糊底 —— 统一在配色出口保底亮度差）/ 候选排列补宽度约束 / 悬浮窗背景色入口做明显 + 删说明 |
+| 0.9.77-oime | 87 | 界面风格改后立即生效（主题外壳改读 rev 状态）/ 候选排列去重（原来显示两遍）/ 状态大方块改回白字 + 20·15sp |
+| 0.9.76-oime | 86 | 撤销 19.69 撑屏（修浮窗错乱，回到 19.68 状态）/ 定制工具栏勾选列表「数字」也改文字 123 / 界面风格：状态大方块回退（白字改 on 色、字号回退）/ 新增 SYSTEM_ALERT_WINDOW 权限 + 授权直达入口（为系统级悬浮窗铺路）|
 | 0.9.75-oime | 85 | 浮窗跟随真因②：IME 窗口太矮致浮窗被裁 —— 浮窗开启时根内容撑满屏 + insets 仍报键盘上沿 + 触摸区限定键盘 + Float 埋点 |
 | 0.9.74-oime | 84 | 浮窗光标跟随修复（真因：insertionMarker 为 NaN 未过滤 ⇒ 坐标被算成 0）+ 字符外框全量扫描兜底 + matrix 后二次校验 |
 | 0.9.73-oime | 83 | 符号键回退图标（仅数字态用123）/ 长按气泡左右修正 / 定制工具栏与符号页入口改123 / 去除悬浮模式 / 修复浮窗在闲鱼等顶部搜索栏不跟随光标（改取 characterBounds）|

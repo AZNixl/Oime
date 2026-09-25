@@ -456,6 +456,34 @@ object KeyboardManager {
     private const val PREF_FLOAT_TEXT = "float_text_sp"
     private const val PREF_FLOAT_ALPHA = "float_bg_alpha"
 
+    // ── 轮19.114：**嵌入模式**（用户需求）──
+    // 打开后：**输入码写进文本输入框**（composing ✓），**候选留在工具栏** ✓，**工具栏不再显示输入码** ✓
+    // —— 表现与「打开悬浮窗时」一致（悬浮窗是另一条把编码挪出工具栏的路 ✓）
+    private const val PREF_EMBED = "embed_enable"
+    private const val PREF_EMBED_MODE = "embed_mode"
+
+    /** 嵌入模式（轮19.121 三态 ✓）：
+     *  · `off`  —— 关闭（默认）：输入码与候选都在工具栏 ✓
+     *  · `code` —— **嵌入输入码**：输入码进文本输入框 ✓，候选留工具栏 ✓
+     *  · `top`  —— **嵌入首选**：**首选字进文本输入框** ✓，工具栏显示「输入码 + **次选**」✓
+     */
+    fun embedMode(): String {
+        val m = prefs.getString(PREF_EMBED_MODE, null)
+        if (m != null) return m
+        // 兼容旧布尔开关 ✓：老用户开了就等价于 code 模式 ✓
+        return if (prefs.getBoolean(PREF_EMBED, false)) "code" else "off"
+    }
+
+    fun setEmbedMode(v: String) {
+        synchronized(lock) { prefs.edit().putString(PREF_EMBED_MODE, v).apply() }
+    }
+
+    /** 是否处于任一嵌入模式 ✓ */
+    fun embedEnabled(): Boolean = embedMode() != "off"
+
+    @Deprecated("用 setEmbedMode ✓")
+    fun setEmbedEnabled(v: Boolean) = setEmbedMode(if (v) "code" else "off")
+
     /** 悬浮窗开关：输入时在键盘上方悬浮显示输入码（默认关）。 */
     fun floatEnabled(): Boolean = prefs.getBoolean(PREF_FLOAT_ENABLE, false)
 
@@ -789,7 +817,7 @@ object KeyboardManager {
             "x${hintUp()}x${hintDown()}x${hintLeft()}x${hintRight()}x${spaceLabel()}" +
             "x${spaceLabelOffsetDp()}x${sliderSymbolsRaw()}" +
             "x${fontSizeKey()}x${fontSizeBar()}x${keyCornerDp()}x${rowGapDp()}x${colGapDp()}" +
-            "x${toolbarHeightDp()}x${handMode()}x${floatKeyboard()}x${clipSwipeDp()}x${autoPageByInput()}" +
+            "x${toolbarHeightDp()}x${handMode()}x${floatKeyboard()}x${clipSwipeDp()}x${autoPageByInput()}x${embedEnabled()}" +
             "x${com.azime.input.core.theme.KeyboardTheme.uiStyle()}" +
             "x${com.azime.input.core.theme.KeyboardTheme.accentPure()}" +
             "x${com.azime.input.core.theme.KeyboardTheme.customLightOn()}" +
@@ -816,6 +844,7 @@ object KeyboardManager {
         "symbols" to "符号",
         "settings" to "设置",
         "voice" to "语音",
+        "handwriting" to "手写",   // 轮19.116：点击打开手写板 ✓
         "hide" to "收起",
         "ascii" to "中英",
         "undo" to "撤回",

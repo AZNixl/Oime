@@ -288,12 +288,13 @@ fun SettingsScreen(
     // 反馈轮16：输入方案页的「方案管理」子级页（勾选启用集）
     var showManage by remember { mutableStateOf(false) }
     // 轮19：联网 API 配置对话框（语音输入大项）
-    var webApiDialogShow by remember { mutableStateOf(false) }
+    var showVoiceApiDialog by remember { mutableStateOf(false) }
     val subTitles = mapOf(
         "schemas" to "输入方案",
         "keyboard" to "键盘",
         "theme" to "主题与配色",
-        "float" to "悬浮窗",
+        "float" to "悬浮窗及嵌入式",
+        "handwriting" to "语音手写管理",
         "oring" to "O 圆环",
         "about" to "关于",
                 "candkeys" to "自定义候选键",
@@ -306,6 +307,7 @@ fun SettingsScreen(
     var deploying by remember { mutableStateOf(false) }
     // 轮19.1：方案页「刷新」——切方案组/方案管理后界面数据重新拉取（原需退出重进）
     var schemaRefreshRev by remember { mutableStateOf(0) }
+    var hwRefreshRev by remember { mutableStateOf(0) }
 
     Scaffold(
         containerColor = cs.surface,
@@ -350,6 +352,17 @@ fun SettingsScreen(
                                         schemaRefreshRev++
                                         Toast.makeText(context, "已刷新", Toast.LENGTH_SHORT).show()
                                     },
+                            )
+                        }
+                        if (subPage == "handwriting") {
+                            Text(
+                                "刷新",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier
+                                    .padding(start = 12.dp)
+                                    .clickable { hwRefreshRev++ },
                             )
                         }
                     }
@@ -410,142 +423,18 @@ fun SettingsScreen(
                         )
                     } }
                 }
-                // 父级菜单③：语音输入（轮19：本地模型 + 联网 API 点选；系统接口已删除）
-                item {
-                    Card(colors = grayCardColors(), shape = settingsCardShape()) { Column(Modifier.padding(vertical = 4.dp)) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 20.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text("语音输入", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-                            // 轮19.82：长说明改为「使用说明」按钮 + 弹窗（原来一大段压在页面底部 ✗）
-                            var showVoiceHelp by remember { mutableStateOf(false) }
-                            TextButton(onClick = { showVoiceHelp = true }) { Text("使用说明", fontSize = 12.sp) }
-                            if (showVoiceHelp) {
-                                AlertDialog(
-                                    onDismissRequest = { showVoiceHelp = false },
-                                    title = { Text("语音输入使用说明") },
-                                    text = {
-                                        Column(
-                                            modifier = Modifier.verticalScroll(rememberScrollState()),
-                                        ) {
-                                            Text(VOICE_HELP_TEXT, style = MaterialTheme.typography.bodySmall)
-                                        }
-                                    },
-                                    confirmButton = {
-                                        TextButton(onClick = { showVoiceHelp = false }) { Text("知道了") }
-                                    },
-                                )
-                            }
-                        }
-                        val micGranted = remember {
-                            mutableStateOf(
-                                androidx.core.content.ContextCompat.checkSelfPermission(
-                                    context, android.Manifest.permission.RECORD_AUDIO,
-                                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-                            )
-                        }
-                        val micLauncher = rememberLauncherForActivityResult(
-                            ActivityResultContracts.RequestPermission()
-                        ) { micGranted.value = it }
-                        KsuItem(
-                            icon = OimeIcons.mic,
-                            title = "麦克风权限",
-                            subtitle = if (micGranted.value) "已授权（长按 ○ 键开始听写）" else "语音输入需要录音权限",
-                            onClick = { if (!micGranted.value) micLauncher.launch(android.Manifest.permission.RECORD_AUDIO) },
-                        )
-                        // ── 识别引擎（轮19：三选一，speech_prefs.engine 与 Service 共用） ──
-                        val voicePrefs = remember { context.getSharedPreferences("speech_prefs", android.content.Context.MODE_PRIVATE) }
-                        var voiceEngine by remember { mutableStateOf(voicePrefs.getString("engine", "sense_voice") ?: "sense_voice") }
-                        // 模型状态（进入页面时探测；导入模型后手动刷新）
-                        var modelCheck by remember { mutableStateOf(0) }
-                        val senseOk = remember(modelCheck) { com.azime.input.core.speech.SpeechEngineManager.hasSenseVoiceModel() }
-                        val zipOk = remember(modelCheck) { com.azime.input.core.speech.SpeechEngineManager.hasZipformerModel() }
-                        val apiCfg = remember(modelCheck) { com.azime.input.core.speech.SpeechEngineManager.webApiConfig(context) }
-                        Text(
-                            "识别引擎",
-                            style = MaterialTheme.typography.titleSmall,
-                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
-                        )
-                        // (engineId, 标题, 副标题, 就绪)
-                        val engines = listOf(
-                            Triple(
-                                com.azime.input.core.speech.SpeechEngineManager.ENGINE_SENSE_VOICE,
-                                "SenseVoice（本地离线）",
-                                if (senseOk) "模型就绪 · zh/en/ja/ko/yue · 准确率优先（松手出全文）"
-                                else "未检测到模型：放入 Documents/Oime/models/sense-voice/",
-                            ),
-                            Triple(
-                                com.azime.input.core.speech.SpeechEngineManager.ENGINE_ZIPFORMER,
-                                "流式 Zipformer（本地离线）",
-                                if (zipOk) "模型就绪 · zh-en · 边说边出（实时显示）"
-                                else "未检测到模型：放入 Documents/Oime/models/zipformer/",
-                            ),
-                            Triple(
-                                com.azime.input.core.speech.SpeechEngineManager.ENGINE_WEB_API,
-                                "联网 API",
-                                if (apiCfg != null) "已配置（${apiCfg.model}）" else "未配置（点此填写）",
-                            ),
-                        )
-                        engines.forEach { (id, title, subtitle) ->
-                            val selected = voiceEngine == id
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        if (id == com.azime.input.core.speech.SpeechEngineManager.ENGINE_WEB_API && apiCfg == null) {
-                                            // 未配置先弹配置
-                                            webApiDialogShow = true
-                                        } else {
-                                            voiceEngine = id
-                                            voicePrefs.edit().putString("engine", id).apply()
-                                            // 切引擎释放旧模型缓存
-                                            com.azime.input.core.speech.SpeechEngineManager.releaseEngines()
-                                        }
-                                    }
-                                    .padding(horizontal = 20.dp, vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                RadioButton(selected = selected, onClick = null)
-                                Spacer(Modifier.width(8.dp))
-                                Column(Modifier.weight(1f)) {
-                                    Text(title, style = MaterialTheme.typography.bodyMedium)
-                                    Text(
-                                        subtitle,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                            }
-                        }
-                        // ── 联网 API 配置入口 ──
-                        KsuItem(
-                            icon = OimeIcons.cloud,
-                            title = "联网 API 配置",
-                            subtitle = if (apiCfg != null) "${apiCfg.baseUrl} · ${apiCfg.model}" else "OpenAI 兼容 /audio/transcriptions",
-                            onClick = { webApiDialogShow = true },
-                        )
-                        // ── 模型目录说明 + 刷新 ──
-                        KsuItem(
-                            icon = OimeIcons.refresh,
-                            title = "刷新模型状态",
-                            subtitle = "模型放 Documents/Oime/models/（sense-voice / zipformer）",
-                            onClick = { modelCheck++ },
-                        )
-                    } }
-                }
             }
             // 轮19：联网 API 配置对话框（语音输入大项）
-            if (webApiDialogShow) {
-                WebApiConfigDialog(onDismiss = { webApiDialogShow = false })
-            }
             return@Scaffold
         }
         // ── 二级页：自定义候选键（轮19.56）──
         if (subPage == "candkeys") {
             CandidateKeyEditorPage(padding) { subPage = "keyboard" }
+            return@Scaffold
+        }
+        // ── 二级页：手写输入（轮19.114）──
+        if (subPage == "handwriting") {
+            HandwritingSettingsPage(padding, refreshRev = hwRefreshRev) { subPage = "main" }
             return@Scaffold
         }
         // ── 二级页：键盘 ──
@@ -665,7 +554,10 @@ fun SettingsScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 contentPadding = PaddingValues(vertical = 8.dp),
             ) {
-                item { Card(colors = grayCardColors(), shape = settingsCardShape()) { Column { FloatingWindowSettings() } } }
+                // 轮19.141：**三张卡由函数内部产出** ✓ 外层不要再包 Card ✗（卡套卡 ✗）
+                item { FloatingWindowSettings() }
+                // 轮19.142：嵌入式**单独一个方块** ✓（与悬浮窗卡并列 ✓ 中间 12dp 分隔 ✓）
+                item { FloatEmbedCard() }
             }
             return@Scaffold
         }
@@ -708,6 +600,24 @@ fun SettingsScreen(
             var logRev by remember { mutableStateOf(0) }   // 日志列表/开关变更后强制重组 ✓
             var showLicense by remember { mutableStateOf(false) }
             var showPrivacy by remember { mutableStateOf(false) }
+            // 轮19.146：本次更新（1.0.4）说明弹窗 ✓
+            var showUpdateLog by remember { mutableStateOf(false) }
+            // 轮19.133：备份列表直接挂在「恢复备份」项下面 ✓（不再单开版块 ✗）
+            var bkRev by remember { mutableStateOf(0) }
+            var pendingRestore by remember { mutableStateOf<java.io.File?>(null) }
+            // 轮19.146：本次更新说明弹窗 ✓（1.0.4 的新增/修改/修复 ✓）
+            if (showUpdateLog) {
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = { showUpdateLog = false },
+                    title = { Text("本次更新（1.0.4）") },
+                    text = {
+                        Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                            Text(UPDATE_LOG_1_0_4, style = MaterialTheme.typography.bodySmall)
+                        }
+                    },
+                    confirmButton = { TextButton(onClick = { showUpdateLog = false }) { Text("知道了") } },
+                )
+            }
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
@@ -729,6 +639,13 @@ fun SettingsScreen(
                                 }.getOrDefault("") + " · 包名 com.oime.input · 平台 RIME (librime)",
                                 onClick = {},
                                 showChevron = false,
+                            )
+                            KsuItem(
+                                icon = OimeIcons.info,
+                                title = "本次更新",
+                                subtitle = "1.0.4 · 手写输入 · 启动向导 · 微信表情退格修复（点开看全部）",
+                                onClick = { showUpdateLog = true },
+                                showChevron = true,
                             )
                             KsuItem(
                                 icon = OimeIcons.link,
@@ -832,10 +749,66 @@ fun SettingsScreen(
                             KsuItem(
                                 icon = Icons.Default.Restore,
                                 title = "恢复备份",
-                                subtitle = "从之前的备份 JSON 覆盖写回（谨慎）",
+                                subtitle = "点下面任一备份直接恢复；或从文件选择器挑 JSON",
                                 onClick = { restoreLauncher.launch(arrayOf("application/json")) },
                                 showChevron = false,
                             )
+                            // 轮19.133：**直接列出 backup 目录** ✓（用户要求：做到「恢复备份」下面 ✓）
+                            run {
+                                val dir = com.azime.input.core.storage.StorageManager.backupDir
+                                val files = remember(bkRev, dir.path) {
+                                    (dir.listFiles() ?: emptyArray())
+                                        .filter { it.isFile }
+                                        .sortedByDescending { it.name }
+                                }
+                                if (files.isEmpty()) {
+                                    Text(
+                                        "（Documents/Oime/backup/ 里暂无备份）",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+                                    )
+                                }
+                                files.forEach { f ->
+                                    val kb = (f.length() + 512) / 1024
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable { pendingRestore = f }
+                                            .padding(start = 20.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
+                                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                                    ) {
+                                        Column(Modifier.weight(1f)) {
+                                            Text(f.name, style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                                        }
+                                        Text("$kb KB", style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Text("  恢复", fontSize = 13.sp, color = MaterialTheme.colorScheme.primary)
+                                    }
+                                }
+                                pendingRestore?.let { f ->
+                                    androidx.compose.material3.AlertDialog(
+                                        onDismissRequest = { pendingRestore = null },
+                                        title = { Text("恢复备份？") },
+                                        text = { Text("将用「${f.name}」覆盖当前设置 ✓（键盘/字体/震动/主题/向导）\n恢复后建议重启输入法 ✓") },
+                                        confirmButton = {
+                                            TextButton(onClick = {
+                                                val n = restoreSettings(context, android.net.Uri.fromFile(f))
+                                                pendingRestore = null; bkRev++
+                                                Toast.makeText(
+                                                    context,
+                                                    if (n >= 0) "已恢复 $n 项设置，建议重启输入法" else "恢复失败",
+                                                    Toast.LENGTH_LONG,
+                                                ).show()
+                                                logRev++
+                                            }) { Text("恢复") }
+                                        },
+                                        dismissButton = {
+                                            TextButton(onClick = { pendingRestore = null }) { Text("取消") }
+                                        },
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -1002,10 +975,21 @@ fun SettingsScreen(
             item {
                 Card(colors = plainCardColors) {
                     KsuItem(
-                        icon = OimeIcons.pip,
-                        title = "悬浮窗",
-                        subtitle = "编码预览悬浮窗 · 默认 / 自定义样式",
+                        icon = OimeIcons.pip,   // 图标不改 ✓
+                        title = "悬浮窗及嵌入式",
+                        subtitle = "编码预览悬浮窗 · 嵌入模式 · 样式",
                         onClick = { subPage = "float" },
+                    )
+                }
+            }
+            // 轮19.114：手写输入入口（模型由用户自行下载 ✓，放 models/handwriting/ ✓）
+            item {
+                Card(colors = plainCardColors) {
+                    KsuItem(
+                        icon = OimeIcons.voiceHandwriting,   // 轮19.139：语音+手写混合图标 ✓（只改这一个 ✓）
+                        title = "语音手写管理",
+                        subtitle = "语音识别 · 离线手写（含模型下载）",
+                        onClick = { subPage = "handwriting" },
                     )
                 }
             }
@@ -1746,23 +1730,40 @@ private fun FloatingWindowSettings() {
     var textSp by remember { mutableStateOf(km.floatTextSp().toFloat()) }
     var alpha by remember { mutableStateOf(km.floatBgAlpha().toFloat()) }
     val custom = mode == "custom"
-    Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
+    // 轮19.141 ★ 崩溃修复：**外层 LazyColumn 本身就是滚动容器**（见调用处 item ✓）
+    //   ⇒ 这里再套 `verticalScroll()` 会抛
+    //   `IllegalStateException: Vertically scrollable component was measured with an
+    //    infinity maximum height constraints` ✗（真机日志铁证 ✓）
+    //   · `fillMaxSize()` 在 LazyColumn item 里同样拿到无限高度 ✗
+    //   · 横向 padding 由外层提供（horizontal = 16.dp ✓）⇒ 此处**不能重复加** ✗
+    //   ⇒ 这里只负责把三张卡竖排 + 12dp 分隔 ✓
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+      Card(colors = grayCardColors(), shape = settingsCardShape()) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
         Text("悬浮窗", style = MaterialTheme.typography.titleSmall)
         Spacer(Modifier.height(6.dp))
         SettingSwitchRow("启用悬浮窗（输入时显示编码）", enabled) {
             enabled = it
             km.setFloatEnabled(it)
         }
-        Spacer(Modifier.height(6.dp))
+        // 轮19.142：开关与样式**同属一张卡** ✓（用户要求 ✓）中间用细分隔线分区 ✓
+        Spacer(Modifier.height(12.dp))
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(MaterialTheme.colorScheme.outlineVariant),
+        )
+        Spacer(Modifier.height(12.dp))
         Text("样式", style = MaterialTheme.typography.bodyMedium)
         Spacer(Modifier.height(6.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(
+            OimeChip(
                 selected = !custom,
                 onClick = { mode = "default"; km.setFloatMode("default") },
                 label = { Text("默认悬浮窗") },
             )
-            FilterChip(
+            OimeChip(
                 selected = custom,
                 onClick = { mode = "custom"; km.setFloatMode("custom") },
                 label = { Text("自定义悬浮窗") },
@@ -1804,32 +1805,13 @@ private fun FloatingWindowSettings() {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf("h" to "横向", "v" to "竖向").forEach { (id, label) ->
                     val on = orient == id
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            // 轮19.82：选中态原来只换底色、文字还是默认色 ⇒ 对比不足（同类问题第 5 次 ✗）
-                            // ⇒ 底色用 primaryContainer、文字用**对应的 on 色** ✓ 未选中也补 on 色 ✓
-                            .background(
-                                if (on) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
-                                androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
-                            )
-                            .border(
-                                if (on) 1.5.dp else 0.dp,
-                                if (on) MaterialTheme.colorScheme.primary else Color.Transparent,
-                                androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
-                            )
-                            .clickable { orient = id; km.setFloatOrientation(id); floatRev++ }
-                            .padding(vertical = 8.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            label,
-                            style = MaterialTheme.typography.bodySmall,
-                            fontWeight = if (on) FontWeight.Bold else FontWeight.Normal,
-                            color = if (on) MaterialTheme.colorScheme.onPrimaryContainer
-                            else MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+                    // 轮19.134：**统一成 OimeChip** ✓（原来是自绘 Box + 描边 ✗ ⇒ 与其它选项不一致 ✗ 用户多次反馈）
+                    OimeChip(
+                        selected = on,
+                        onClick = { orient = id; km.setFloatOrientation(id); floatRev++ },
+                        label = { Text(label) },
+                        modifier = Modifier.weight(1f),
+                    )
                 }
             }
             // 轮19.73：**补回丢失的 `}`** —— 19.71 删重复块时把 Row 的闭合括号一起删了 ✗
@@ -1898,6 +1880,47 @@ private fun FloatingWindowSettings() {
             }
             TextButton(onClick = { km.setFloatBgColor(0); floatRev++ }) { Text("背景色恢复跟随主题") }
         }
+        }
+      }
+    }
+}
+
+/**
+ * 嵌入式设置（轮19.142：**独立成单独一张卡** ✓ 用户要求「嵌入式自己一个方块」✓）。
+ * 与「悬浮窗」卡并列，卡片间由外层 LazyColumn 的 12dp 分隔隔开 ✓
+ */
+@Composable
+private fun FloatEmbedCard() {
+    val km = com.azime.input.core.keyboard.KeyboardManager
+    Card(colors = grayCardColors(), shape = settingsCardShape()) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+            var embedMode by remember { mutableStateOf(km.embedMode()) }
+            Text("嵌入式", style = MaterialTheme.typography.titleSmall)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "输入码 / 首选字 显示在文本输入框，候选留在工具栏",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(8.dp))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OimeChip(
+                    selected = embedMode == "off",
+                    onClick = { embedMode = "off"; km.setEmbedMode("off") },
+                    label = { Text("关闭") },
+                )
+                OimeChip(
+                    selected = embedMode == "code",
+                    onClick = { embedMode = "code"; km.setEmbedMode("code") },
+                    label = { Text("嵌入输入码") },
+                )
+                OimeChip(
+                    selected = embedMode == "top",
+                    onClick = { embedMode = "top"; km.setEmbedMode("top") },
+                    label = { Text("嵌入首选") },
+                )
+            }
+        }
     }
 }
 
@@ -1929,17 +1952,17 @@ private fun VibrationSettings() {
         Text("震动模式", style = MaterialTheme.typography.bodyMedium)
         Spacer(Modifier.height(6.dp))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(
+            OimeChip(
                 selected = mode == HapticsManager.MODE_KEYBOARD,
                 onClick = { mode = HapticsManager.MODE_KEYBOARD; HapticsManager.setMode(HapticsManager.MODE_KEYBOARD) },
                 label = { Text("系统键盘触感") },
             )
-            FilterChip(
+            OimeChip(
                 selected = mode == HapticsManager.MODE_SYSTEM,
                 onClick = { mode = HapticsManager.MODE_SYSTEM; HapticsManager.setMode(HapticsManager.MODE_SYSTEM) },
                 label = { Text("系统轻点") },
             )
-            FilterChip(
+            OimeChip(
                 selected = custom,
                 onClick = { mode = HapticsManager.MODE_CUSTOM; HapticsManager.setMode(HapticsManager.MODE_CUSTOM) },
                 label = { Text("自定义") },
@@ -2011,17 +2034,17 @@ private fun ThemeColorSettings(onUiStyleChanged: () -> Unit = {}) {
         Text("色彩模式", style = MaterialTheme.typography.titleSmall)
         Spacer(Modifier.height(6.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(
+            OimeChip(
                 selected = mode == km.MODE_SYSTEM,
                 onClick = { mode = km.MODE_SYSTEM; km.setMode(km.MODE_SYSTEM) },
                 label = { Text("跟随系统") },
             )
-            FilterChip(
+            OimeChip(
                 selected = mode == km.MODE_LIGHT,
                 onClick = { mode = km.MODE_LIGHT; km.setMode(km.MODE_LIGHT) },
                 label = { Text("亮色") },
             )
-            FilterChip(
+            OimeChip(
                 selected = mode == km.MODE_DARK,
                 onClick = { mode = km.MODE_DARK; km.setMode(km.MODE_DARK) },
                 label = { Text("暗色") },
@@ -2937,6 +2960,517 @@ private fun CandidateKeyEditorPage(padding: androidx.compose.foundation.layout.P
 
 
 /** 轮19.82：语音输入使用说明（弹窗用，写得比原来底部那段更细）。 */
+/**
+ * 轮19.129：**语音手写管理**（版式对齐「输入方案」页 ✓ 用户要求）
+ * · 用**背景色分块**（Card + grayCardColors ✓）· 选中项用**边框**（非整块强调色 ✓）
+ * · **「选择模型」与「下载模型」分开**两部分 ✓ · **刷新**放在大标题后面 ✓
+ */
+
+
+/**
+ * 轮19.135：**统一的可选按钮 = Material3 原生 `FilterChip` 默认样式** ✓
+ * 用户提供了旧截图作基准 ✓：未选中 = 浅底 + **灰色描边** ✓；选中 = **灰底、无蓝框** ✓
+ * ⇒ 结论：**不要做任何自定义** ✗（我前几轮加的主色描边/填充色都不是它 ✗）
+ * ⇒ 这里只是一个**透传包装** ✓（保留"改一处、全项目 15 处生效"的好处 ✓）
+ */
+@Composable
+private fun OimeChip(
+    selected: Boolean,
+    onClick: () -> Unit,
+    label: @Composable () -> Unit,
+    enabled: Boolean = true,
+    modifier: Modifier = Modifier,
+) {
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier,
+        label = label,
+    )
+}
+
+@Composable
+private fun HandwritingSettingsPage(
+    padding: androidx.compose.foundation.layout.PaddingValues,
+    refreshRev: Int,
+    onBack: () -> Unit,
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val modelsDir = com.azime.input.core.storage.StorageManager.modelsDir
+    val scope = rememberCoroutineScope()
+    val speechPrefs = remember {
+        context.getSharedPreferences("speech_prefs", android.content.Context.MODE_PRIVATE)
+    }
+    var engine by remember { mutableStateOf(speechPrefs.getString("engine", "sense_voice") ?: "sense_voice") }
+    var refresh by remember { mutableStateOf(refreshRev) }
+    var micOk by remember {
+        mutableStateOf(
+            androidx.core.content.ContextCompat.checkSelfPermission(
+                context, android.Manifest.permission.RECORD_AUDIO
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        )
+    }
+    val micLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { micOk = it }
+    // 轮19.145：联网下载两个开关 ✓（与首次向导共用 wizard_prefs ✓）
+    var netAllow by remember { mutableStateOf(com.azime.input.core.net.NetPrefs.allowDownload(context)) }
+    var netWifiOnly by remember { mutableStateOf(com.azime.input.core.net.NetPrefs.wifiOnly(context)) }
+    // 当前网络类型（随 refresh 重读 ⇒ 用户切了 Wi-Fi 回来即刷新 ✓）
+    val netNow = remember(refresh) { com.azime.input.core.net.netState(context) }
+    var showVoiceHelp by remember { mutableStateOf(false) }
+    var showHwHelp by remember { mutableStateOf(false) }
+    var showApiDialog by remember { mutableStateOf(false) }
+    // 轮19.145：联网下载闸门 ✓（移动网络下的待确认动作 ✓）
+    var pendingDownload by remember { mutableStateOf<(() -> Unit)?>(null) }
+    var busyId by remember { mutableStateOf("") }
+    var stage by remember { mutableStateOf("") }
+    var pct by remember { mutableStateOf(-1) }
+    var msg by remember { mutableStateOf("") }
+    // 轮19.136：按模型 id 存提示 ✓（显示在该模型行下方 ✓）
+    val msgFor = remember { androidx.compose.runtime.mutableStateMapOf<String, String>() }
+
+    androidx.compose.runtime.LaunchedEffect(refreshRev) { refresh = refreshRev + 1 }
+    val senseOk = remember(refresh) { com.azime.input.core.speech.SpeechEngineManager.hasSenseVoiceModel() }
+    val zipOk = remember(refresh) { com.azime.input.core.speech.SpeechEngineManager.hasZipformerModel() }
+    val apiCfg = remember(refresh) { com.azime.input.core.speech.SpeechEngineManager.webApiConfig(context) }
+    val hwOk = remember(refresh) { com.azime.input.core.handwriting.HandwritingEngine.isModelPresent() }
+    val accent = MaterialTheme.colorScheme.primary
+
+    /**
+     * 轮19.145：**联网下载闸门** ✓
+     *
+     * 背景（用户反馈"启动界面没有联网权限的索取界面，直接就可以联网下模型了"）：
+     * Android 的 `INTERNET` 是 normal 权限 ⇒ 装机即授予 ✓ 系统没有运行时弹窗 ✗
+     * ⇒ 只能由 App 自己给出「知情 + 选择」：
+     *  · 关了「允许联网下载」⇒ 直接拦下并说明去哪儿打开 ✓
+     *  · 开着「仅 Wi-Fi」但当前是**移动网络** ⇒ 弹框问一句 ✓（模型 200~240MB ✗ 别偷偷跑流量 ✗）
+     */
+    fun gatedDownload(msgKey: String, start: () -> Unit) {
+        // ⚠️ 不能用 `val net = com.azime.input.core.net` ✗（Kotlin 不许把**包名**当值用 ✗
+        //    编译报 "Expression expected, but a package name found" ✗）⇒ 一律全限定名 ✓
+        when {
+            !com.azime.input.core.net.NetPrefs.allowDownload(context) -> {
+                msgFor[msgKey] = "⚠️ " + com.azime.input.core.net.downloadBlockReason(context)
+            }
+            com.azime.input.core.net.NetPrefs.wifiOnly(context) &&
+                com.azime.input.core.net.netState(context) == com.azime.input.core.net.NetState.MOBILE -> {
+                pendingDownload = start
+            }
+            else -> start()
+        }
+    }
+
+    fun startVoiceDownload(model: com.azime.input.core.handwriting.ModelDownloader.VoiceModel) {
+        gatedDownload(model.id) {
+            // 轮19.137：**交给全局下载器** ✓（页面销毁不中断 ✓ 断点续传 ✓）
+            com.azime.input.core.handwriting.ModelDownloader.launchDownload(model.id) {
+                val st = com.azime.input.core.handwriting.ModelDownloader.stateOf(model.id)
+                val r = com.azime.input.core.handwriting.ModelDownloader.installVoiceModel(
+                    model, modelsDir,
+                    onProgress = { d, tt ->
+                        st.pct.value = if (tt > 0) ((d * 100) / tt).toInt() else -1
+                        st.stage.value = "下载中…"
+                    },
+                    onStage = { v -> st.stage.value = v },
+                )
+                st.msg.value = if (r.ok) "✅ ${r.message}" else "❌ 失败：${r.message}"
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) { refresh++ }
+            }
+        }
+    }
+
+    fun startHwDownload() {
+        gatedDownload("hw") {
+            com.azime.input.core.handwriting.ModelDownloader.launchDownload("hw") {
+                val st = com.azime.input.core.handwriting.ModelDownloader.stateOf("hw")
+                val dir = com.azime.input.core.handwriting.HandwritingEngine.modelDir()
+                val r1 = com.azime.input.core.handwriting.ModelDownloader.download(
+                    com.azime.input.core.handwriting.HandwritingEngine.REMOTE_MODEL_ONNX,
+                    java.io.File(dir, "model.onnx"),
+                    onProgress = { d, tt ->
+                        st.pct.value = if (tt > 0) ((d * 100) / tt).toInt() else -1
+                        st.stage.value = "下载中…"
+                    },
+                )
+                val r2 = if (r1.ok) com.azime.input.core.handwriting.ModelDownloader.download(
+                    com.azime.input.core.handwriting.HandwritingEngine.REMOTE_LABELS,
+                    java.io.File(dir, "labels.txt"),
+                ) else r1
+                st.msg.value = if (r1.ok && r2.ok) "✅ 手写模型已安装" else "❌ 失败：${(if (!r1.ok) r1 else r2).message}"
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) { refresh++ }
+            }
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            // ⚠️ 轮19.130：必须接 Scaffold 的 padding ✗（否则内容顶到状态栏/标题下面 ⇒ 与标题重叠 ✗ 用户反馈）
+            .padding(padding)
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        // 轮19.131：**页面里不再画标题** ✗（顶栏已有 ✓ 否则两个大标题 ✗ 用户反馈）
+        Spacer(Modifier.height(4.dp))
+
+        // ═══════ 【〇、联网下载】（轮19.145 ✓ 用户反馈"没有联网权限索取界面"✗）═══════
+        Card(colors = grayCardColors(), shape = settingsCardShape()) {
+            Column(Modifier.padding(horizontal = 20.dp, vertical = 12.dp)) {
+                Text("联网下载", style = MaterialTheme.typography.titleSmall)
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Android 的联网权限是「安装即授权」，系统**没有**运行时开关可弹；" +
+                        "所以这里给你两个显式开关，决定本应用能否联网下载模型。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(10.dp))
+                SettingSwitchRow("允许联网下载模型", netAllow) {
+                    netAllow = it
+                    com.azime.input.core.net.NetPrefs.setAllowDownload(context, it)
+                }
+                SettingSwitchRow("仅 Wi-Fi 下载（推荐）", netWifiOnly) {
+                    netWifiOnly = it
+                    com.azime.input.core.net.NetPrefs.setWifiOnly(context, it)
+                }
+                Text(
+                    "当前网络：${com.azime.input.core.net.netStateLabel(netNow)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 6.dp),
+                )
+            }
+        }
+
+        // ═══════ 【一、语音】（背景色分块 ✓）═══════
+        Card(colors = grayCardColors(), shape = settingsCardShape()) {
+            Column(Modifier.padding(vertical = 8.dp)) {
+                Text(
+                    "语音", style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
+                )
+                // 轮19.139：与「语音」标题左对齐 ✓（用户反馈"没对齐"✗）
+                Row(modifier = Modifier.padding(horizontal = 20.dp)) {
+                    SettingSwitchRow("麦克风权限", micOk) {
+                        if (!micOk) micLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                    }
+                }
+                // ── 选择模型（与下载分开 ✓）──
+                Text(
+                    "选择模型（点一下即生效）", style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
+                )
+                com.azime.input.core.handwriting.ModelDownloader.VOICE_MODELS.forEach { vm ->
+                    val installed = if (vm.id == "sense_voice") senseOk else zipOk
+                    val selected = engine == vm.id
+                    // 轮19.133：**统一用 FilterChip** ✓（用户要求「设置内所有的相关项都要改」✓）
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 3.dp),
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                    ) {
+                        FilterChip(
+                            selected = selected,
+                            enabled = installed,
+                            onClick = {
+                                com.azime.input.core.haptic.HapticsManager.press()
+                                engine = vm.id
+                                speechPrefs.edit().putString("engine", vm.id).apply()
+                            },
+                            label = { Text(vm.title.substringBefore("（")) },
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Text(
+                            (if (installed) "" else "未安装 · ") + vm.note,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
+                // 联网 API 行（同一「选择」区 ✓）
+                val apiSel = engine == com.azime.input.core.speech.SpeechEngineManager.ENGINE_WEB_API
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 3.dp),
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                ) {
+                    OimeChip(
+                        selected = apiSel,
+                        enabled = apiCfg != null,
+                        onClick = {
+                            engine = com.azime.input.core.speech.SpeechEngineManager.ENGINE_WEB_API
+                            speechPrefs.edit().putString("engine", engine).apply()
+                        },
+                        label = { Text("联网 API") },
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        if (apiCfg != null) "已配置" else "未配置（需先配置）",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text("配置", fontSize = 12.sp, color = accent,
+                        modifier = Modifier.clickable { showApiDialog = true }.padding(horizontal = 6.dp))
+                }
+                HorizontalDivider(Modifier.padding(vertical = 8.dp, horizontal = 20.dp))
+                // ── 下载模型（与选择分开 ✓）──
+                Text(
+                    "下载模型", style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp),
+                )
+                com.azime.input.core.handwriting.ModelDownloader.VOICE_MODELS.forEach { vm ->
+                    val installed = if (vm.id == "sense_voice") senseOk else zipOk
+                    val st = com.azime.input.core.handwriting.ModelDownloader.stateOf(vm.id)
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 2.dp),
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                    ) {
+                        Text(vm.title.substringBefore("（"), style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                        TextButton(
+                            enabled = !st.running.value,
+                            onClick = { startVoiceDownload(vm) },
+                        ) {
+                            Text(if (installed) "重新下载" else "下载")
+                        }
+                    }
+                    // 轮19.137：状态来自**全局下载器** ✓（切页回来也能看到 ✓）
+                    val rowMsg = st.msg.value
+                    if (!rowMsg.isNullOrEmpty()) {
+                        Text(
+                            rowMsg, style = MaterialTheme.typography.bodySmall,
+                            color = if (rowMsg.startsWith("✅") || rowMsg.contains("已安装"))
+                                    MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 2.dp),
+                        )
+                    }
+                    if (st.running.value) {
+                        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 2.dp)) {
+                            val pr = if (st.pct.value >= 0) st.pct.value / 100f else 0f
+                            androidx.compose.material3.LinearProgressIndicator(
+                                progress = { pr },
+                                modifier = Modifier.fillMaxWidth().height(4.dp),
+                            )
+                            Text(
+                                st.stage.value + (if (st.pct.value >= 0) "  ${st.pct.value}%" else ""),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(top = 2.dp),
+                            )
+                        }
+                    }
+                }
+                TextButton(onClick = { showVoiceHelp = true }) { Text("语音使用说明", fontSize = 12.sp) }
+            }
+        }
+
+        // ═══════ 【二、手写】（背景色分块 ✓）═══════
+        Card(colors = grayCardColors(), shape = settingsCardShape()) {
+            Column(Modifier.padding(vertical = 8.dp)) {
+                Text(
+                    "手写", style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+                )
+                Text(
+                    "选择模型", style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 3.dp),
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                ) {
+                    OimeChip(
+                        selected = hwOk,
+                        enabled = true,
+                        onClick = {},
+                        label = { Text("手写模型") },
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        (if (hwOk) "已安装 · 当前使用" else "未安装（可去下面下载）") + " · DeepHCCR",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                HorizontalDivider(Modifier.padding(vertical = 8.dp, horizontal = 20.dp))
+                Text(
+                    "下载模型", style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp),
+                )
+                val hwSt = com.azime.input.core.handwriting.ModelDownloader.stateOf("hw")
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 2.dp),
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                ) {
+                    Text("手写模型（model.onnx + labels.txt）", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                    TextButton(
+                        enabled = !hwSt.running.value,
+                        onClick = { startHwDownload() },
+                    ) {
+                        Text(if (hwOk) "重新下载" else "下载")
+                    }
+                }
+                val hwRowMsg = hwSt.msg.value
+                if (!hwRowMsg.isNullOrEmpty()) {
+                    Text(
+                        hwRowMsg, style = MaterialTheme.typography.bodySmall,
+                        color = if (hwRowMsg.startsWith("✅") || hwRowMsg.contains("已安装"))
+                                MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 2.dp),
+                    )
+                }
+                if (hwSt.running.value) {
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 2.dp)) {
+                        val pr = if (hwSt.pct.value >= 0) hwSt.pct.value / 100f else 0f
+                        androidx.compose.material3.LinearProgressIndicator(
+                            progress = { pr },
+                            modifier = Modifier.fillMaxWidth().height(4.dp),
+                        )
+                        Text(
+                            hwSt.stage.value + (if (hwSt.pct.value >= 0) "  ${hwSt.pct.value}%" else ""),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(top = 2.dp),
+                        )
+                    }
+                }
+                TextButton(onClick = { showHwHelp = true }) { Text("手写使用说明", fontSize = 12.sp) }
+            }
+        }
+
+        if (msg.isNotEmpty()) {
+            Text(
+                msg, style = MaterialTheme.typography.bodySmall,
+                color = if (msg.contains("已安装")) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(horizontal = 4.dp),
+            )
+        }
+
+        if (showVoiceHelp) {
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { showVoiceHelp = false },
+                title = { Text("语音输入使用说明") },
+                text = {
+                    Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                        Text(VOICE_HELP_TEXT, style = MaterialTheme.typography.bodySmall)
+                    }
+                },
+                confirmButton = { TextButton(onClick = { showVoiceHelp = false }) { Text("知道了") } },
+            )
+        }
+        if (showHwHelp) {
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { showHwHelp = false },
+                title = { Text("手写输入使用说明") },
+                text = {
+                    Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                        Text(HANDWRITING_HELP_TEXT, style = MaterialTheme.typography.bodySmall)
+                    }
+                },
+                confirmButton = { TextButton(onClick = { showHwHelp = false }) { Text("知道了") } },
+            )
+        }
+        if (showApiDialog) {
+            WebApiConfigDialog(onDismiss = { showApiDialog = false; refresh++ })
+        }
+        // 轮19.145：**移动网络下下载前问一句** ✓（模型 200~240MB ✗ 别在用户不知情时跑流量 ✗）
+        pendingDownload?.let { go ->
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { pendingDownload = null },
+                title = { Text("当前是移动网络") },
+                text = {
+                    Text(
+                        "语音/手写模型约 200~240MB，用手机流量下载会消耗较多数据。是否继续？\n\n" +
+                            "想以后不再询问，可在上方「联网下载」里关闭「仅 Wi-Fi 下载」。"
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = { pendingDownload = null; go() }) { Text("继续下载") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { pendingDownload = null }) { Text("取消") }
+                },
+            )
+        }
+    }
+}
+
+/**
+ * 轮19.146：**1.0.4 更新说明**（关于页「本次更新」弹窗用 ✓）。
+ *
+ * 只写 **1.0.3 → 1.0.4** 的差异 ✓：本轮开发中「引入后又修掉」的问题（用户从没见过 ✗）
+ * 不进这份清单 ✗ 否则用户会看得莫名其妙 ✓
+ */
+private val UPDATE_LOG_1_0_4 = """
+本次更新：1.0.4（vc146）· 相对 1.0.3
+
+【新增】
+· 手写输入（整套）：离线手写识别（DeepHCCR，量化后模型约 10MB）
+  · 手写板铺满键盘区；抬笔停顿约 800ms 自动识别，无需点按钮；自带清空键
+  · 识别结果进工具栏候选，点选即上屏；上屏后画布自动清空
+  · 模型可在「语音手写管理」里一键下载；也可手动放入 Documents/Oime/models/handwriting/
+· 「嵌入式」独立成项（悬浮窗及嵌入式页）：三态 —— 不嵌入 / 嵌入编码 / 嵌入首选
+  · 「嵌入首选」会把输入码与首选候选的位置对调
+· 「语音手写管理」页：语音识别设置从「输入方案」页搬进来，语音 + 手写 + 模型下载统一入口
+· 启动向导扩到 7 页，新增两步：
+  · 【语音输入权限】先把「为什么要麦克风」讲清楚，再由你点按钮申请（RECORD_AUDIO 运行时权限）
+  · 【联网与模型下载】说明「联网权限属于安装即授权、系统没有弹窗」，并给两个开关：
+    允许联网下载 / 仅 Wi-Fi 下载（模型 200~240MB，默认只在 Wi-Fi 下下）
+· 关于页新增「本次更新」，随时能回看本版改了什么
+
+【修改】
+· 悬浮窗及嵌入式：拆成并列三张卡（悬浮窗 / 嵌入式 / 样式与数值），与「输入方案」页版式统一
+· 设置页统一观感：选中态改为无边框样式 + 统一 FilterChip；「备份」列表并入「恢复备份」项下
+· 模型下载器：直连失败自动切换公益镜像；支持断点续传（中断保留 .part）；只解压真正需要的文件
+  （*.int8.onnx 与 tokens.txt，跳过 fp32 与样例音频）；下载包用完即删
+· 手写图标、语音手写图标重绘（描边风）
+
+【修复】
+· 微信表情要按多次退格才删得掉 —— 真因：微信表情在输入框里的底层文本是 [微笑] 这类短代码，
+  以前一次只删一个码元，等于只删掉右括号，屏幕上看不出变化
+· 语音的「联网 API」识别在 1.0.3 里其实一直不可用 —— 真因是 manifest 少声明 INTERNET 权限，已补
+· 设置页个别条目「点了样式不跟随」—— 真因是同名函数重载吃掉了回调
+· 二级设置页清理掉滚动嵌套导致的闪退隐患（列表内层重复套滚动容器）
+""".trimIndent()
+
+private val HANDWRITING_HELP_TEXT = """
+手写输入使用说明
+
+【一、模型从哪来（需自行下载 ✓）】
+· 本项目采用**离线图片路线**：DeepHCCR（GoogLeNet，MIT 授权 ✓ 论文精度 95.3% ✓）
+  · 仓库：github.com/chongyangtao/DeepHCCR
+  · 权重：models/googlenet_hccr.caffemodel（约 39MB，仓库内直接下载 ✓）
+· 需要转成 ONNX 才能在手机上跑 ✓（转换脚本由项目方提供 ✓）：
+  · 产出两个文件：model.onnx（量化后约 9~10MB ✓）+ labels.txt（字符表 ✓）
+
+【二、放到哪里】
+· 目录：Documents/Oime/models/handwriting/
+· 文件：model.onnx + labels.txt（缺一不可）
+· 放好后回到本页点「刷新模型状态」→ 显示「模型已就绪」即可 ✓
+
+【三、原理（为什么能 10MB 以内 ✓）】
+· 手写时把笔画**渲染成 112×112 灰度图** → 交给离线模型识别 ✓
+· 复用应用内已有的 ONNX Runtime ✓ ⇒ 运行时体积增量为 0 ✓
+
+【四、当前进度】
+· 入口 / 模型检测 / 目录约定：已完成 ✓
+· 手写键盘页 + 推理接入：下一轮 ✓
+""" + """"""
+
 private val VOICE_HELP_TEXT = """
 语音输入使用说明
 
