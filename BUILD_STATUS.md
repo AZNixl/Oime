@@ -1,6 +1,6 @@
 # ○输入法 / Oime 项目状态
 
-> 最后更新：2026-09-25（轮19.146，**1.0.4** / vc146，手写输入 + 启动向导 7 页）
+> 最后更新：2026-09-25（轮19.147，**1.0.4** / vc146，手写输入 + 启动向导 7 页 + 修复 CI 原生构建）
 
 ## 项目信息
 
@@ -9,7 +9,8 @@
 - **包名**：`com.azime.input`
 - **仓库**：https://github.com/AZNixl/Oime （曾名 AZime，main 分支）
 - **技术栈**：Kotlin 1.9.22 / AGP 8.3.0 / Gradle 8.4 / Compose BOM 2024.02.00
-- **构建目标**：compileSdk 34 / minSdk 24 / targetSdk 34 / JDK 17
+- **构建目标**：compileSdk 34 / minSdk 23 / targetSdk 34 / JDK 17
+- **NDK**：自适应取本机已装最高版（CI 与本机均为 `29.0.14206865`）；手写 JNI 用 CMake 编译
 - **引擎**：librime（`librime_jni.so`，arm64-v8a）+ 平台 RIME；方案组目录即 librime user 数据目录（trime2 架构，零拷贝）
 - **语音**：sherpa-onnx `1.13.5`（AAR 不进仓库，CI 构建时下载）+ SenseVoice / 流式 zipformer / OpenAI 兼容 API
 
@@ -20,8 +21,13 @@
 | GitHub Actions（ubuntu-latest，`assembleDebug`） | ✅ 每轮 success，约 5~7 分钟 |
 | Windows 本机 `./gradlew compileDebugKotlin` | ✅ 语法/类型校验用，约 1~2 分钟（**不在本机出 APK**） |
 
-- 产物 `app-debug.apk` **约 55.9 MB**（含 sherpa-onnx arm64 so ≈30MB：libonnxruntime 20MB +
-  libsherpa-onnx-jni 4MB + c-api 4MB + cxx-api + librime_jni 5MB）
+- 产物**按 ABI 拆分**：`app-arm64-v8a-debug.apk` **≈ 57.7 MB** / `app-armeabi-v7a-debug.apk` **≈ 46.9 MB**
+  （大头是 sherpa-onnx 的 so：arm64 的 `libonnxruntime` 20MB + `libsherpa-onnx-jni` 4MB + c-api 4MB +
+  cxx-api + `librime_jni` 5MB + 手写 `liboime_hw.so`）
+- **原生构建（轮19.147 补齐）**：`app/src/main/cpp/handwriting_jni.cpp` 由 CMake 编译；它要链接
+  `app/build/ort-link/<abi>/libonnxruntime.so` ⇒ 由 Gradle 任务 **`extractOrtForLink`**
+  从 `app/libs/sherpa-onnx-*.aar` 解出（`app/build/` 不进仓库，**全新克隆必须先解** ⇒ 否则 CMake 报
+  `FATAL_ERROR: 缺少链接用 libonnxruntime.so`）
 - CI 步骤：checkout → JDK17 → `chmod +x gradlew` → **下载 sherpa-onnx AAR** →
   `assembleDebug` → 上传 APK / reports
 - AAR 不提交仓库（49MB 超 Git Data API blob 上限），由 CI `curl` 官方 release 获取

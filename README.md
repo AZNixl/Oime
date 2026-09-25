@@ -9,14 +9,26 @@
 
 ---
 
-## 1.0.0 更新要点
+## 1.0.4 更新要点
 
-- **正式发行**：1.0.2 起提供 `arm64-v8a` 与 `armeabi-v7a`（32 位，**要求 Android 6.0+**）两种包 
+- **手写输入**（新增）：**离线**手写识别，笔迹不出本机。手写板铺满键盘区，抬笔停顿约 0.8 秒自动出字，
+  结果进工具栏候选，点选即上屏；模型可在 **设置 → 语音手写管理** 里一键下载
+  （模型来自开源项目 [DeepHCCR](https://github.com/chongyangtao/DeepHCCR)，MIT 授权）
+- **嵌入式**（新增，在「悬浮窗及嵌入式」页）：三态可选 —— 不嵌入 / **嵌入编码** / **嵌入首选**
+  （嵌入首选会把输入码与首选候选的位置对调）
+- **启动向导扩到 7 页**：新增【语音输入权限】（先讲清楚为什么要麦克风，再由你点按钮申请）
+  与【联网与模型下载】两步；模型 200~240MB，**默认仅 Wi-Fi 下载**，走流量下载前会再问一次
+- **模型可在应用内下载**：语音（SenseVoice / 流式 zipformer）与手写模型都支持一键下载，
+  直连失败自动切公益镜像，支持断点续传与完整性校验（下载中断不再产生残缺模型）
+- **微信表情退格修复**：以前要按好几次才删得掉 —— 微信表情的底层是一段 `[微笑]` 这类短代码，
+  现在一次退格删掉整个表情
+- **正式发行**：提供 `arm64-v8a` 与 `armeabi-v7a`（32 位）两种包，**均要求 Android 6.0+**
 - **日志系统**：`Documents/Oime/logs/`（按天分文件；默认只记错误与关键事件，几乎零开销；
   排查问题可到「设置 → 关于 → 日志」打开详细日志）
-- **关于页**：拆成 版本 / 日志 / 备份 / **开源许可** / **隐私条约** / 致谢，各自独立卡片
+- **关于页**：版本 / 日志 / 备份 / **开源许可** / **隐私条约** / 致谢各自独立卡片，
+  并新增「**本次更新**」可随时回看本版改了什么
 - **候选快捷键**：可把第 2/3 候选绑到任意按键（默认 句号 / 符号键，「无」= 解除），支持自定义 code
-- **离线语音**：SenseVoice（准确率优先）与流式 Zipformer（边说边出）双引擎，模型自行放入 `models/`
+- **离线语音**：SenseVoice（准确率优先）与流式 Zipformer（边说边出）双引擎
 - **悬浮窗**：编码 + 候选预览，横向 / 竖向 / 竖向反向三种排布；跟随光标（个别自绘输入框的 App
   不提供光标信息，此时退到固定位置）
 - **界面风格**收敛为三种并统一对比度兜底；○ 菜单新增「设置」直达
@@ -160,11 +172,11 @@
 
 ## 其他
 
-- **首次向导 5 页**：存储权限 → 启用输入法 → 选择输入法 → 进入设置 → O 圆环快捷应用
+- **首次向导 7 页**：存储权限 → 启用输入法 → 选择输入法 → **语音输入权限** → **联网与模型下载** → 进入设置 → O 圆环快捷应用
 - **○ 圆环上滑快捷启动**：5 个应用槽位可自定义（需要 `QUERY_ALL_PACKAGES`）
 - **○ 菜单里有「切换输入法」**，一键唤起系统输入法选择器
 - **省电**：热路径零 IO（方案显示名、方案列表都缓存或按需取）、动画降帧、键盘收起即关面板、退出时释放 librime 与语音 ONNX 会话。按手机侧归一化口径实测，UID 归因耗电较优化前下降约 68%
-- **诊断**：`Documents/Oime/` 外另写一份运行日志到 `Download/oime_diag.log`，符号、光标、剪贴板等关键路径都有埋点
+- **诊断**：运行日志统一写在 `Documents/Oime/logs/`（默认只记错误与关键事件，几乎零开销），符号、光标、剪贴板、退格等关键路径都有埋点
 
 ---
 
@@ -177,6 +189,7 @@
 - **[nirenr/trime2](https://github.com/nirenr/trime2)** —— 方案组架构（组目录即 librime user 目录、零拷贝）与生命周期管理
 - **[ximeiorg/Xime](https://github.com/ximeiorg/Xime)** —— 内置的 librime JNI 绑定、按键路由与键盘页思路
 - **[k2-fsa/sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx)** —— 本地语音识别（SenseVoice / 流式 zipformer）
+- **[chongyangtao/DeepHCCR](https://github.com/chongyangtao/DeepHCCR)** —— 本地手写识别（GoogLeNet，MIT 授权；本项目把它的 Caffe 权重转成量化 ONNX 后离线推理）
 - **[rime/weasel](https://github.com/rime/weasel)** —— 方案与词库的组织方式参考
 - **[PiliPlus](https://github.com/bggRGjQaUbCoE/PiliPlus)** —— 底部悬浮栏（面板与 chip 条）样式参考
 - **[tiann/KernelSU](https://github.com/tiann/KernelSU)** —— 设置主页的卡片式布局风格
@@ -191,7 +204,7 @@
 ./gradlew compileDebugKotlin     # 本机校验，不出包
 ```
 
-推送到 `main` 后，Actions 会自动出包。**开发期安装包**：仓库 Actions → 最新一次 run → 产物 `app-debug`（下载需登录 GitHub）；正式版会发布到 Releases。语音依赖 `sherpa-onnx-1.13.5.aar`（约 49MB）不入库，CI 在构建前从官方 release 下载到 `app/libs/`。
+推送到 `main` 后，Actions 会自动出包。**开发期安装包**：仓库 Actions → 最新一次 run → 下载工件 `app-debug`（内含按 ABI 拆分的 `app-arm64-v8a-debug.apk` 与 `app-armeabi-v7a-debug.apk`，下载需登录 GitHub，保留 3 天）；正式版会发布到 Releases。语音依赖 `sherpa-onnx-1.13.5.aar`（约 49MB）不入库，CI 在构建前从官方 release 下载到 `app/libs/`。
 
 - 技术栈：Kotlin 1.9.22 / AGP 8.3.0 / Gradle 8.4 / Compose BOM 2024.02.00 / JDK 17
 - 引擎：`librime_jni.so`（arm64-v8a / armeabi-v7a 两套）；方案导入用 zip4j
@@ -204,7 +217,7 @@
 - **默认不联网**：敲字、联想、方案与剪贴板全在本地完成，除非你主动选择「联网 API」语音引擎并自行填写地址与密钥。
 - **剪贴板**：复制条与剪贴板历史只在本机读写，不上传；可以在设置里整体关闭，关闭后不再监听剪贴板。
 - **语音**：默认可选两个**离线**引擎（模型放在 `Documents/Oime/models/`），全程不出本机。
-- **日志**：诊断日志只写在本机 `Download/oime_diag.log`，不会自动外发。
+- **日志**：诊断日志只写在本机 `Documents/Oime/logs/`，不会自动外发。
 - **权限**：除输入法本身所需（读取剪贴板、振动、录音、读写外置目录）外，`QUERY_ALL_PACKAGES` 仅用于 ○ 圆环的上滑快捷启动列表。
 
 ---
@@ -258,7 +271,9 @@
 ```
 Documents/Oime/
 ├── schemas/     输入方案（虎码 / 双拼 / 白霜…，可直接往里放目录）
-├── models/      语音模型（sense-voice / zipformer，需自行下载）
+├── models/      离线模型（语音 sense-voice / zipformer；手写 handwriting/）
+│                可在「设置 → 语音手写管理」里一键下载，也可自行放入
+├── downloads/   模型下载临时文件（解压完成后自动删除；中断的断点可续传）
 ├── fonts/       键盘字体（放 .ttf / .otf 即可在设置里选）
 ├── sounds/      按键音效
 ├── backup/      设置备份（JSON）
@@ -269,7 +284,7 @@ Documents/Oime/
 
 | 项 | 支持 |
 |---|---|
-| **系统** | **Android 5.0+**（minSdk 21，targetSdk 34）|
+| **系统** | **Android 6.0+**（minSdk 23，targetSdk 34）|
 | **CPU** | **arm64-v8a** ✓ 与 **armeabi-v7a** ✓ —— **各自独立出包**（v7a 要求 **Android 6.0+**）<br>x86 / x86_64 —— **暂不发布**（无设备测试）|
 
 ## 签名
@@ -307,7 +322,7 @@ Documents/Oime/
 - `sherpa-onnx-1.13.5.aar`（约 49MB，超 GitHub API 单文件限制）**不入库**，
   由 CI 从官方 release 下载（公开 URL）
 - `librime_jni.so`、RIME 资源、内置音效等**都在仓库内**，无需额外准备
-- 产物：`app-debug` 工件（保留 3 天），路径 `app/build/outputs/apk/debug/app-debug.apk`
+- 产物：`app-debug` 工件（保留 3 天），内含按 ABI 拆分的 `app-arm64-v8a-debug.apk` 与 `app-armeabi-v7a-debug.apk`（路径 `app/build/outputs/apk/debug/`）
 
 **唯一注意**：`cache: gradle` 对 **public 仓库免费**；若你的 fork 是 **private**，
 Gradle 缓存会占用 500MB 存储额度（历史上曾因此导致上传步骤失败），

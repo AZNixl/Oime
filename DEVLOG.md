@@ -2445,3 +2445,57 @@ java.lang.UnsatisfiedLinkError: dlopen failed: empty/missing DT_HASH in "librime
   存储已授权 + IME 已启用 + 是默认输入法）⇒ 重现改用
   `run-as <pkg> rm -f shared_prefs/wizard_prefs.xml` ✓（debug 包可用 ✓ 别用 `pm clear` ✗）
 
+# 轮19.147：★★ CI/全新克隆构建失败的真因（隐藏依赖 ort-link）+ 文案收尾
+
+## 一、★★ 发现：1.0.4 推送后 CI 必挂（fork 也构建不了）
+- 触发点：用户要求「确保 **fork 后可构建**」⇒ 逐项核对 ⇒ 发现 `app/src/main/cpp/CMakeLists.txt`
+  要求 `app/build/ort-link/<abi>/libonnxruntime.so`，缺失即
+  `FATAL_ERROR: 缺少链接用 libonnxruntime.so` ✗
+- 根因 ✓：该 so 是从 `app/libs/sherpa-onnx-1.13.5.aar` 的 `jni/<abi>/` 解出来的**本地手工产物** ✗；
+  `app/build/` 是构建产物目录、**不进仓库**（推送脚本也忽略 `build`）⇒ 仓库里**没有任何步骤**生成它 ✗
+  ⇒ 本机一直能出包，只是因为本机 `app/build/ort-link/` 早有存量文件（9/24 21:13）
+  —— 属于**看不见的依赖** ✗
+- 为什么长期没暴露 ✓：
+  · CI 自 **9/23（1.0.3）起一次都没跑过** ✓（1.0.4 这一整轮都是本机出的包）
+  · 远程 1.0.3 的 `app/build.gradle.kts` **没有** `ndkVersion` / `externalNativeBuild` / CMake 路径 ✗
+  · `dev/v7a` 分支也**没有 `cpp/`** ⇒ 那几次「绿」根本没碰原生编译 ✗
+- 附带坑 ✗：`ndkVersion = "28.0.13004108"` 写死 —— CI runner（ubuntu-latest）只有
+  `27.3.13750724 / 28.2.13676358 / 29.0.14206865`，本机只有 `28.0.13004108 / 29.0.14206865`
+  ⇒ **两边没有交集** ✗ 写死任一个都会让另一边去 dl.google.com 下 ~1GB 的 NDK
+  （本机网络还不一定放行 ✗）
+
+## 二、修法 ✓
+1. 新增 Gradle 任务 **`extractOrtForLink`** ✓（`app/build.gradle.kts`）：
+   从 `fileTree("libs"){ include("sherpa-onnx-*.aar") }` 解出 `jni/<abi>/libonnxruntime.so`
+   → `app/build/ort-link/<abi>/` ✓；声明 `inputs.files / outputs.dir` ⇒ 只在变更时跑 ✓
+2. 挂钩 ✓：`tasks.configureEach { if (name.startsWith("configureCMake") || name.startsWith("buildCMake"))
+   dependsOn(extractOrtForLink) }` ⇒ CMake **配置阶段之前** so 一定就位 ✓
+3. NDK 改**自适应** ✓：扫 `ANDROID_HOME / ANDROID_SDK_ROOT / local.properties(sdk.dir)` 下的 `ndk/`，
+   取**本机已装的最高版本**；一个都没装才退回写死值 ✓
+   ⇒ 本机与 CI 的「最高版本」恰好都是 **29.0.14206865** ✓ ⇒ 两边工具链一致、零下载 ✓
+4. 删掉死文件 `cpp/onnxruntime_cxx_api.h` ✓：全项目**无任何源文件 include 它** ✓
+   （`handwriting_jni.cpp` 只用 C API `onnxruntime_c_api.h` ✓），而它自己 include 的
+   `onnxruntime_float16.h` / `onnxruntime_cxx_inline.h` **根本不存在** ✗ ⇒ 留着只会误导 ✓
+- 踩坑 ✗：Gradle Kotlin DSL 里 `java.util.zip.ZipFile(...)` / `java.util.Properties()` **不成立** ✗
+  ⇒ `java` 是**项目扩展访问器**（JavaPluginExtension）⇒ `java.util` 被解析成扩展属性 ✗
+  ⇒ 必须显式 `import java.util.zip.ZipFile` 再用短名 ✓
+
+## 三、验证 ✓（按「确保 fork 后可构建」做端到端）
+- 删掉 `app/build` + `app/.cxx` **模拟全新克隆** ✓ → `./gradlew :app:assembleDebug` ✓
+- 结果 ✓：`extractOrtForLink` 打印 `arm64-v8a(20MB) / armeabi-v7a(14MB)` ✓ → CMake 配置通过 ✓
+  → **BUILD SUCCESSFUL in 45s** ✓ → 两个 APK 均产出 ✓
+- 产物核对 ✓：`liboime_hw.so` + `libonnxruntime.so` + `librime_jni.so` + 4 个 sherpa so ✓（双 ABI 齐全 ✓）
+- **CI 实测 ✓**：推 main（`4ed99135`）→ Android CI **success** ✓
+  ⇒ 这是**手写原生 JNI 第一次在 CI 上编译通过** ✓（此前从未被 CI 覆盖 ✓）
+
+## 四、文案收尾（用户反馈）
+- 「关于页 → 本次更新」**改简洁** ✓：用户要求「不用那么详细，记录本版更新哪些功能就好」⇒
+  去掉【新增/修改/修复】里的**根因叙述** ✓，压成 10 行「新增/变更/修复 + 一句话」✓
+- 「手写输入使用说明」**过期内容修正** ✓：底部还写着「手写键盘页 + 推理接入：**下一轮**」✗
+  ⇒ 换成【四、怎么用】✓；另修正一处尺寸 ✗（写的是 112×112，**实际 120×120** ✓，
+  见 `handwriting_jni.cpp` 的 `kInElements = 1*3*120*120` ✓）；模型来源补
+  「可本页一键下载 / 也可自行放入」✓
+- README 草稿**补手写模块开源地址** ✓：`参考项目` 加 **[chongyangtao/DeepHCCR]** 条目 +
+  1.0.4 要点里带一句（MIT 授权；Caffe 权重转量化 ONNX ✓）
+- 清掉仓库根目录的 **0 字节垃圾文件 `0`** ✓（远程也有 ⇒ 本次推送会一并删除 ✓）
+
