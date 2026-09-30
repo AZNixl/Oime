@@ -3519,9 +3519,16 @@ private fun HandwritingPadPanel(
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     // 自动识别任务句柄（新增笔画就重排计时 ✓ = 停顿即识别 ✓）
     var job by remember { androidx.compose.runtime.mutableStateOf<kotlinx.coroutines.Job?>(null) }
-    // 轮19.127：上屏后自动清画布 ✓（用户反馈：上屏后手写板没清空 ✗）
+    // 轮19.151：**连写缓冲** ✓ —— 识别后自动清屏，用户直接写下一个字时，
+    // 上一轮候选的**首选**锁进缓冲；工具栏候选 = 缓冲 + 本轮候选 ⇒ 点一下整串上屏 ✓
+    var hwPending by remember { androidx.compose.runtime.mutableStateOf("") }
+    // 本轮候选（不含缓冲前缀 ✓）；非空 = 「有候选待定」✓
+    var roundAlts by remember { mutableStateOf<List<String>>(emptyList()) }
+    // 轮19.127：上屏后自动清画布 ✓；轮19.151：一并清连写缓冲与本轮候选 ✓
     androidx.compose.runtime.LaunchedEffect(hwClearSignal) {
-        if (hwClearSignal > 0) { strokes.clear(); rev++ }
+        if (hwClearSignal > 0) {
+            strokes.clear(); hwPending = ""; roundAlts = emptyList(); rev++
+        }
     }
 
     fun runRecognize() {
@@ -3540,7 +3547,13 @@ private fun HandwritingPadPanel(
                     hint = "识别失败：" + com.azime.input.core.handwriting.HandwritingEngine.errorText()
                 } else {
                     hint = ""
-                    onAction(KeyAction.HwCandidates(r.map { it.first }))
+                    // 轮19.151：**识别完成即自动清屏** ✓（用户要求：识别后自动清屏 ✓，
+                    // 不再等上屏才清 ✓）候选 = 连写缓冲 + 本轮候选 ✓
+                    roundAlts = r.map { it.first }
+                    strokes.clear()
+                    job?.cancel()
+                    rev++
+                    onAction(KeyAction.HwCandidates(roundAlts.map { hwPending + it }))
                 }
             }
         }
@@ -3559,8 +3572,15 @@ private fun HandwritingPadPanel(
                     awaitPointerEventScope {
                         while (true) {
                             val down = awaitFirstDown(requireUnconsumed = false)
-                            // 新一笔 ⇒ 先清掉上一轮结果（避免旧候选误导 ✓）
-                            onAction(KeyAction.HwCandidates(emptyList()))
+                            // 轮19.151 连写 ✓：上一轮候选未处理就写下一个字 ⇒ **按首选锁定**进缓冲
+                            //（写=认可首选 ✓）；随后清掉旧候选，本轮在空画布上识别 ✓
+                            if (roundAlts.isNotEmpty()) {
+                                hwPending += roundAlts.first()
+                                roundAlts = emptyList()
+                                onAction(KeyAction.HwCandidates(emptyList()))
+                            }
+                            // 挂起的自动识别一并取消 ✓（否则停顿窗口内继续写会识别到半截笔迹 ✗）
+                            job?.cancel()
                             hint = ""
                             val cur = mutableListOf(down.position)
                             strokes.add(cur)
@@ -3603,9 +3623,9 @@ private fun HandwritingPadPanel(
                     }
                 }
             }
-            if (strokes.isEmpty()) {
+            if (strokes.isEmpty() && hwPending.isEmpty() && roundAlts.isEmpty()) {
                 Text(
-                    "在此书写（写完停一下即自动识别）",
+                    "在此书写（停顿自动识别 ✓ 可连写 ✓ 认可首选直接写下一个 ✓）",
                     fontSize = 13.sp, color = c.subText,
                     modifier = Modifier.align(androidx.compose.ui.Alignment.Center),
                 )
@@ -3635,8 +3655,9 @@ private fun HandwritingPadPanel(
                 }
                 .padding(horizontal = 14.dp, vertical = 7.dp),
         )
-        // 轮19.150：右下角「⌫ 退格」（用户要求 ✓，原「清空」升级）：
-        // 画布**有字** → 清掉写的字 ✓；画布**无字** → 普通退格，删文本框的字 ✓
+        // 轮19.150→19.151：右下角「⌫ 退格」四态（用户要求 ✓）：
+        // ① 画布有笔迹 → 清掉写的字；② 本轮候选待定 → **删除候选**（不动文本框 ✓）；
+        // ③ 连写缓冲有字 → 删缓冲末字；④ 都没有 → 普通退格，删文本框的字 ✓
         Text(
             "⌫ 退格",
             fontSize = 13.sp, fontWeight = FontWeight.Bold, color = c.accentActive,
@@ -3646,13 +3667,21 @@ private fun HandwritingPadPanel(
                 .background(c.keyBg.copy(alpha = 0.92f), RoundedCornerShape(18.dp))
                 .clickable {
                     com.azime.input.core.haptic.HapticsManager.press()
-                    if (strokes.isNotEmpty()) {
-                        job?.cancel() // 挂起的自动识别一并取消 ✓
-                        strokes.clear()
-                        onAction(KeyAction.HwCandidates(emptyList()))
-                        rev++
-                    } else {
-                        onAction(KeyAction.Backspace) // 画布无字 → 删文本框的字 ✓
+                    when {
+                        strokes.isNotEmpty() -> {
+                            job?.cancel() // 挂起的自动识别一并取消 ✓
+                            strokes.clear()
+                            rev++
+                        }
+                        roundAlts.isNotEmpty() -> {
+                            roundAlts = emptyList()
+                            onAction(KeyAction.HwCandidates(emptyList()))
+                        }
+                        hwPending.isNotEmpty() -> {
+                            hwPending = hwPending.dropLast(1)
+                            onAction(KeyAction.HwCandidates(emptyList()))
+                        }
+                        else -> onAction(KeyAction.Backspace)
                     }
                 }
                 .padding(horizontal = 14.dp, vertical = 7.dp),
