@@ -1384,14 +1384,23 @@ class AZimeService : InputMethodService() {
     }
 
     /**
-     * 退格：组合存在时 librime 消费（缩组合）；组合为空时 librime 返回 processed=false，
-     * 此时由输入连接删除光标前**一个完整的显示字符** ✓
+     * 退格：组合存在时 librime 消费（缩组合）；组合为空时**发送标准退格键事件** ✓
      *
-     * 轮19.145（用户反馈"微信表情要按多次退格才能删掉"✗）：
-     * 老实现只判了代理对一种情况 ✗ ⇒ 变体选择符（❤️）/ ZWJ（👨‍👩‍👧）/ 国旗（🇨🇳）/
-     * 肤色修饰（👍🏻）/ 键帽（1️⃣）都会被拆成多次 ✗ 且前几次**屏幕上看不出变化** ✗。
-     * 现在两级判定：① 先看光标前紧邻的**图片/替换 span**（微信表情就是 ImageSpan ✓）
-     * ② 否则按**扩展字素簇**删（见 [com.azime.input.utils.Grapheme] ✓）。
+     * 轮19.150（用户反馈"酷安自带表情也要按多次退格才删得掉，trime2 没这个问题"✗）：
+     * 根因不在某个 App 的表情格式，而在**删除路径**本身 ——
+     * 以前由我们自己 `ic.deleteSurroundingText(n, 0)`，而微信 / 酷安这类 App 的表情
+     * 在编辑框里的底层文本是 `[微笑]` / `[酷安]` 短代码（ImageSpan 只是渲染层），
+     * 它们靠**自己处理退格键事件**来整段删表情 token；我们不走键事件 ⇒
+     * App 的整段删逻辑永远不触发 ⇒ 每次只删掉 1 个码元（`]`）⇒ 要按多次 ✗。
+     * trime2 等输入法没这个问题，正因为它们发的是标准 KEYCODE_DEL（= 硬件键盘路径）✓。
+     *
+     * ⇒ 现在退格一律发键事件，把「删多少」交还给 App 决定：
+     *   - 自有表情 App：整段删 token ✓（不再需要逐 App 打补丁 ✓）
+     *   - 普通 EditText：系统删除本身是 emoji-aware（ZWJ / 变形选择符 / 国旗整簇删 ✓）
+     *
+     * 19.145/19.146 的字素簇 / 短代码识别**不再用于删除**，只用于撤回记录的长度估算 ✓
+     * （键事件路径拿不到 App 实际删除量，按识别出的 token 长度记 ——
+     *   普通文本精确 ✓ 短代码表情在识别出时也精确 ✓ 未知格式宁少勿多 ✓）
      */
     private suspend fun handleBackspace() {
         val result = RimeManager.processKey(KEY_BACKSPACE)
@@ -1403,9 +1412,7 @@ class AZimeService : InputMethodService() {
         if (ic != null) {
             val pre = textBeforeCursor(ic, BACKSPACE_LOOKAHEAD)
             val spanLen = spanBackedLength(pre)
-            // 轮19.146：微信表情在输入框里的**底层文本**是 `[微笑]` 这种短代码 ✓（渲染成图片靠 ImageSpan ✓）
-            // 只删 1 码元 ⇒ 只删掉 `]` ⇒ 用户看到「表情没动」✗ 要按 4 次 ✗（用户实测复现 ✓）
-            val emojiLen = if (spanLen > 0) 0 else wechatEmoticonLength(pre)
+            val emojiLen = if (spanLen > 0) 0 else emoticonTokenLength(pre)
             val n = when {
                 spanLen > 0 -> spanLen
                 emojiLen > 0 -> emojiLen
@@ -1413,16 +1420,17 @@ class AZimeService : InputMethodService() {
             }
             if (n > 0) {
                 // 诊断只在"值得看"时落盘 ✓（纯字母/汉字单码元不写 ✗ 退格是热路径 ✗）
-                if (spanLen > 0 || emojiLen > 0 || n > 1 || isWeChatTarget()) {
+                if (spanLen > 0 || emojiLen > 0 || n > 1) {
                     com.azime.input.core.diag.Diag.warn(
                         "Del",
                         "pkg=${currentEditorInfo?.packageName} len=${pre.length} span=$spanLen " +
-                            "chat=$emojiLen n=$n styled=${pre is android.text.Spanned} " +
+                            "chat=$emojiLen n=$n key-event=true " +
                             "tail=${com.azime.input.utils.Grapheme.hexTail(pre)}",
                     )
                 }
-                pushDeleted(pre.takeLast(n).toString()) // 记录删除内容，下滑「撤回」可恢复
-                ic.deleteSurroundingText(n, 0)
+                pushDeleted(pre.takeLast(n).toString()) // 撤回记录（长度为估算，见上）
+                // 标准退格键事件（= 硬件键盘路径）：微信 / 酷安等 App 表情整段删 ✓
+                sendDownUpKeyEvents(android.view.KeyEvent.KEYCODE_DEL)
             }
         }
         refreshState()
@@ -1442,20 +1450,27 @@ class AZimeService : InputMethodService() {
         return runCatching { ic.getTextBeforeCursor(len, 0) }.getOrNull() ?: ""
     }
 
-    /** 当前输入目标是不是微信 ✓ */
-    private fun isWeChatTarget(): Boolean = currentEditorInfo?.packageName == WECHAT_PKG
+    /**
+     * 当前输入目标是不是「编辑框里带自有表情 token」的 App ✓（微信 / 酷安 ✓）
+     *
+     * 轮19.150 起**只影响撤回记录的长度估算** ✓（删除本身已改为标准键事件，不再需要逐 App 区分 ✓）
+     */
+    private fun isTokenEmojiTarget(): Boolean = currentEditorInfo?.packageName in TOKEN_EMOJI_PKGS
 
     /**
-     * 光标前是不是**一个完整的微信表情短代码**（`[微笑]` ✓）⇒ 返回它占的码元数 ✓（否则 0 ✓）
+     * 光标前是不是**一个完整的表情短代码**（`[微笑]` / `[酷安]` ✓）⇒ 返回它占的码元数 ✓（否则 0 ✓）
      *
-     * 判据（三条全中才算 ✓，避免误删用户手打的方括号 ✗）：
-     * 1. 目标 App 是微信 ✓（其它 App 一律不生效 ✓）
+     * 判据（三条全中才算 ✓，避免把用户手打的方括号当表情 ✗）：
+     * 1. 目标 App 是「带自有表情」的 App ✓（微信 / 酷安 ✓；其它 App 不生效 ✓）
      * 2. 光标前最后一码元是 `]`，且**紧邻前方能找到配对的 `[`** ✓（中间不得再有 `]` / 空白 ✗）
      * 3. 括号内是 1~8 个**纯汉字**或**纯 ASCII 字母** ✓ —— 排除 `[1]` / `[a/b]` / `[链接](url)`
-     *    这类正常文本 ✗（微信表情名只由汉字或字母构成 ✓：`[微笑]` `[OK]` `[Emm]` ✓）
+     *    这类正常文本 ✗（表情名只由汉字或字母构成 ✓：`[微笑]` `[OK]` `[Emm]` `[酷安]` ✓）
+     *
+     * 轮19.150 起只用于**撤回记录的长度估算** ✓（删除本身已改为标准键事件 ✓）；
+     * 括号内若含数字等其它字符 ⇒ 估算不到（宁少勿多 ✓），删除不受影响 ✓
      */
-    private fun wechatEmoticonLength(pre: CharSequence): Int {
-        if (!isWeChatTarget()) return 0
+    private fun emoticonTokenLength(pre: CharSequence): Int {
+        if (!isTokenEmojiTarget()) return 0
         val n = pre.length
         if (n < 3 || pre[n - 1] != ']') return 0
         var i = n - 2
@@ -1636,10 +1651,14 @@ class AZimeService : InputMethodService() {
          */
         private const val BACKSPACE_LOOKAHEAD = 32
 
-        /** 微信包名 ✓（表情退格特判只对它生效 ✓，避免误伤其它 App 的正常方括号 ✗） */
-        private const val WECHAT_PKG = "com.tencent.mm"
+        /**
+         * 「编辑框里带自有表情 token」的 App 包名 ✓（只影响撤回记录的长度估算 ✓，
+         * 删除本身轮19.150 起走标准键事件，无需按包名区分 ✓）
+         * 微信 `com.tencent.mm` ✓（`[微笑]`）；酷安 `com.coolapk.market` ✓（`[酷安]`）
+         */
+        private val TOKEN_EMOJI_PKGS = setOf("com.tencent.mm", "com.coolapk.market")
 
-        /** 微信表情底层短代码的长度上限（`[` 与 `]` 之间的字符数 ✓，如 `[微笑]`=2 ✓ `[右太极]`=3 ✓） */
+        /** 表情短代码的长度上限（`[` 与 `]` 之间的字符数 ✓，如 `[微笑]`=2 ✓ `[右太极]`=3 ✓） */
         private const val WECHAT_EMOTICON_MAX_NAME = 8
     }
 }

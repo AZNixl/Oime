@@ -2499,3 +2499,32 @@ java.lang.UnsatisfiedLinkError: dlopen failed: empty/missing DT_HASH in "librime
   1.0.4 要点里带一句（MIT 授权；Caffe 权重转量化 ONNX ✓）
 - 清掉仓库根目录的 **0 字节垃圾文件 `0`** ✓（远程也有 ⇒ 本次推送会一并删除 ✓）
 
+
+# 轮19.150：酷安表情退格多次才删（根因级修复：退格改发标准键事件）+ 手写板「清空」升级为「⌫ 退格」
+
+## 一、酷安表情删不掉的真因（不在表情格式，在删除路径）
+- 现象：酷安自带表情要按多次退格才删掉；其它输入法、trime2 都没这个问题 ✗
+- 根因：微信 / 酷安这类 App 的表情在编辑框里**底层文本是 `[微笑]` / `[酷安]` 短代码**（ImageSpan 只是渲染层），
+  它们靠**自己处理退格键事件**来整段删 token；而我们走 `ic.deleteSurroundingText(n, 0)` 自己删
+  ⇒ App 的整段删逻辑**永远不触发** ⇒ 每次只删掉 1 个码元（`]`）⇒ 要按多次 ✗
+  （19.146 那次是「判包名 + 判 `[...]` 格式」的补丁 ⇒ 酷安就露馅了，逐 App 打补丁这条路走不通 ✓）
+- trime2 / 其它输入法没这个问题，正因为它们发**标准 KEYCODE_DEL**（= 硬件键盘路径）✓
+
+## 二、修法 ✓（AZimeService.handleBackspace）
+- 组合为空时一律 `sendDownUpKeyEvents(KEYCODE_DEL)`，把「删多少」交还 App：
+  - 自有表情 App：整段删 token ✓（不再需要逐 App 打补丁 ✓）
+  - 普通 EditText：系统删除本身 emoji-aware（ZWJ / 变形选择符 / 国旗整簇删 ✓）
+- 19.145/19.146 的字素簇 / 短代码识别**不再用于删除**，只用于**撤回记录的长度估算** ✓
+  （键事件路径拿不到 App 实际删除量：普通文本精确 ✓ 短代码识别出时也精确 ✓ 未知格式宁少勿多 ✓）
+- `wechatEmoticonLength` → `emoticonTokenLength`；`isWeChatTarget` → `isTokenEmojiTarget`
+  （包名集合 `TOKEN_EMOJI_PKGS` = 微信 + 酷安，**只影响撤回估算**，不影响删除 ✓）
+- 项目内先例：DPAD 导航键（`ic.sendKeyEvent`）与回车（`sendDownUpKeyEvents`）早已走键事件 ✓ ⇒ 通路可靠 ✓
+
+## 三、手写板「清空」→「⌫ 退格」（用户要求）
+- 右下角按钮改名「⌫ 退格」，行为二态：画布**有字** → 清笔迹（挂起的自动识别一并取消 ✓ + 清候选 ✓）；
+  画布**无字** → `KeyAction.Backspace` 删文本框的字 ✓
+- 「手写输入使用说明」同步更新（原写着「左下角清空」✗ 实际在右下角 ✗，一并修正 ✓）
+
+## 四、验证
+- 本机 `./gradlew compileDebugKotlin` **BUILD SUCCESSFUL** ✓（警告均为存量 ✓）
+- 版本 vc146 → **vc147 / 1.0.5** ✓

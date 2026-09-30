@@ -3635,9 +3635,10 @@ private fun HandwritingPadPanel(
                 }
                 .padding(horizontal = 14.dp, vertical = 7.dp),
         )
-        // 轮19.129：右下角「清空」（用户要求 ✓ 只清画布，不退出 ✓）
+        // 轮19.150：右下角「⌫ 退格」（用户要求 ✓，原「清空」升级）：
+        // 画布**有字** → 清掉写的字 ✓；画布**无字** → 普通退格，删文本框的字 ✓
         Text(
-            "清空",
+            "⌫ 退格",
             fontSize = 13.sp, fontWeight = FontWeight.Bold, color = c.accentActive,
             modifier = Modifier
                 .align(androidx.compose.ui.Alignment.BottomEnd)
@@ -3645,9 +3646,14 @@ private fun HandwritingPadPanel(
                 .background(c.keyBg.copy(alpha = 0.92f), RoundedCornerShape(18.dp))
                 .clickable {
                     com.azime.input.core.haptic.HapticsManager.press()
-                    strokes.clear()
-                    onAction(KeyAction.HwCandidates(emptyList()))
-                    rev++
+                    if (strokes.isNotEmpty()) {
+                        job?.cancel() // 挂起的自动识别一并取消 ✓
+                        strokes.clear()
+                        onAction(KeyAction.HwCandidates(emptyList()))
+                        rev++
+                    } else {
+                        onAction(KeyAction.Backspace) // 画布无字 → 删文本框的字 ✓
+                    }
                 }
                 .padding(horizontal = 14.dp, vertical = 7.dp),
         )
