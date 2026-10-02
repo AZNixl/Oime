@@ -2558,3 +2558,38 @@ java.lang.UnsatisfiedLinkError: dlopen failed: empty/missing DT_HASH in "librime
 ## 四、验证
 - 本机 `compileDebugKotlin` **BUILD SUCCESSFUL** ✓（53s）
 - 真机待验证：自动清屏时机 ✓ 连写累积 ✓ ⌫ 四态 ✓ 候选整串上屏 ✓
+
+# 轮19.152：移除连写（实测不符预期）+ 方案开关改滑动式（多态开关可见可调）+ 语音手写图标改波浪线
+
+## 一、移除连写（用户实测反馈）
+- 19.151 的"连写缓冲"实测不符合预期 ✗：写完「虎」马上叠着写「码」→ 整体被当成**一个字**识别 ✗
+  （单字模型没有字形分簇能力 ✗；"停顿分字"的连写与用户期望的"叠写连写"不是一回事 ✗）
+- **决定：移除连写缓冲** ✓（hwPending 删除），回归单字流程：
+  写一个 → 停顿自动识别 → **画布自动清空**（保留 ✓）→ 候选出工具栏 → 点上屏 / ⌫ 删候选 → 写下一个 ✓
+- ⌫ 退格回落**三态**：清笔迹 → 删候选 → 删文本框的字 ✓
+- 若未来要做"叠写连写"，前置条件是**字形几何分簇**（按 X 间隙聚类 + 置信度仲裁），
+  川/小/氵 等左右结构字误切风险高 ⇒ 需要专门设计，本轮不做 ✓
+
+## 二、方案开关改**滑动开关**（用户要求）
+- **问题**：虎整的 `tiger_sentence.schema.yaml` 有一个 options 型多态开关
+  `- options: [tiger_sentence_correction_off/weak/medium/strong]` + `states:` + `abbrev:`
+  ⇒ 原解析器把 options 型**直接丢弃** ✗ ⇒ 方案开关里不显示 ✗
+- **修法**：
+  - `SchemaSwitch` 重构：`title`（states 公共前缀 ✓）+ `options`（参与切换的选项 1..N 个 ✓）+
+    `states`（档位文案 ✓）+ `nodeLabels`（abbrev / states 去前缀 ✓）
+  - 解析器支持 options/states/abbrev 的**行内与块式**两种写法 ✓
+  - UI：全部开关改 `Slider`（N 选项 = N 节点 ✓ steps=N-2 ✓），拖动改本地态 + 震动反馈 ✓
+    **松手才提交 RIME** ✓（onValueChangeFinished ✓ 不刷屏 setOption ✓）
+  - 提交语义：布尔 = setOption(name, index≥1)；多态 = **互斥**（目标档位 true 其余 false ✓）
+  - 新增 `KeyAction.SetSwitch(options, index)` ✓
+- **真实验证**（Python 按同一规则解析手机拉回的 `虎整/tiger_sentence.schema.yaml`）：
+  7 个开关全出 ✓ —— 「按键纠错」4 节点（关/弱/中/强 ✓）；
+  布尔开关标题自动取公共前缀（提前上屏 / 单字重码组句 / 提前上屏至 ✓），无前缀用选项名 ✓
+
+## 三、语音手写管理图标改波浪线（用户要求）
+- "既是笔划，也是声纹" ⇒ 一条平滑正弦波（3 个半波 ✓ w=1.9 ✓）替换原"铅笔+声波弧"组合 ✓
+
+## 四、验证
+- 本机 `compileDebugKotlin` **BUILD SUCCESSFUL** ✓（TextAlign 补 import ✓）
+- 解析器用真机方案文件模拟验证 ✓（见上）
+- 版本 vc147 → **vc148**（versionName 仍 1.0.5，未发版 ✓）

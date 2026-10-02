@@ -895,6 +895,18 @@ class AZimeService : InputMethodService() {
                     RimeManager.setOption(action.name, !RimeManager.getOption(action.name))
                     refreshState()
                 }
+                // 轮19.152：滑动开关提交 ✓ —— 单选项 = 布尔（index≥1 为开 ✓）；
+                // 多态开关 = 互斥：目标档位置 true，其余全部 false ✓
+                is KeyAction.SetSwitch -> {
+                    if (action.options.size == 1) {
+                        RimeManager.setOption(action.options[0], action.index >= 1)
+                    } else {
+                        action.options.forEachIndexed { j, opt ->
+                            RimeManager.setOption(opt, j == action.index)
+                        }
+                    }
+                    refreshState()
+                }
                 KeyAction.PageDown -> {
                     RimeManager.processKey(0xFF55) // Prior/PageDown keysym
                     applyResult(RimeManager.getProcessResult())

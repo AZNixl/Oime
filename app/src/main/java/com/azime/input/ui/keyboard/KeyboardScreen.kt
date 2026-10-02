@@ -93,6 +93,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -148,6 +149,8 @@ sealed interface KeyAction {
     data object ToggleVoiceInput : KeyAction
     /** ○ 菜单「方案开关」：切换当前方案 schema.yaml 的 switches 开关。 */
     data class ToggleSwitch(val name: String) : KeyAction
+    /** 轮19.152：滑动开关提交 ✓ —— options 布尔开关单元素 / 多态开关 N 个，index = 目标档位 ✓ */
+    data class SetSwitch(val options: List<String>, val index: Int) : KeyAction
 
     // ── 扩展动作（内置功能键值 / 手势） ──
     /** 解析后的命令（select_all/cut/copy/paste/…）或字面提交。 */
@@ -2115,51 +2118,79 @@ private fun MenuPanel(
                             modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp),
                         )
                     }
-                    // 反馈轮11：横向 2 列卡片网格（状态名 + 开关名；开 → accent 底色，点按切换）
-                    switches.chunked(2).forEach { rowSwitches ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    // 轮19.152：统一改成**滑动开关** ✓（用户要求 ✓）
+                    // 多态开关有几个选项就几个节点 ✓（虎整「按键纠错」= 4 节点 ✓）；
+                    // 布尔开关 = 两节点 ✓。拖动只改本地态，松手才提交 RIME ✓
+                    switches.forEach { sw ->
+                        val nNodes = if (sw.options.size == 1) 2 else sw.options.size
+                        var idx by remember(state.schemaName, sw.options) {
+                            mutableStateOf(
+                                if (sw.options.size == 1) {
+                                    if (RimeManager.getOption(sw.options[0])) 1 else 0
+                                } else {
+                                    sw.options.indexOfFirst { RimeManager.getOption(it) }
+                                        .let { if (it < 0) 0 else it }
+                                }
+                            )
+                        }
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(c.keyBg, RoundedCornerShape(12.dp))
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
                         ) {
-                            rowSwitches.forEach { sw ->
-                                var checked by remember(state.schemaName, sw.name) {
-                                    mutableStateOf(RimeManager.getOption(sw.name))
-                                }
-                                val stateText = when {
-                                    sw.states.size >= 2 -> if (checked) sw.states[1] else sw.states[0]
-                                    sw.states.size == 1 -> if (checked) sw.states[0] else "关"
-                                    else -> if (checked) "开" else "关"
-                                }
-                                Column(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .background(if (checked) c.accentKeyBg else c.keyBg, RoundedCornerShape(12.dp))
-                                        .clickable {
-                                            com.azime.input.core.haptic.HapticsManager.press()
-                                            checked = !checked
-                                            onAction(KeyAction.ToggleSwitch(sw.name))
-                                        }
-                                        .padding(vertical = 10.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                ) {
-                                    Text(
-                                        stateText,
-                                        fontSize = 14.sp,
-                                        maxLines = 1,
-                                        color = if (checked) c.accentKeyText else c.text,
-                                        fontWeight = if (checked) FontWeight.Bold else FontWeight.Normal,
-                                    )
-                                    Text(
-                                        sw.name,
-                                        fontSize = 10.sp,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        // 轮19.34：选中态背景是强调色，副标题必须用 on-accent（原来灰字压蓝底看不见）
-                                        color = if (checked) c.accentKeyText.copy(alpha = 0.85f) else c.subText,
-                                    )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    sw.title,
+                                    fontSize = 14.sp, fontWeight = FontWeight.Bold,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                    color = c.text,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                Text(
+                                    sw.states.getOrElse(idx) { if (idx > 0) "开" else "关" },
+                                    fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                                    color = c.accentActive,
+                                )
+                            }
+                            androidx.compose.material3.Slider(
+                                value = idx.toFloat(),
+                                onValueChange = { v ->
+                                    val nv = v.toInt().coerceIn(0, nNodes - 1)
+                                    if (nv != idx) {
+                                        idx = nv
+                                        com.azime.input.core.haptic.HapticsManager.press()
+                                    }
+                                },
+                                valueRange = 0f..(nNodes - 1).toFloat(),
+                                steps = if (nNodes > 2) nNodes - 2 else 0,
+                                onValueChangeFinished = {
+                                    onAction(KeyAction.SetSwitch(sw.options, idx))
+                                },
+                                colors = androidx.compose.material3.SliderDefaults.colors(
+                                    thumbColor = c.accentActive,
+                                    activeTrackColor = c.accentActive,
+                                    inactiveTrackColor = c.subText.copy(alpha = 0.3f),
+                                ),
+                            )
+                            // 节点短标签（abbrev / states 去前缀 ✓）均匀铺开 ✓
+                            if (sw.nodeLabels.size == nNodes) {
+                                Row(modifier = Modifier.fillMaxWidth()) {
+                                    sw.nodeLabels.forEachIndexed { i, lbl ->
+                                        Text(
+                                            lbl,
+                                            fontSize = 10.sp,
+                                            maxLines = 1,
+                                            textAlign = TextAlign.Center,
+                                            color = if (i == idx) c.accentActive else c.subText,
+                                            modifier = Modifier.weight(1f),
+                                        )
+                                    }
                                 }
                             }
-                            repeat(2 - rowSwitches.size) { Spacer(Modifier.weight(1f)) }
                         }
                         Spacer(Modifier.height(8.dp))
                     }
@@ -3519,15 +3550,14 @@ private fun HandwritingPadPanel(
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     // 自动识别任务句柄（新增笔画就重排计时 ✓ = 停顿即识别 ✓）
     var job by remember { androidx.compose.runtime.mutableStateOf<kotlinx.coroutines.Job?>(null) }
-    // 轮19.151：**连写缓冲** ✓ —— 识别后自动清屏，用户直接写下一个字时，
-    // 上一轮候选的**首选**锁进缓冲；工具栏候选 = 缓冲 + 本轮候选 ⇒ 点一下整串上屏 ✓
-    var hwPending by remember { androidx.compose.runtime.mutableStateOf("") }
-    // 本轮候选（不含缓冲前缀 ✓）；非空 = 「有候选待定」✓
+    // 本轮候选（非空 = 有候选待定 ✓ ⌫ 键据此判断"删候选"态 ✓）
     var roundAlts by remember { mutableStateOf<List<String>>(emptyList()) }
-    // 轮19.127：上屏后自动清画布 ✓；轮19.151：一并清连写缓冲与本轮候选 ✓
+    // 轮19.127：上屏后自动清画布 ✓；轮19.152：一并清本轮候选 ✓
+    // （轮19.152：**连写缓冲已移除** ✓ —— 用户实测"叠着写"会被当成一个字识别 ✗
+    //   单字模型不支持无停顿连写 ⇒ 回归「写一个 → 自动识别 → 再写一个」✓）
     androidx.compose.runtime.LaunchedEffect(hwClearSignal) {
         if (hwClearSignal > 0) {
-            strokes.clear(); hwPending = ""; roundAlts = emptyList(); rev++
+            strokes.clear(); roundAlts = emptyList(); rev++
         }
     }
 
@@ -3547,13 +3577,12 @@ private fun HandwritingPadPanel(
                     hint = "识别失败：" + com.azime.input.core.handwriting.HandwritingEngine.errorText()
                 } else {
                     hint = ""
-                    // 轮19.151：**识别完成即自动清屏** ✓（用户要求：识别后自动清屏 ✓，
-                    // 不再等上屏才清 ✓）候选 = 连写缓冲 + 本轮候选 ✓
+                    // 轮19.151：**识别完成即自动清屏** ✓（用户要求：识别后自动清屏 ✓）
                     roundAlts = r.map { it.first }
                     strokes.clear()
                     job?.cancel()
                     rev++
-                    onAction(KeyAction.HwCandidates(roundAlts.map { hwPending + it }))
+                    onAction(KeyAction.HwCandidates(roundAlts))
                 }
             }
         }
@@ -3572,10 +3601,8 @@ private fun HandwritingPadPanel(
                     awaitPointerEventScope {
                         while (true) {
                             val down = awaitFirstDown(requireUnconsumed = false)
-                            // 轮19.151 连写 ✓：上一轮候选未处理就写下一个字 ⇒ **按首选锁定**进缓冲
-                            //（写=认可首选 ✓）；随后清掉旧候选，本轮在空画布上识别 ✓
+                            // 新一笔 ⇒ 清掉上一轮候选（避免旧候选误导 ✓）
                             if (roundAlts.isNotEmpty()) {
-                                hwPending += roundAlts.first()
                                 roundAlts = emptyList()
                                 onAction(KeyAction.HwCandidates(emptyList()))
                             }
@@ -3623,9 +3650,9 @@ private fun HandwritingPadPanel(
                     }
                 }
             }
-            if (strokes.isEmpty() && hwPending.isEmpty() && roundAlts.isEmpty()) {
+            if (strokes.isEmpty() && roundAlts.isEmpty()) {
                 Text(
-                    "在此书写（停顿自动识别 ✓ 可连写 ✓ 认可首选直接写下一个 ✓）",
+                    "在此书写（停顿自动识别 ✓ 写完一个再写下一个 ✓）",
                     fontSize = 13.sp, color = c.subText,
                     modifier = Modifier.align(androidx.compose.ui.Alignment.Center),
                 )
@@ -3655,9 +3682,9 @@ private fun HandwritingPadPanel(
                 }
                 .padding(horizontal = 14.dp, vertical = 7.dp),
         )
-        // 轮19.150→19.151：右下角「⌫ 退格」四态（用户要求 ✓）：
+        // 轮19.152：右下角「⌫ 退格」三态（连写缓冲已移除 ✓）：
         // ① 画布有笔迹 → 清掉写的字；② 本轮候选待定 → **删除候选**（不动文本框 ✓）；
-        // ③ 连写缓冲有字 → 删缓冲末字；④ 都没有 → 普通退格，删文本框的字 ✓
+        // ③ 都没有 → 普通退格，删文本框的字 ✓
         Text(
             "⌫ 退格",
             fontSize = 13.sp, fontWeight = FontWeight.Bold, color = c.accentActive,
@@ -3675,10 +3702,6 @@ private fun HandwritingPadPanel(
                         }
                         roundAlts.isNotEmpty() -> {
                             roundAlts = emptyList()
-                            onAction(KeyAction.HwCandidates(emptyList()))
-                        }
-                        hwPending.isNotEmpty() -> {
-                            hwPending = hwPending.dropLast(1)
                             onAction(KeyAction.HwCandidates(emptyList()))
                         }
                         else -> onAction(KeyAction.Backspace)

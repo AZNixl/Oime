@@ -14,8 +14,19 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.TreeMap
 
-/** 方案 schema.yaml 的 switches 开关项（name + states 两态文案）。 */
-data class SchemaSwitch(val name: String, val states: List<String>)
+/**
+ * 方案 schema.yaml 的 switches 开关项（轮19.152：统一为**滑动开关** ✓）。
+ * @param title      开关标题（states 的公共前缀 ✓，如「按键纠错」；无公共前缀退回选项名 ✓）
+ * @param options    参与切换的 RIME 选项（布尔开关 = 1 个 ✓；多态开关 = N 个 ✓）
+ * @param states     每个档位的完整文案（与 options 一一对应 ✓；布尔恒为两态 ✓）
+ * @param nodeLabels 滑块节点短标签（abbrev ✓ / states 去公共前缀 ✓ / 兜底 states ✓）
+ */
+data class SchemaSwitch(
+    val title: String,
+    val options: List<String>,
+    val states: List<String>,
+    val nodeLabels: List<String>,
+)
 
 /**
  * RIME 引擎封装：负责资产部署（assets/rime -> sharedDataDir）与面向键盘的简化 API。
@@ -201,22 +212,48 @@ object RimeManager {
         return null
     }
 
-    /** 解析方案 .schema.yaml 的 switches 段（name + states，跳过 options 型无名条目）。 */
+    /**
+     * 解析方案 .schema.yaml 的 switches 段（轮19.152 重写 ✓）：
+     * - `name:` 布尔开关（states 两态 ✓）→ options = [name]，两节点滑块 ✓
+     * - `options: [a,b,…]` + `states:` + `abbrev:` **多态开关**（虎整的按键纠错 ✓）
+     *   —— 原来 options 型直接丢弃 ✗ 所以方案开关里不显示 ✗；现在完整解析成 N 节点滑块 ✓
+     */
     fun schemaSwitches(schemaId: String): List<SchemaSwitch> {
         if (schemaId.isBlank()) return emptyList()
         val f = schemaYamlFile(schemaId) ?: return emptyList()
         val result = mutableListOf<SchemaSwitch>()
-        var curName: String? = null
+        var curOptions = mutableListOf<String>()
         var curStates = mutableListOf<String>()
+        var curAbbrev = mutableListOf<String>()
         var inStatesBlock = false
+        var inOptionsBlock = false
+        var inAbbrevBlock = false
         var inSwitches = false
+
         fun flush() {
-            val n = curName
-            if (n != null) result.add(SchemaSwitch(n, curStates.toList()))
-            curName = null
-            curStates = mutableListOf()
-            inStatesBlock = false
+            val opts = curOptions.toList()
+            if (opts.isNotEmpty()) {
+                val n = opts.size
+                // 布尔开关补齐两态 ✓（RIME 惯例 states[0] = 关 ✓）
+                val states2 = when {
+                    curStates.size >= n -> curStates.toList()
+                    n == 2 && curStates.size == 1 -> listOf("关", curStates[0])
+                    n == 2 -> listOf("关", "开")
+                    else -> List(n) { i -> curStates.getOrElse(i) { "档${i + 1}" } }
+                }
+                val prefix = commonPrefix(curStates)
+                val title = if (prefix.length >= 2) prefix else opts[0]
+                val labels = when {
+                    curAbbrev.size == n -> curAbbrev.toList()
+                    prefix.length >= 2 -> states2.map { s -> s.removePrefix(prefix).ifEmpty { s } }
+                    else -> states2
+                }
+                result.add(SchemaSwitch(title, opts, states2, labels))
+            }
+            curOptions = mutableListOf(); curStates = mutableListOf(); curAbbrev = mutableListOf()
+            inStatesBlock = false; inOptionsBlock = false; inAbbrevBlock = false
         }
+
         runCatching {
             f.useLines { raw ->
                 for (rawLine in raw) {
@@ -239,30 +276,65 @@ object RimeManager {
                     when {
                         entry.startsWith("name:") -> {
                             flush()
-                            curName = entry.removePrefix("name:").trim().trim('\'', '"')
+                            curOptions.add(entry.removePrefix("name:").trim().trim('\'', '"'))
+                        }
+                        // 轮19.152：options 型多态开关（虎整按键纠错 ✓）不再丢弃 ✓
+                        entry.startsWith("options:") -> {
+                            flush()
+                            val inline = entry.removePrefix("options:").trim()
+                            if (inline.startsWith("[")) {
+                                curOptions.addAll(splitYamlList(inline))
+                            } else {
+                                inOptionsBlock = true
+                            }
                         }
                         entry.startsWith("states:") -> {
                             val inline = entry.removePrefix("states:").trim()
                             if (inline.startsWith("[")) {
-                                curStates = inline.trim('[', ']')
-                                    .split(',')
-                                    .map { it.trim().trim('\'', '"') }
-                                    .filter { it.isNotEmpty() }
-                                    .toMutableList()
+                                curStates.addAll(splitYamlList(inline))
                             } else {
                                 inStatesBlock = true
                             }
                         }
-                        // options 型（无 name，不可切换）：丢弃
-                        entry.startsWith("options:") || entry.startsWith("abort:") -> flush()
-                        inStatesBlock && t.startsWith("- ") && curName != null ->
-                            curStates.add(entry.trim().trim('\'', '"'))
+                        entry.startsWith("abbrev:") -> {
+                            val inline = entry.removePrefix("abbrev:").trim()
+                            if (inline.startsWith("[")) {
+                                curAbbrev.addAll(splitYamlList(inline))
+                            } else {
+                                inAbbrevBlock = true
+                            }
+                        }
+                        entry.startsWith("abort:") -> flush()
+                        // 块式列表项（states/options/abbrev 各自的 "- 项" ✓；"- name:" 在上面分支优先 ✓）
+                        t.startsWith("- ") -> when {
+                            inStatesBlock -> curStates.add(entry.trim().trim('\'', '"'))
+                            inOptionsBlock -> curOptions.add(entry.trim().trim('\'', '"'))
+                            inAbbrevBlock -> curAbbrev.add(entry.trim().trim('\'', '"'))
+                        }
                     }
                 }
             }
         }
         flush()
         return result
+    }
+
+    /** 剥掉 `[` `]` 后按逗号拆列表 ✓（每项去引号去空白 ✓） */
+    private fun splitYamlList(inline: String): List<String> =
+        inline.trim('[', ']')
+            .split(',')
+            .map { it.trim().trim('\'', '"') }
+            .filter { it.isNotEmpty() }
+
+    /** 字符串列表的**最长公共前缀** ✓（[按键纠错关,按键纠错弱,…] → 「按键纠错」✓） */
+    private fun commonPrefix(list: List<String>): String {
+        if (list.isEmpty()) return ""
+        var p = list.first()
+        for (s in list) {
+            while (!s.startsWith(p)) p = p.dropLast(1)
+            if (p.isEmpty()) return ""
+        }
+        return p
     }
 
     /**
