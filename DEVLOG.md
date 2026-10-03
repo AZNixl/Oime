@@ -2617,3 +2617,27 @@ java.lang.UnsatisfiedLinkError: dlopen failed: empty/missing DT_HASH in "librime
 - 本机 `compileDebugKotlin` **BUILD SUCCESSFUL** ✓
 - 版本 vc148 → **vc149**（versionName 仍 1.0.5，测试版未发版 ✓）
 - 推 main → CI assembleDebug → 下载产物装机（非 Release ✓）
+
+# 轮19.154：方案开关布局与配色按反馈修正（布尔两列 / 强调色 / XimeSlider 同款滑块）
+
+## 一、用户反馈（对照截图）
+1. **布尔开关一行放两个** ✓（19.153 改成独占一行太浪费 ✗ 回到反馈轮11的两列网格 ✓）；
+   **多态开关才独占一行** ✓
+2. **滑动条和开关跟随强调色** ✗（19.153 用了 M3 默认蓝/淡紫 ⇒ 和键盘主题强调色脱节 ✗）
+3. **滑块样式对齐设置页 XimeSlider** ✓（粗深色轨道 + 强调色已填充段 + 白色竖条 thumb ✓
+   —— 19.153 用 M3 原生 Slider 样子又回到初始风格 ✗）
+
+## 二、实现（KeyboardScreen）
+- 按 schema 顺序分组渲染：**连续布尔两两成行**，遇多态断行、多态独占一行 ✓（remember 分组 ✓）
+- `SchemaBooleanCell`（新组件）：标题左（公共前缀 / 无前缀显示当前档位 ✓）+ M3 Switch 右 ✓
+  - 配色**跟随强调色** ✓：checkedTrack = accentActive / checkedThumb = accentKeyText（on 色 ✓
+    铁律"压强调色用 on 色" ✓）/ unchecked 用 subText·text 灰阶 ✓
+- `SchemaMultiSliderRow`（新组件）：标题 + 当前档位（强调色 ✓）+ **复刻 XimeSlider** ✓：
+  BoxWithConstraints 30dp 高 + 深色轨道 10dp（c.text·0.7 明暗主题都对 ✓）+ accentActive 填充段 ✓
+  + 白色竖条 thumb（8×22dp 描边 ✓）；点按/拖动即时换档 + 震动 ✓
+  **手势结束才提交** ✓（detectHorizontalDragGestures 的 onDragEnd/Cancel ✓ 点按立即提交 ✓）
+- 节点短标签（关/弱/中/强）保留 ✓ 当前档位高亮 ✓
+
+## 三、验证
+- 本机 `compileDebugKotlin` **BUILD SUCCESSFUL** ✓
+- 版本 vc149 → **vc150**（versionName 仍 1.0.5 测试版 ✓）

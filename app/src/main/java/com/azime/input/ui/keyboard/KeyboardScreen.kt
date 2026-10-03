@@ -2118,107 +2118,35 @@ private fun MenuPanel(
                             modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp),
                         )
                     }
-                    // 轮19.153：样式对齐设置页截图 ✓ —— 卡片 + 左标题 + 右侧 **M3 开关**；
-                    // 布尔 = 一行「标题 + Switch」✓；多态 = 标题行（当前档位强调色 ✓）+ Slider ✓
-                    // 拖动/拨动只改本地态，**松手才提交 RIME** ✓
-                    switches.forEach { sw ->
-                        val nNodes = if (sw.options.size == 1) 2 else sw.options.size
-                        var idx by remember(state.schemaName, sw.options) {
-                            mutableStateOf(
-                                if (sw.options.size == 1) {
-                                    if (RimeManager.getOption(sw.options[0])) 1 else 0
-                                } else {
-                                    sw.options.indexOfFirst { RimeManager.getOption(it) }
-                                        .let { if (it < 0) 0 else it }
-                                }
-                            )
-                        }
-                        if (sw.options.size == 1) {
-                            // ── 布尔开关：标题左 + M3 Switch 右 ✓（截图样式 ✓）──
-                            // 标题无公共前缀时（如 ascii_mode）显示**当前档位文案**更友好 ✓
-                            val leftText =
-                                if (sw.title == sw.options[0]) {
-                                    sw.states.getOrElse(idx) { if (idx > 0) "开" else "关" }
-                                } else sw.title
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(c.keyBg, RoundedCornerShape(12.dp))
-                                    .padding(horizontal = 14.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text(
-                                    leftText,
-                                    fontSize = 14.sp,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    color = c.text,
-                                    modifier = Modifier.weight(1f),
-                                )
-                                androidx.compose.material3.Switch(
-                                    checked = idx >= 1,
-                                    onCheckedChange = { v ->
-                                        idx = if (v) 1 else 0
-                                        com.azime.input.core.haptic.HapticsManager.press()
-                                        onAction(KeyAction.SetSwitch(sw.options, idx))
-                                    },
-                                )
+                    // 轮19.153：**布尔开关一行两个 ✓ 多态独占一行 ✓**（用户要求 ✓）
+                    // 按方案内顺序分组：连续布尔两两成行，遇多态即断行 ✓
+                    val switchRows = remember(switches) {
+                        val out = mutableListOf<List<com.azime.input.core.rime.SchemaSwitch>>()
+                        val buf = mutableListOf<com.azime.input.core.rime.SchemaSwitch>()
+                        for (s in switches) {
+                            if (s.options.size == 1) {
+                                buf.add(s)
+                                if (buf.size == 2) { out.add(buf.toList()); buf.clear() }
+                            } else {
+                                if (buf.isNotEmpty()) { out.add(buf.toList()); buf.clear() }
+                                out.add(listOf(s))
                             }
+                        }
+                        if (buf.isNotEmpty()) out.add(buf.toList())
+                        out
+                    }
+                    switchRows.forEach { row ->
+                        if (row.size == 1 && row[0].options.size > 1) {
+                            SchemaMultiSliderRow(row[0], state.schemaName, onAction)
                         } else {
-                            // ── 多态开关：标题 + 当前档位（强调色 ✓）+ Slider（N 节点 ✓）──
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(c.keyBg, RoundedCornerShape(12.dp))
-                                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
                             ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Text(
-                                        sw.title,
-                                        fontSize = 14.sp, fontWeight = FontWeight.Bold,
-                                        maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                        color = c.text,
-                                        modifier = Modifier.weight(1f),
-                                    )
-                                    Text(
-                                        sw.states.getOrElse(idx) { "档${idx + 1}" },
-                                        fontSize = 13.sp, fontWeight = FontWeight.Bold,
-                                        color = c.accentActive,
-                                    )
+                                row.forEach { sw ->
+                                    SchemaBooleanCell(sw, state.schemaName, onAction, Modifier.weight(1f))
                                 }
-                                androidx.compose.material3.Slider(
-                                    value = idx.toFloat(),
-                                    onValueChange = { v ->
-                                        val nv = v.toInt().coerceIn(0, nNodes - 1)
-                                        if (nv != idx) {
-                                            idx = nv
-                                            com.azime.input.core.haptic.HapticsManager.press()
-                                        }
-                                    },
-                                    valueRange = 0f..(nNodes - 1).toFloat(),
-                                    steps = if (nNodes > 2) nNodes - 2 else 0,
-                                    onValueChangeFinished = {
-                                        onAction(KeyAction.SetSwitch(sw.options, idx))
-                                    },
-                                )
-                                // 节点短标签（abbrev / states 去前缀 ✓）均匀铺开 ✓
-                                if (sw.nodeLabels.size == nNodes) {
-                                    Row(modifier = Modifier.fillMaxWidth()) {
-                                        sw.nodeLabels.forEachIndexed { i, lbl ->
-                                            Text(
-                                                lbl,
-                                                fontSize = 10.sp,
-                                                maxLines = 1,
-                                                textAlign = TextAlign.Center,
-                                                color = if (i == idx) c.accentActive else c.subText,
-                                                modifier = Modifier.weight(1f),
-                                            )
-                                        }
-                                    }
-                                }
+                                repeat(2 - row.size) { Spacer(Modifier.weight(1f)) }
                             }
                         }
                         Spacer(Modifier.height(8.dp))
@@ -3562,6 +3490,178 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
  * · 结果**送到工具栏**显示（点选上屏 ✓ 见 KeyboardScreen 顶部的 hwCandidates 分支 ✓）
  * · 悬浮栏**只留一个返回键**，置于**左下角** ✓
  */
+/**
+ * 轮19.153：方案**布尔开关**单元格（两列网格用 ✓）。
+ * 标题左（公共前缀 / 无前缀时显示当前档位文案 ✓）+ **强调色 M3 Switch** 右 ✓
+ * （铁律：压在强调色上的 thumb/icon 用 on 色 = accentKeyText ✓）
+ */
+@Composable
+private fun SchemaBooleanCell(
+    sw: com.azime.input.core.rime.SchemaSwitch,
+    schemaId: String,
+    onAction: (KeyAction) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val c = keyboardColors()
+    var idx by remember(schemaId, sw.options) {
+        mutableStateOf(if (RimeManager.getOption(sw.options[0])) 1 else 0)
+    }
+    val leftText =
+        if (sw.title == sw.options[0]) {
+            sw.states.getOrElse(idx) { if (idx > 0) "开" else "关" }
+        } else sw.title
+    Row(
+        modifier = modifier
+            .background(c.keyBg, RoundedCornerShape(12.dp))
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            leftText,
+            fontSize = 13.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            color = c.text,
+            modifier = Modifier.weight(1f),
+        )
+        androidx.compose.material3.Switch(
+            checked = idx >= 1,
+            onCheckedChange = { v ->
+                idx = if (v) 1 else 0
+                com.azime.input.core.haptic.HapticsManager.press()
+                onAction(KeyAction.SetSwitch(sw.options, idx))
+            },
+            colors = androidx.compose.material3.SwitchDefaults.colors(
+                checkedTrackColor = c.accentActive,
+                checkedThumbColor = c.accentKeyText,
+                checkedIconColor = c.accentKeyText,
+                uncheckedTrackColor = c.subText.copy(alpha = 0.35f),
+                uncheckedThumbColor = c.text,
+                uncheckedBorderColor = c.subText.copy(alpha = 0.6f),
+            ),
+        )
+    }
+}
+
+/**
+ * 轮19.153：方案**多态开关**整行（N 选项 = N 档 ✓）。
+ * 滑块对齐设置页 XimeSlider 样式 ✓：粗深色轨道 + **强调色填充段** + 白色竖条 thumb ✓
+ * 拖动/点按即时换档 + 震动 ✓，**手势结束才提交 RIME** ✓（SetSwitch ✓）
+ */
+@Composable
+private fun SchemaMultiSliderRow(
+    sw: com.azime.input.core.rime.SchemaSwitch,
+    schemaId: String,
+    onAction: (KeyAction) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val c = keyboardColors()
+    val n = sw.options.size
+    var idx by remember(schemaId, sw.options) {
+        mutableStateOf(sw.options.indexOfFirst { RimeManager.getOption(it) }.let { if (it < 0) 0 else it })
+    }
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(c.keyBg, RoundedCornerShape(12.dp))
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                sw.title,
+                fontSize = 14.sp, fontWeight = FontWeight.Bold,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                color = c.text,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                sw.states.getOrElse(idx) { "档${idx + 1}" },
+                fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                color = c.accentActive,
+            )
+        }
+        // 滑块（设置页 XimeSlider 同款 ✓）：深色轨道 + 强调色已填充段 + 白色竖条 thumb ✓
+        val frac = if (n > 1) idx.toFloat() / (n - 1) else 0f
+        androidx.compose.foundation.layout.BoxWithConstraints(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(30.dp)
+                .pointerInput(sw.options, n) {
+                    fun setFromX(x: Float, commit: Boolean) {
+                        val f = (x / size.width.toFloat()).coerceIn(0f, 1f)
+                        val nv = (f * (n - 1)).roundToInt().coerceIn(0, n - 1)
+                        if (nv != idx) {
+                            idx = nv
+                            com.azime.input.core.haptic.HapticsManager.press()
+                        }
+                        if (commit) onAction(KeyAction.SetSwitch(sw.options, idx))
+                    }
+                    detectTapGestures { off -> setFromX(off.x, commit = true) }
+                }
+                .pointerInput(sw.options, n) {
+                    detectHorizontalDragGestures(
+                        onDragEnd = { onAction(KeyAction.SetSwitch(sw.options, idx)) },
+                        onDragCancel = { onAction(KeyAction.SetSwitch(sw.options, idx)) },
+                    ) { change, _ ->
+                        val f = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f)
+                        val nv = (f * (n - 1)).roundToInt().coerceIn(0, n - 1)
+                        if (nv != idx) {
+                            idx = nv
+                            com.azime.input.core.haptic.HapticsManager.press()
+                        }
+                        change.consume()
+                    }
+                },
+            contentAlignment = Alignment.CenterStart,
+        ) {
+            // 深色圆角轨道（跟主题文字色 ⇒ 明暗主题都有对比 ✓）
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(10.dp)
+                    .background(c.text.copy(alpha = 0.7f), RoundedCornerShape(5.dp)),
+            )
+            // 强调色已填充段 ✓
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(frac)
+                    .height(10.dp)
+                    .background(c.accentActive, RoundedCornerShape(5.dp)),
+            )
+            // 白色竖条 thumb（描边保证对比度 ✓ 同设置页 ✓）
+            val density = LocalDensity.current
+            val thumbX = with(density) {
+                (((constraints.maxWidth - 8.dp.toPx()) * frac).coerceAtLeast(0f)).toDp()
+            }
+            Box(
+                modifier = Modifier
+                    .offset(x = thumbX)
+                    .size(8.dp, 22.dp)
+                    .background(Color.White, RoundedCornerShape(4.dp))
+                    .border(1.dp, Color(0x33000000), RoundedCornerShape(4.dp)),
+            )
+        }
+        // 节点短标签（abbrev / states 去前缀 ✓）均匀铺开 ✓
+        if (sw.nodeLabels.size == n) {
+            Row(modifier = Modifier.fillMaxWidth()) {
+                sw.nodeLabels.forEachIndexed { i, lbl ->
+                    Text(
+                        lbl,
+                        fontSize = 10.sp,
+                        maxLines = 1,
+                        textAlign = TextAlign.Center,
+                        color = if (i == idx) c.accentActive else c.subText,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun HandwritingPadPanel(
     totalHeight: androidx.compose.ui.unit.Dp,
