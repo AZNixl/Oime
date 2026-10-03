@@ -2593,3 +2593,27 @@ java.lang.UnsatisfiedLinkError: dlopen failed: empty/missing DT_HASH in "librime
 - 本机 `compileDebugKotlin` **BUILD SUCCESSFUL** ✓（TextAlign 补 import ✓）
 - 解析器用真机方案文件模拟验证 ✓（见上）
 - 版本 vc147 → **vc148**（versionName 仍 1.0.5，未发版 ✓）
+
+# 轮19.153：手写提示精简 + 方案开关对齐设置页开关样式 + 图标改"横线+波浪"
+
+## 一、手写板：去掉括号内提示（用户要求；功能保持 19.152 版本不变 ✓）
+- 空画布占位文字「在此书写（停顿自动识别 ✓ 写完一个再写下一个 ✓）」→「在此书写」✓
+
+## 二、方案开关样式对齐设置页截图（用户要求 + 截图）
+- **布尔开关**：从"状态文字大卡"改成截图样式 —— 一行卡片：**标题左 + M3 Switch 右** ✓
+  - 标题取 states 公共前缀（提前上屏 / 单字重码组句 / 提前上屏至 ✓）；
+    无公共前缀的（ascii_mode / ascii_punct / full_shape）显示**当前档位文案**（中文 / 。，/ 半角 ✓）
+  - 拨动即提交（SetSwitch，index 0/1 ✓）+ 震动 ✓
+- **多态开关**（按键纠错等）：沿用 Slider（N 选项 N 节点 ✓），但卡片/标题/排版与布尔行统一 ✓：
+  标题行 = 标题 + 当前档位（强调色 ✓），下方 Slider + 节点短标签 ✓；
+  Slider 改用 **M3 默认配色**（靠拢截图的蓝 ✓ 不再自定义 track 色 ✓）
+- 交互保持：松手才提交 RIME ✓（onValueChangeFinished ✓）
+
+## 三、语音手写管理图标（用户要求）
+- 「一条波浪线」→「**两边横线 + 中间一上一下的波浪**」✓
+  （`M2.6 12h3` + `M6 12c2-5 4-5 6 0s4 5 6 0` + `M18.4 12h3`，w=1.9 ✓）
+
+## 四、验证与交付
+- 本机 `compileDebugKotlin` **BUILD SUCCESSFUL** ✓
+- 版本 vc148 → **vc149**（versionName 仍 1.0.5，测试版未发版 ✓）
+- 推 main → CI assembleDebug → 下载产物装机（非 Release ✓）

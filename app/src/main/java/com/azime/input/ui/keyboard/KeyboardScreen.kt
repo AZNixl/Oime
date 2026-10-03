@@ -2118,9 +2118,9 @@ private fun MenuPanel(
                             modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp),
                         )
                     }
-                    // 轮19.152：统一改成**滑动开关** ✓（用户要求 ✓）
-                    // 多态开关有几个选项就几个节点 ✓（虎整「按键纠错」= 4 节点 ✓）；
-                    // 布尔开关 = 两节点 ✓。拖动只改本地态，松手才提交 RIME ✓
+                    // 轮19.153：样式对齐设置页截图 ✓ —— 卡片 + 左标题 + 右侧 **M3 开关**；
+                    // 布尔 = 一行「标题 + Switch」✓；多态 = 标题行（当前档位强调色 ✓）+ Slider ✓
+                    // 拖动/拨动只改本地态，**松手才提交 RIME** ✓
                     switches.forEach { sw ->
                         val nNodes = if (sw.options.size == 1) 2 else sw.options.size
                         var idx by remember(state.schemaName, sw.options) {
@@ -2133,61 +2133,90 @@ private fun MenuPanel(
                                 }
                             )
                         }
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(c.keyBg, RoundedCornerShape(12.dp))
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
-                        ) {
+                        if (sw.options.size == 1) {
+                            // ── 布尔开关：标题左 + M3 Switch 右 ✓（截图样式 ✓）──
+                            // 标题无公共前缀时（如 ascii_mode）显示**当前档位文案**更友好 ✓
+                            val leftText =
+                                if (sw.title == sw.options[0]) {
+                                    sw.states.getOrElse(idx) { if (idx > 0) "开" else "关" }
+                                } else sw.title
                             Row(
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(c.keyBg, RoundedCornerShape(12.dp))
+                                    .padding(horizontal = 14.dp, vertical = 6.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Text(
-                                    sw.title,
-                                    fontSize = 14.sp, fontWeight = FontWeight.Bold,
-                                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                    leftText,
+                                    fontSize = 14.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
                                     color = c.text,
                                     modifier = Modifier.weight(1f),
                                 )
-                                Text(
-                                    sw.states.getOrElse(idx) { if (idx > 0) "开" else "关" },
-                                    fontSize = 13.sp, fontWeight = FontWeight.Bold,
-                                    color = c.accentActive,
+                                androidx.compose.material3.Switch(
+                                    checked = idx >= 1,
+                                    onCheckedChange = { v ->
+                                        idx = if (v) 1 else 0
+                                        com.azime.input.core.haptic.HapticsManager.press()
+                                        onAction(KeyAction.SetSwitch(sw.options, idx))
+                                    },
                                 )
                             }
-                            androidx.compose.material3.Slider(
-                                value = idx.toFloat(),
-                                onValueChange = { v ->
-                                    val nv = v.toInt().coerceIn(0, nNodes - 1)
-                                    if (nv != idx) {
-                                        idx = nv
-                                        com.azime.input.core.haptic.HapticsManager.press()
-                                    }
-                                },
-                                valueRange = 0f..(nNodes - 1).toFloat(),
-                                steps = if (nNodes > 2) nNodes - 2 else 0,
-                                onValueChangeFinished = {
-                                    onAction(KeyAction.SetSwitch(sw.options, idx))
-                                },
-                                colors = androidx.compose.material3.SliderDefaults.colors(
-                                    thumbColor = c.accentActive,
-                                    activeTrackColor = c.accentActive,
-                                    inactiveTrackColor = c.subText.copy(alpha = 0.3f),
-                                ),
-                            )
-                            // 节点短标签（abbrev / states 去前缀 ✓）均匀铺开 ✓
-                            if (sw.nodeLabels.size == nNodes) {
-                                Row(modifier = Modifier.fillMaxWidth()) {
-                                    sw.nodeLabels.forEachIndexed { i, lbl ->
-                                        Text(
-                                            lbl,
-                                            fontSize = 10.sp,
-                                            maxLines = 1,
-                                            textAlign = TextAlign.Center,
-                                            color = if (i == idx) c.accentActive else c.subText,
-                                            modifier = Modifier.weight(1f),
-                                        )
+                        } else {
+                            // ── 多态开关：标题 + 当前档位（强调色 ✓）+ Slider（N 节点 ✓）──
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(c.keyBg, RoundedCornerShape(12.dp))
+                                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        sw.title,
+                                        fontSize = 14.sp, fontWeight = FontWeight.Bold,
+                                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                        color = c.text,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    Text(
+                                        sw.states.getOrElse(idx) { "档${idx + 1}" },
+                                        fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                                        color = c.accentActive,
+                                    )
+                                }
+                                androidx.compose.material3.Slider(
+                                    value = idx.toFloat(),
+                                    onValueChange = { v ->
+                                        val nv = v.toInt().coerceIn(0, nNodes - 1)
+                                        if (nv != idx) {
+                                            idx = nv
+                                            com.azime.input.core.haptic.HapticsManager.press()
+                                        }
+                                    },
+                                    valueRange = 0f..(nNodes - 1).toFloat(),
+                                    steps = if (nNodes > 2) nNodes - 2 else 0,
+                                    onValueChangeFinished = {
+                                        onAction(KeyAction.SetSwitch(sw.options, idx))
+                                    },
+                                )
+                                // 节点短标签（abbrev / states 去前缀 ✓）均匀铺开 ✓
+                                if (sw.nodeLabels.size == nNodes) {
+                                    Row(modifier = Modifier.fillMaxWidth()) {
+                                        sw.nodeLabels.forEachIndexed { i, lbl ->
+                                            Text(
+                                                lbl,
+                                                fontSize = 10.sp,
+                                                maxLines = 1,
+                                                textAlign = TextAlign.Center,
+                                                color = if (i == idx) c.accentActive else c.subText,
+                                                modifier = Modifier.weight(1f),
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -3652,7 +3681,8 @@ private fun HandwritingPadPanel(
             }
             if (strokes.isEmpty() && roundAlts.isEmpty()) {
                 Text(
-                    "在此书写（停顿自动识别 ✓ 写完一个再写下一个 ✓）",
+                    // 轮19.153：用户要求去掉括号内的提示 ✓
+                    "在此书写",
                     fontSize = 13.sp, color = c.subText,
                     modifier = Modifier.align(androidx.compose.ui.Alignment.Center),
                 )
