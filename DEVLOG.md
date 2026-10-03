@@ -2657,3 +2657,17 @@ java.lang.UnsatisfiedLinkError: dlopen failed: empty/missing DT_HASH in "librime
 ## 三、验证
 - 本机 `compileDebugKotlin` **BUILD SUCCESSFUL** ✓
 - 版本 vc150 → **vc151**（versionName 仍 1.0.5 测试版 ✓）
+
+# 轮19.156：v1.0.5 正式发版（测试通过 → tag + Release）
+
+## 一、发布文案（按用户审批意见定稿）
+- **README 不再带更新日志** ✗：整段删除「1.0.4 更新要点」（含段尾分隔线），
+  更新日志只留在 **Release about** ✓（用户明确"readme不要带更新日志，其它内容不要动" ✓）
+- Release about / release.yml body：「本版更新」清单换为 v1.0.5 六条
+  （表情退格键事件 / 手写自动清屏 / ⌫ 退格 / 多态开关 / 界面风格 / 图标）✓
+- App 内「关于页 → 本次更新」：UPDATE_LOG_1_0_4 → **UPDATE_LOG_1_0_5**（六条同源 ✓）
+
+## 二、发版清单
+- 版本：vc151 / 1.0.5（1.0.4=vc146 起，19.148~19.155 共八轮测试版迭代 ✓ 用户确认测试无问题 ✓）
+- 流程：推 main → **CI 绿后再打 tag** ✓ → Release 工作流 → 产物核对
+  （签名 CN=Oime / 说明无 Full Changelog / 双 ABI 资产 ✓）

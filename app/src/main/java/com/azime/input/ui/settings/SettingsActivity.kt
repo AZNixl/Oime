@@ -612,7 +612,7 @@ fun SettingsScreen(
                     title = { Text("本次更新（1.0.4）") },
                     text = {
                         Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                            Text(UPDATE_LOG_1_0_4, style = MaterialTheme.typography.bodySmall)
+                            Text(UPDATE_LOG_1_0_5, style = MaterialTheme.typography.bodySmall)
                         }
                     },
                     confirmButton = { TextButton(onClick = { showUpdateLog = false }) { Text("知道了") } },
@@ -3415,19 +3415,15 @@ private fun HandwritingSettingsPage(
  * 只写 **1.0.3 → 1.0.4** 的差异 ✓：本轮开发中「引入后又修掉」的问题（用户从没见过 ✗）
  * 不进这份清单 ✗ 否则用户会看得莫名其妙 ✓
  */
-private val UPDATE_LOG_1_0_4 = """
-本次更新：1.0.4
+private val UPDATE_LOG_1_0_5 = """
+本次更新：1.0.5
 
-· 新增　手写输入（离线识别；模型可在「语音手写管理」里一键下载）
-· 新增　嵌入式三态：不嵌入 / 嵌入编码 / 嵌入首选
-· 新增　「语音手写管理」：语音 + 手写 + 模型下载统一入口
-· 新增　启动向导扩到 7 页（新增「语音输入权限」「联网与模型下载」两步）
-· 变更　设置页统一观感（选中态、并列卡片、备份入口合并）
-· 变更　模型下载支持断点续传；直连失败自动切公益镜像
-· 变更　手写 / 语音手写图标重绘
-· 修复　微信表情要按多次退格才删得掉
-· 修复　联网 API 语音识别不可用
-· 修复　设置页个别条目「点了样式不跟随」
+· 修复　表情退格：酷安、微信等所有"自带表情"的 App 一次删净
+· 新增　手写板：识别后画布自动清空，直接写下一个字
+· 新增　手写板「⌫ 退格」：清笔迹 / 删候选 / 删文本，一个键搞定
+· 新增　方案开关支持多态开关（如按键纠错 关/弱/中/强），滑动调档
+· 变更　方案开关界面统一卡片 / 滑块风格，配色跟随主题强调色
+· 变更　「语音手写管理」图标更新
 """.trimIndent()
 
 private val HANDWRITING_HELP_TEXT = """
