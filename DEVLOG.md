@@ -2641,3 +2641,19 @@ java.lang.UnsatisfiedLinkError: dlopen failed: empty/missing DT_HASH in "librime
 ## 三、验证
 - 本机 `compileDebugKotlin` **BUILD SUCCESSFUL** ✓
 - 版本 vc149 → **vc150**（versionName 仍 1.0.5 测试版 ✓）
+
+# 轮19.155：布尔开关回退 1.0.4 样式（多态滑块保留现版）
+
+## 一、用户反馈
+- 普通开关（布尔）19.153 改的"标题 + M3 Switch 行"不满意 ✗ ⇒ **改回 1.0.4 版本**的样式 ✓：
+  两列卡片网格 —— 状态大字（states[0/1] ✓）+ 选项名小字（✓）；选中 = **强调色底 + on 色** ✓
+  点按整卡切换 ✓（铁律"压强调色用 on 色"依旧遵守 ✓）
+- **多态开关保留现版** ✓（XimeSlider 同款滑块 + 强调色 ✓ 用户要看效果 ✓）
+
+## 二、实现
+- `SchemaBooleanCell` 重写为 1.0.4 卡片式 ✓（仍走 SetSwitch 统一提交路径 ✓ 两列网格布局不变 ✓）
+- `SchemaMultiSliderRow` 不动 ✓
+
+## 三、验证
+- 本机 `compileDebugKotlin` **BUILD SUCCESSFUL** ✓
+- 版本 vc150 → **vc151**（versionName 仍 1.0.5 测试版 ✓）

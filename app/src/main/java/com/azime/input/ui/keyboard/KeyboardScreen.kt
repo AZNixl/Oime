@@ -3491,9 +3491,9 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
  * · 悬浮栏**只留一个返回键**，置于**左下角** ✓
  */
 /**
- * 轮19.153：方案**布尔开关**单元格（两列网格用 ✓）。
- * 标题左（公共前缀 / 无前缀时显示当前档位文案 ✓）+ **强调色 M3 Switch** 右 ✓
- * （铁律：压在强调色上的 thumb/icon 用 on 色 = accentKeyText ✓）
+ * 轮19.155：方案**布尔开关**回退 1.0.4 样式 ✓（用户要求"普通开关改回 1.0.4" ✓）：
+ * 两列卡片网格 —— **状态大字** + 选项名小字；选中 = 强调色底 + on 色 ✓ 点按切换 ✓
+ * （19.153/19.154 的"标题+M3 Switch"行样式弃用 ✗）
  */
 @Composable
 private fun SchemaBooleanCell(
@@ -3506,39 +3506,37 @@ private fun SchemaBooleanCell(
     var idx by remember(schemaId, sw.options) {
         mutableStateOf(if (RimeManager.getOption(sw.options[0])) 1 else 0)
     }
-    val leftText =
-        if (sw.title == sw.options[0]) {
-            sw.states.getOrElse(idx) { if (idx > 0) "开" else "关" }
-        } else sw.title
-    Row(
+    val checked = idx >= 1
+    val stateText = when {
+        sw.states.size >= 2 -> if (checked) sw.states[1] else sw.states[0]
+        sw.states.size == 1 -> if (checked) sw.states[0] else "关"
+        else -> if (checked) "开" else "关"
+    }
+    Column(
         modifier = modifier
-            .background(c.keyBg, RoundedCornerShape(12.dp))
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .background(if (checked) c.accentKeyBg else c.keyBg, RoundedCornerShape(12.dp))
+            .clickable {
+                com.azime.input.core.haptic.HapticsManager.press()
+                idx = if (checked) 0 else 1
+                onAction(KeyAction.SetSwitch(sw.options, idx))
+            }
+            .padding(vertical = 10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
-            leftText,
-            fontSize = 13.sp,
+            stateText,
+            fontSize = 14.sp,
+            maxLines = 1,
+            color = if (checked) c.accentKeyText else c.text,
+            fontWeight = if (checked) FontWeight.Bold else FontWeight.Normal,
+        )
+        Text(
+            sw.options[0],
+            fontSize = 10.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            color = c.text,
-            modifier = Modifier.weight(1f),
-        )
-        androidx.compose.material3.Switch(
-            checked = idx >= 1,
-            onCheckedChange = { v ->
-                idx = if (v) 1 else 0
-                com.azime.input.core.haptic.HapticsManager.press()
-                onAction(KeyAction.SetSwitch(sw.options, idx))
-            },
-            colors = androidx.compose.material3.SwitchDefaults.colors(
-                checkedTrackColor = c.accentActive,
-                checkedThumbColor = c.accentKeyText,
-                checkedIconColor = c.accentKeyText,
-                uncheckedTrackColor = c.subText.copy(alpha = 0.35f),
-                uncheckedThumbColor = c.text,
-                uncheckedBorderColor = c.subText.copy(alpha = 0.6f),
-            ),
+            // 轮19.34：选中态背景是强调色，副标题必须用 on-accent（原来灰字压蓝底看不见）
+            color = if (checked) c.accentKeyText.copy(alpha = 0.85f) else c.subText,
         )
     }
 }
