@@ -879,16 +879,38 @@ object KeyboardManager {
 
     private fun builtinByName(name: String): KeyboardLayout? = when (name) {
         KeyboardPages.qwerty.name -> KeyboardPages.qwerty
+        KeyboardPages.t9.name -> KeyboardPages.t9
+        KeyboardPages.key14.name -> KeyboardPages.key14
         KeyboardPages.symbols.name -> KeyboardPages.symbols
         KeyboardPages.numpad.name -> KeyboardPages.numpad
         else -> null
     }
 
-    /** 全部内置布局名（供键盘编辑器的"布局"列表展示）。 */
+    /** 全部内置布局名（供键盘编辑器的"布局"列表展示）。
+     * 轮19.157：顺序 = 主键盘（26键 / 九宫格 / 十四键）+ 专用页（符号 / 数字）✓ */
     fun builtinLayoutNames(): List<String> = listOf(
         KeyboardPages.qwerty.name,
+        KeyboardPages.t9.name,
+        KeyboardPages.key14.name,
         KeyboardPages.symbols.name,
         KeyboardPages.numpad.name,
+    )
+
+    /** 轮19.157：内置布局的显示名（编辑器 / ○ 菜单用 ✓） */
+    fun builtinDisplayName(name: String): String = when (name) {
+        KeyboardPages.qwerty.name -> "26键"
+        KeyboardPages.t9.name -> "九宫格"
+        KeyboardPages.key14.name -> "十四键"
+        KeyboardPages.symbols.name -> "符号页"
+        KeyboardPages.numpad.name -> "数字页"
+        else -> name
+    }
+
+    /** 轮19.157：主键盘内置布局（编辑器「主键盘」方块 / 默认主键盘下拉 / ○ 菜单切换 ✓） */
+    fun mainBuiltinNames(): List<String> = listOf(
+        KeyboardPages.qwerty.name,
+        KeyboardPages.t9.name,
+        KeyboardPages.key14.name,
     )
 
     // ── 自定义布局 CRUD（供设置页 / 键盘编辑器调用） ──────────

@@ -133,6 +133,11 @@ private fun LayoutListScreen(
     }
     val customs = remember(version) { KeyboardManager.customLayoutNames() }
     var active by remember(version) { mutableStateOf(KeyboardManager.activeMainName()) }
+    // 轮19.157：**默认主键盘**下拉数据（26键 / 九宫格 / 十四键，默认 26键 ✓）
+    val mainChoices = remember(version) {
+        listOf("qwerty", "t9", "key14").map { it to KeyboardManager.builtinDisplayName(it) }
+    }
+    var ddExpanded by remember { mutableStateOf(false) }
 
     fun activate(name: String) {
         KeyboardManager.setActiveMain(name)
@@ -158,24 +163,82 @@ private fun LayoutListScreen(
                 .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
+            // 轮19.157：**默认主键盘**下拉 ✓（26键 / 九宫格 / 十四键，默认 26键 ✓）
+            // 放在「内置布局」上方 ✓；选择即激活该主键盘（= 下次弹键盘用哪个 ✓）
+            item {
+                Column {
+                    Text("默认主键盘", style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(top = 8.dp))
+                    Box {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { ddExpanded = true }
+                                .border(0.5.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(8.dp))
+                                .padding(horizontal = 12.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                mainChoices.firstOrNull { it.first == active }?.second ?: active,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Text("▾", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        DropdownMenu(expanded = ddExpanded, onDismissRequest = { ddExpanded = false }) {
+                            mainChoices.forEach { (n, l) ->
+                                DropdownMenuItem(
+                                    text = { Text(l) },
+                                    onClick = { activate(n); ddExpanded = false },
+                                )
+                            }
+                        }
+                    }
+                }
+            }
             item {
                 Text("内置布局", style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.padding(top = 8.dp))
             }
-            items(builtins, key = { "builtin:$it" }) { name ->
-                // symbols/numpad/emoji 为专用页布局（专用渲染），不可激活为主键盘
-                val assignable = name !in KeyboardManager.ReservedPageNames
+            // 轮19.157：内置布局分两个方块 —— **主键盘**（26键 / 九宫格 / 十四键，顺序固定 ✓）
+            // 与 **专用页键盘**（符号 / 数字，保持不动 ✓）
+            val mainBuiltins = builtins.filter { it in KeyboardManager.mainBuiltinNames() }
+            val pageBuiltins = builtins.filter { it !in KeyboardManager.mainBuiltinNames() }
+            item {
+                Text("主键盘", style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 2.dp))
+            }
+            items(mainBuiltins, key = { "builtin:$it" }) { name ->
                 LayoutCard(
                     name = name,
+                    display = KeyboardManager.builtinDisplayName(name),
                     subtitle = when {
                         active == name -> "使用中"
-                        !assignable -> "内置 · 专用页布局（✏ 编辑）"
                         else -> "内置 · 可复制副本编辑"
                     },
                     active = active == name,
                     custom = false,
-                    onActivate = { if (assignable) activate(name) },
+                    onActivate = { activate(name) },
+                    onEdit = { onEdit(name) },
+                    onDelete = null,
+                )
+            }
+            item {
+                Text("专用页键盘", style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp))
+            }
+            items(pageBuiltins, key = { "builtin-page:$it" }) { name ->
+                // symbols/numpad 为专用页布局（专用渲染），不可激活为主键盘
+                LayoutCard(
+                    name = name,
+                    display = KeyboardManager.builtinDisplayName(name),
+                    subtitle = "内置 · 专用页布局（✏ 编辑）",
+                    active = false,
+                    custom = false,
+                    onActivate = {},
                     onEdit = { onEdit(name) },
                     onDelete = null,
                 )
@@ -218,6 +281,7 @@ private fun LayoutCard(
     onActivate: () -> Unit,
     onEdit: () -> Unit,
     onDelete: (() -> Unit)?,
+    display: String = name,   // 轮19.157：显示名（qwerty→26键 / t9→九宫格 / key14→十四键 ✓）
 ) {
     Card(
         shape = RoundedCornerShape(12.dp),
@@ -236,7 +300,7 @@ private fun LayoutCard(
             Column(Modifier.weight(1f)) {
                 // 轮19.50：选中行底色是强调色 ⇒ 文字/图标必须用 on 色，否则"黑压黑/蓝压蓝"看不见
                 Text(
-                    name,
+                    display,
                     fontWeight = FontWeight.SemiBold,
                     color = if (active) MaterialTheme.colorScheme.onPrimaryContainer
                     else MaterialTheme.colorScheme.onSurface,

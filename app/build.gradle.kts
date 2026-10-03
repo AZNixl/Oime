@@ -56,8 +56,8 @@ android {
         targetSdk = 34
         // 轮19.145：143 → 144（本机出的 debug 测试包，便于装机核对 ✓）
         // 测试通过后再统一升到正式版 1.0.4 ✓
-        versionCode = 151
-        versionName = "1.0.5"
+        versionCode = 152
+        versionName = "1.0.6"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         

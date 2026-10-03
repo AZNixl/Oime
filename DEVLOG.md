@@ -2671,3 +2671,45 @@ java.lang.UnsatisfiedLinkError: dlopen failed: empty/missing DT_HASH in "librime
 - 版本：vc151 / 1.0.5（1.0.4=vc146 起，19.148~19.155 共八轮测试版迭代 ✓ 用户确认测试无问题 ✓）
 - 流程：推 main → **CI 绿后再打 tag** ✓ → Release 工作流 → 产物核对
   （签名 CN=Oime / 说明无 Full Changelog / 双 ABI 资产 ✓）
+
+# 轮19.157：新增九宫格 / 十四键主键盘 + 默认主键盘设置 + ○ 菜单主键盘切换（1.0.6 开发起点）
+
+## 一、需求（用户 + 参考材料）
+- 参考trime2 中文2_T9 / 中文2_14键 基础键盘 lua + 两张其它输入法截图；
+- 先画图确认布局（用户逐条回答 6 个问题 ✓），确认后才写代码 ✓
+
+## 二、用户决策（本轮实现依据）
+1. 笔划行**不要** ✓
+2. 九宫格：左第一列滑动符号键不变 + 123 键保留；逗号/句号 = PQRS **一半宽**，省下的加给空格；
+   最右列**清空删除、符号键上移**；**回车竖跨两行**呈长方形 ✓
+3. 十四键**分词键保留**（`'` 分词符，拼音方案用 ✓）
+4. 中英切换对齐 26 键**空格上滑**；英文时用 **26 键英文键盘** ✓
+5. 专用页（数字/符号）三键盘**共用** ✓
+6. ○ 菜单加**主键盘切换**，**切换即写为默认值** ✓
+7. 编辑器：内置布局分**主键盘**（26键→九宫格→十四键）与**专用页**两方块；
+   内置布局上方加**默认主键盘下拉**（默认 26键）✓
+8. README **不再带更新日志**（1.0.5 起，用户已定 ✓）
+
+## 三、实现
+- **KeyboardPages**：新增 `t9` / `key14` 内置布局（编辑器预览表达 ✓；key14 三行 6 键、行宽与字母行不同为正常 ✓）
+- **KeyboardScreen**：
+  - 新增 **T9Pane** 专用渲染（page=main 且 activeMain=t9 且非英文模式 ✓）：
+    外层一行三段 = [滑键列(3行高滑键+123)] [中间 3 列（数字/字母 + 半宽逗句 + 2 单位空格）] [右列(⌫/符号/⏎ 2 行高)]
+    ——滑键复用 NumpadSliderKey ✓；KeyboardKey 是 **RowScope 扩展** ⇒ 所有键必须包在 Row 里 ✓
+  - **英文回退 26 键** ✓：asciiMode && activeMain≠qwerty ⇒ layout 覆盖为 qwerty
+    （remember 键加 asciiMode ✓；T9Pane 分支加 !asciiMode ✓；切回中文自动恢复 ✓）
+  - ○ 菜单新增「主键盘」子页（三选一卡片，选中=强调色底 ✓ setActiveMain 持久化 ✓）
+- **KeyboardManager**：builtinByName/builtinLayoutNames 注册 t9/key14 ✓；
+  新增 builtinDisplayName（26键/九宫格/十四键/符号页/数字页 ✓）+ mainBuiltinNames() ✓
+  （activeMain 机制轮18 就有 ✓ 直接复用：默认主键盘 = activeMain ✓ 持久化 PREF_ACTIVE_MAIN ✓）
+- **KeyboardEditorActivity**：默认主键盘**下拉**（DropdownMenu ✓）+ 内置布局分两方块 ✓
+  + LayoutCard 加 display 参数（显示 26键/九宫格/十四键 ✓ 路由仍用原名 ✓）
+  - ⚠️ 踩坑：remember/mutableStateOf **不能放在 LazyColumn scope 里**（LazyListScope 非 @Composable ✗）
+    ⇒ 状态声明上移到 composable 顶层 ✓
+- **十四键字母键语义**：与 trime2 基础版一致 —— code = **每对的首字母**（QW→q ✓），
+  26 键编辑器里可自行改键 ✓（组句/拼音行为取决于方案 ✗ 不在本轮范围）
+
+## 四、验证
+- 本机 `compileDebugKotlin` **BUILD SUCCESSFUL** ✓
+- 版本 vc151 → **vc152 / 1.0.6**（测试版 ✓）
+- 待真机验证：九宫格滑键/回车形态 ✓ 十四键布局 ✓ 默认主键盘下拉 ✓ ○ 菜单切换 ✓ 英文回退 26 键 ✓

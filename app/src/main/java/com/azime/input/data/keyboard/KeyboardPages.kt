@@ -300,6 +300,92 @@ object KeyboardPages {
         rev = 4,
     )
 
+    /**
+     * 轮19.157：**九宫格主键盘**（参考 trime2 `中文2_T9 基础键盘` + 用户布局规范）：
+     * 行1: [滑键][1][2 ABC][3 DEF]      右列: ⌫
+     * 行2: [滑键][4 GHI][5 JKL][6 MNO]  右列: 符号（**上移** ✓ 原第三行位）
+     * 行3: [滑键][7 PQRS][8 TUV][9 WXYZ] 右列: ⏎（**竖跨 3、4 两行** ✓）
+     * 行4: [123][，半宽][空格 ×2][。半宽][⏎ 下段]
+     * - 笔划行**不加** ✓（用户要求）；左列 = 滑动符号键（3 行跨 ✓）+ 123 键 ✓
+     * - 逗号 / 句号 = 字母键一半宽，省下的宽度加给空格 ✓
+     * - 实际渲染在 **T9Pane**（滑键跨 3 行 / 回车跨 2 行，行式布局表达不了 ✗），
+     *   本布局是**编辑器预览**表达 ✓（与 numpad 同模式 ✓）
+     */
+    val t9: KeyboardLayout = KeyboardLayout(
+        name = "t9",
+        rows = listOf(
+            row(
+                Key("滑键", code = "slider", width = 1f, type = KeyType.FUNCTION),
+                charKey("1"),
+                Key("ABC", code = "2", width = 1f, type = KeyType.CHARACTER),
+                Key("DEF", code = "3", width = 1f, type = KeyType.CHARACTER),
+                backspace(width = 1f),
+            ),
+            row(
+                Key("滑键", code = "slider", width = 1f, type = KeyType.FUNCTION),
+                Key("GHI", code = "4", width = 1f, type = KeyType.CHARACTER),
+                Key("JKL", code = "5", width = 1f, type = KeyType.CHARACTER),
+                Key("MNO", code = "6", width = 1f, type = KeyType.CHARACTER),
+                Key("符号", code = "symgrid", width = 1f, type = KeyType.FUNCTION),
+            ),
+            row(
+                Key("滑键", code = "slider", width = 1f, type = KeyType.FUNCTION),
+                Key("PQRS", code = "7", width = 1f, type = KeyType.CHARACTER),
+                Key("TUV", code = "8", width = 1f, type = KeyType.CHARACTER),
+                Key("WXYZ", code = "9", width = 1f, type = KeyType.CHARACTER),
+                // 回车**上半**（T9Pane 里与下半连成竖跨 2 行的长方形 ✓）
+                Key("⏎", code = "enter", width = 1f, type = KeyType.ENTER, icon = "enter"),
+            ),
+            row(
+                pageKey("123", target = "numpad", width = 1f),
+                charKey(",", width = 0.5f),
+                space(width = 2f),
+                charKey(".", width = 0.5f),
+                // 回车**下半**（预览占位；T9Pane 里两段连成一体 ✓）
+                Key("", code = "enter", width = 1f, type = KeyType.ENTER, icon = "enter"),
+            ),
+        ),
+        rev = 1,
+    )
+
+    /**
+     * 轮19.157：**十四键主键盘**（参考 trime2 `中文2_14键 基础键盘` + 用户布局规范）：
+     * 26 个字母压进 14 个字母键（每键两字母，code = **首字母** —— 与 trime2 基础版一致，
+     * 键位可在编辑器里自行调整 ✓）；第三行行首**分词键保留**（`'` 分词符，拼音方案用 ✓）；
+     * 底行：符 / 123 / ，/ 空格 / 。/ ⏎（中英切换 = **空格上滑**，切英文跳 26 键 ✓）
+     */
+    private fun pairKey(label: String, code: String): Key =
+        Key(label = label, code = code, width = 1f, type = KeyType.CHARACTER)
+
+    val key14: KeyboardLayout = KeyboardLayout(
+        name = "key14",
+        rows = listOf(
+            row(
+                pairKey("QW", "q"), pairKey("ER", "e"), pairKey("TY", "t"),
+                pairKey("UI", "u"), pairKey("OP", "o"),
+            ),
+            row(
+                pairKey("AS", "a"), pairKey("DF", "d"), pairKey("GH", "g"),
+                pairKey("JK", "j"), pairKey("L", "l"),
+            ),
+            row(
+                // 分词键：上屏 RIME 分词符 `'`（拼音方案组句用 ✓）
+                Key("分词", code = "'", width = 1f, type = KeyType.CHARACTER),
+                pairKey("ZX", "z"), pairKey("CV", "c"), pairKey("BN", "b"), pairKey("M", "m"),
+                backspace(width = 1f),
+            ),
+            row(
+                pageKey("符", target = "symbols", width = 1f),
+                pageKey("123", target = "numpad", width = 1f),
+                charKey(","),
+                space(width = 2f),
+                charKey("."),
+                enter(width = 1f),
+            ),
+        ),
+        rev = 1,
+    )
+
     /** 九宫格左列滑动选符号键的符号带（上下滑动选择，松手上屏）。 */
     val NumpadSliderSymbols: List<String> = listOf(
         "+", "-", "*", "/", "=", "？", "！",
