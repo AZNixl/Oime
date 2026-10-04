@@ -2860,3 +2860,22 @@ java.lang.UnsatisfiedLinkError: dlopen failed: empty/missing DT_HASH in "librime
 
 ## 三、验证
 - `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · 版本 vc156 → **vc157 / 1.0.6** 测试版 ✓
+
+# 轮19.158 续6：symgrid 键恒定符号图标 + 读用户 t9 自定义镜像回车长按
+
+## 一、用户反馈（vc157）
+1. 九宫格最右列第二个键（符号键）：偏好=数字键盘时**不显示图标**、显示"符号"文字 ✗
+   → 根因：用户自定义 t9.json 里该键 **icon 字段为空** ✗（编辑器保存的键位不带 icon ✗）
+   要求"把分类符号网格的符号写入**全部相关信息**" ✓（不能只在偏好=符号页时才显示图标 ✓）
+2. 九宫格回车长按换行仍未生效 ✗
+   → 根因：用户自定义 t9.json **覆盖**了内置 ✗（自定义里 ⏎ 已带 newline ✓ 但内置 行4 占位回车没补 ✓）
+
+## 二、修法
+1. **运行时对 `code == "symgrid"` 的键恒定显示符号图标** ✓（`iconName = "symbols"`）
+   —— 不依赖布局 icon 字段 ✓ ⇒ 自定义布局 / 新建布局一律显示图标 ✓✓
+2. 读取用户 t9.json 自定义 ✓（⏎ 行3 longClick=newline ✓ 123 键 choose_page ✓ 键宽 0.78/1.1467/0.78 ✓）
+   → 内置 t9：**行4 占位回车也补 `ENTER_LONG`** ✓（与用户自定义一致 ✓ 行3 已有 ✓）
+3. 内置 t9 符号键 icon="symbols" 保留 ✓（新装即带图标 ✓）+ 上面运行时常量兜底 ✓
+
+## 三、验证
+- `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · 版本 vc157 → **vc158 / 1.0.6** 测试版 ✓

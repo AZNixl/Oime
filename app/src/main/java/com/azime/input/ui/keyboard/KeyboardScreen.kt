@@ -3420,7 +3420,10 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
         val goesSymbols = pageJumpKey && KeyboardManager.preferredPage() == "symbols"
         val symbolsKeyGoesNumpad = goesNumpad
         val iconName = when {
-            goesSymbols -> "symbols"   // 符号图标 ✓（三个主键盘统一 ✓）
+            // 轮19.158 续6：**symgrid 键恒定符号图标** ✓ —— 不依赖布局里的 icon 字段 ✓
+            // （用户自定义布局往往没写 icon ✗ 于是显示"符号"文字 ✗ 要求"写入全部相关信息" ✓）
+            key.code == "symgrid" -> "symbols"
+            goesSymbols -> "symbols"   // 偏好=符号页 ⇒ 页键也显示符号图标 ✓（三主键盘统一 ✓）
             else -> key.icon
         }
         val labelText = when {

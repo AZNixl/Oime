@@ -367,7 +367,8 @@ object KeyboardPages {
                 Key("。", code = ".", width = T9_HALF_W, type = KeyType.CHARACTER, longClick = "？",
                     popup = listOf("？"), longPressBuiltin = false),
                 // 回车**下半**（预览占位；T9Pane 里两段连成一体 ✓）
-                Key("", code = "enter", width = T9_SIDE_W, type = KeyType.ENTER, icon = "enter"),
+                Key("", code = "enter", width = T9_SIDE_W, type = KeyType.ENTER, icon = "enter",
+                    longClick = KeyActions.ENTER_LONG),
             ),
         ),
         rev = 2, // 轮19.158：键宽对齐数字页（0.78/1.1467/0.78）且编辑器可调 ✓
