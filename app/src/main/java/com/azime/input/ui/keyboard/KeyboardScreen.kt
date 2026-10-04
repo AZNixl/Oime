@@ -3410,19 +3410,22 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
         // 轮19.25：第四行首键（符号/数字入口）的图标跟随设置偏好——26 键符号 ↔ 九宫格
         // 轮19.67（按用户要求修正）：**符号仍是图标**，只有「数字（九宫格）」这一态用文字 123
         val isSymbolsKey = key.code == "symbols"
-        // 轮19.158：页键键面**跟随偏好** ✓（扩展到 numpad / symgrid 页键 ✓ 与点击解析同规则 ✓）：
-        // 十四键/九宫格的「符」「123」键在偏好切换后，键面跟着变（符 ⇄ 123 ✓）
+        // 轮19.158：页键键面**跟随偏好** ✓（symbols / numpad 页键 ✓ symgrid 键固定分类网格 ✓）：
+        // 偏好 = 符号页 ⇒ 页键显示**符号图标** ✓（用户要求"显示 popup 中的图标" ✓ 三个主键盘统一 ✓）
+        // 偏好 = 数字页 ⇒ 页键显示「123」文字 ✓（symgrid 键除外 —— 它固定打开分类符号网格 ✓）
         val pageJumpKey = key.type == KeyType.FUNCTION && state.page == "main" &&
             (key.code == "symbols" || key.code == "numpad" || key.code == "symgrid")
-        val goesNumpad = pageJumpKey && key.code != "numpad" &&
+        val goesNumpad = pageJumpKey && key.code != "symgrid" &&
             KeyboardManager.preferredPage() == "numpad"
-        val goesSymbols = pageJumpKey && key.code == "numpad" &&
-            KeyboardManager.preferredPage() == "symbols"
+        val goesSymbols = pageJumpKey && KeyboardManager.preferredPage() == "symbols"
         val symbolsKeyGoesNumpad = goesNumpad
-        val iconName = if (goesNumpad || goesSymbols) null else key.icon
+        val iconName = when {
+            goesSymbols -> "symbols"   // 符号图标 ✓（三个主键盘统一 ✓）
+            else -> key.icon
+        }
         val labelText = when {
             goesNumpad -> "123"
-            goesSymbols -> "符"
+            goesSymbols -> "符号"       // 有图标时不显示 ✓ 仅作滑动预览等兜底 ✓
             else -> label
         }
         val keyIcon = if (iconName != null && swipePreview == null) {
@@ -4075,11 +4078,8 @@ private fun onKeyAction(key: Key, fromPage: String, onAction: (KeyAction) -> Uni
             } else {
                 onAction(KeyAction.SwitchPage("numpad"))
             }
-            "symgrid" -> if (fromPage == "main" && KeyboardManager.preferredPage() == "numpad") {
-                onAction(KeyAction.SwitchPage("numpad"))
-            } else {
-                onAction(KeyAction.SwitchPage("symgrid"))
-            }
+            // 轮19.158：symgrid 键**固定**打开分类符号网格 ✓（用户要求"应该是打开 symgrid" ✓ 不跟随偏好 ✓）
+            "symgrid" -> onAction(KeyAction.SwitchPage("symgrid"))
             "emoji" -> onAction(KeyAction.SwitchPage("emoji"))
             // lua 布局的自定义 FUNCTION 键：命令 / preset 引用 / 文本上屏（trime2 语义，Service 端解析）
             else -> {

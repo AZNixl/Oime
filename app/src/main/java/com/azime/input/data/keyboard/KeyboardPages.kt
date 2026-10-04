@@ -146,9 +146,12 @@ object KeyboardPages {
     )
 
     /** 符号/页面切换键：长按呼出「默认键盘」选择气泡（26键 / 九宫格数字 / emoji）。 */
-    private fun pageKey(label: String, target: String = "symbols", width: Float = 1.5f, icon: String? = null) = Key(
+    private fun pageKey(
+        label: String, target: String = "symbols", width: Float = 1.5f,
+        icon: String? = null, longClick: String? = KeyActions.SYMBOLS_LONG,
+    ) = Key(
         label = label, code = target, width = width, type = KeyType.FUNCTION, icon = icon,
-        longClick = KeyActions.SYMBOLS_LONG,
+        longClick = longClick,
     )
 
     /**
@@ -299,7 +302,7 @@ object KeyboardPages {
             row(
                 Key("滑键", code = "slider", width = T9_SIDE_W, type = KeyType.FUNCTION),
                 charKey("4", width = T9_MID_W), charKey("5", width = T9_MID_W), charKey("6", width = T9_MID_W),
-                Key("符号", code = "symgrid", width = T9_SIDE_W, type = KeyType.FUNCTION),
+                Key("符号", code = "symgrid", width = T9_SIDE_W, type = KeyType.FUNCTION, icon = "symbols"),
             ),
             row(
                 Key("滑键", code = "slider", width = T9_SIDE_W, type = KeyType.FUNCTION),
@@ -342,7 +345,7 @@ object KeyboardPages {
                 Key("GHI", code = "4", width = T9_MID_W, type = KeyType.CHARACTER),
                 Key("JKL", code = "5", width = T9_MID_W, type = KeyType.CHARACTER),
                 Key("MNO", code = "6", width = T9_MID_W, type = KeyType.CHARACTER),
-                Key("符号", code = "symgrid", width = T9_SIDE_W, type = KeyType.FUNCTION),
+                Key("符号", code = "symgrid", width = T9_SIDE_W, type = KeyType.FUNCTION, icon = "symbols"),
             ),
             row(
                 Key("滑键", code = "slider", width = T9_SIDE_W, type = KeyType.FUNCTION),
@@ -350,7 +353,9 @@ object KeyboardPages {
                 Key("TUV", code = "8", width = T9_MID_W, type = KeyType.CHARACTER),
                 Key("WXYZ", code = "9", width = T9_MID_W, type = KeyType.CHARACTER),
                 // 回车**上半**（T9Pane 里与下半连成竖跨 2 行的长方形 ✓）
-                Key("⏎", code = "enter", width = T9_SIDE_W, type = KeyType.ENTER, icon = "enter"),
+                // 长按 = 换行 ✓（对齐 26 键回车功能 ✓）
+                Key("⏎", code = "enter", width = T9_SIDE_W, type = KeyType.ENTER, icon = "enter",
+                    longClick = KeyActions.ENTER_LONG),
             ),
             row(
                 pageKey("123", target = "numpad", width = T9_SIDE_W),
@@ -410,7 +415,7 @@ object KeyboardPages {
                 backspace(width = 2f),
             ),
             row(
-                pageKey("123", target = "numpad", width = 1.7f),
+                pageKey("123", target = "numpad", width = 1.7f, longClick = KeyActions.SYMBOLS_LONG),
                 Key("，", code = ",", width = 1f, type = KeyType.CHARACTER, longClick = "！",
                     popup = listOf("！"), longPressBuiltin = false),
                 space(width = 4.5f),

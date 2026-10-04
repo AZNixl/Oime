@@ -2839,3 +2839,24 @@ java.lang.UnsatisfiedLinkError: dlopen failed: empty/missing DT_HASH in "librime
 
 ## 三、验证
 - `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · 版本 vc155 → **vc156 / 1.0.6** 测试版 ✓
+
+# 轮19.158 续5：页键图标随偏好显示 + symgrid 键固定分类网格 + T9 回车长按补齐
+
+## 一、用户反馈（vc156 截图）
+1. 三个主键盘的页键，偏好切到"符号页"时**不显示图标**（显示"符"/"123"文字 ✗）
+   → 应显示**符号图标**（= 选择气泡里符号项同款 ✓）
+2. 九宫格最右列第二个键（符号键）应**固定打开分类符号网格（symgrid）** ✓ 并画符号图标 ✓
+3. 九宫格回车键长按没改到 = 换行 ✗（上一轮 python 断言中断，②③④ 未落盘 ✗ 教训：断言失败后必须重跑剩余步骤 ✓）
+
+## 二、修法
+1. **键面跟随偏好重做** ✓：goesSymbols（偏好=符号页）⇒ 页键显示 **symbols 图标** ✓
+   （26键 / 十四键 / 九宫格三键盘统一 ✓）；goesNumpad ⇒ 「123」文字 ✓；
+   symgrid 键除外（固定分类网格 ✓ 不随偏好变 ✓）
+2. **symgrid 键点击固定打开 symgrid** ✓（移除上一轮的偏好跟随分支 ✗）
+3. T9 符号键 / 数字页符号键 **icon = "symbols"** ✓（原来显示"符号"文字 ✗）
+4. T9 回车长按 = **换行**（ENTER_LONG ✓ 对齐 26 键 ✓）
+5. key14 的 123 键长按 = choose_page 显式化 ✓（与用户自定义一致 ✓）
+6. `pageKey` 助手补 longClick 参数 ✓
+
+## 三、验证
+- `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · 版本 vc156 → **vc157 / 1.0.6** 测试版 ✓
