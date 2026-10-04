@@ -129,10 +129,11 @@ object KeyboardManager {
     }
 
     /** 符号页布局（内置；后续可扩展为自定义符号页）。 */
-    fun symbolLayout(): KeyboardLayout = KeyboardPages.symbols
+    /** 符号页布局。轮19.158：**尊重自定义** ✓（原来直接返回内置 ✗ 编辑器改了不生效 ✗） */
+    fun symbolLayout(): KeyboardLayout = loadLayout("symbols") ?: KeyboardPages.symbols
 
-    /** 九宫格数字布局。 */
-    fun numpadLayout(): KeyboardLayout = KeyboardPages.numpad
+    /** 九宫格数字布局。轮19.158：同上 ✓（实际渲染仍是 NumpadPane 专用 Pane ✓ 布局驱动 ✓） */
+    fun numpadLayout(): KeyboardLayout = loadLayout("numpad") ?: KeyboardPages.numpad
 
     /** 按页面名取布局；emoji 页由 UI 层专门渲染，返回 null。 */
     /**

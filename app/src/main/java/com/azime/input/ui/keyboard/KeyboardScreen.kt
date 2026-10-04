@@ -2725,110 +2725,26 @@ private fun CategoryGridPane(
 // 左列 = 3 行高「滑动预览符号」键（上下滑动选择，点击上屏）+ 返回键
 // 中间三列 = 1-0 十个数字 + "." "," 两个符号；右列 = ⌫ / 符号面板 / 空格 / ⏎
 
-@Composable
-private fun NumpadPane(state: KeyboardUiState, onAction: (KeyAction) -> Unit, keyHeight: androidx.compose.ui.unit.Dp) {
-    // 反馈轮9：数字横向 123/456/789 排布（列存 = 1,4,7 / 2,5,8 / 3,6,9）
-    val topRows = listOf(listOf("1", "4", "7"), listOf("2", "5", "8"), listOf("3", "6", "9"))
-    // 轮19.14：第一列（滑键）/第五列（功能键）收窄，中间三列数字加宽（总权重仍为 5）
-    val sideW = 0.78f
-    val midW = (5f - sideW * 2f) / 3f
-    val keyCornerDp = KeyboardManager.keyCornerDp().dp
-    val rowGap = KeyboardManager.rowGapDp().dp
-    val colGap = KeyboardManager.colGapDp().dp
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            // 轮19.2 高度对齐主键盘：垂直内边距必须用 rowGap（原来用 colGap）——
-            // 主键盘 = 4×键高 + 5×行距；九宫格原来 = 4×键高 + 3×行距 + 2×列距，
-            // 行列距不同（用户可调）时切页会看到高度跳变。
-            // 轮19.4：底部同样收敛到 2dp，与主键盘一致。
-            .padding(start = colGap, end = colGap, top = 0.dp, bottom = 2.dp),
-        verticalArrangement = Arrangement.spacedBy(rowGap),
-    ) {
-        // 前 3 行：符号滑键（跨 3 行）+ 数字三列 + 功能三键
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(keyHeight * 3 + rowGap * 2),
-            horizontalArrangement = Arrangement.spacedBy(colGap),
-        ) {
-            NumpadSliderKey(onAction = onAction, modifier = Modifier.weight(sideW).fillMaxSize())
-            topRows.forEach { col ->
-                Column(
-                    modifier = Modifier.weight(midW),
-                    verticalArrangement = Arrangement.spacedBy(rowGap),
-                ) {
-                    col.forEach { digit ->
-                        Row(Modifier.weight(1f)) {
-                            KeyboardKey(
-                                key = Key(digit, code = digit, width = 1f, type = KeyType.CHARACTER),
-                                state = state, onAction = onAction,
-                            )
-                        }
-                    }
-                }
-            }
-            Column(
-                modifier = Modifier.weight(sideW),
-                verticalArrangement = Arrangement.spacedBy(rowGap),
-            ) {
-                listOf(
-                    Key("⌫", code = "backspace", width = 1f, type = KeyType.DELETE, icon = "backspace"),
-                    Key("符号", code = "symgrid", width = 1f, type = KeyType.FUNCTION, icon = "symbols"),
-                    Key("空格", code = "space", width = 1f, type = KeyType.SPACE, icon = "space"),
-                ).forEach { k ->
-                    Row(Modifier.weight(1f)) { KeyboardKey(key = k, state = state, onAction = onAction) }
-                }
-            }
-        }
-        // 第 4 行：返回 + 00 0 . + ⏎（反馈轮9：0 左 = 号、右 . 号；轮19.3：= → 00，
-        // 因为 = 已并入左列滑键符号带）。注意：九宫格实际渲染在本函数内，
-        // 改 KeyboardPages.numpad 只影响编辑器预览，不会生效。
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(keyHeight),
-            horizontalArrangement = Arrangement.spacedBy(colGap),
-        ) {
-            // 与上方各列对齐：返回 / ⏎ 同宽（sideW），四个字符键同宽（midW）
-            KeyboardKey(
-                key = Key("返回", code = "main", width = sideW, type = KeyType.FUNCTION, icon = "back"),
-                state = state, onAction = onAction,
-            )
-            listOf("00", "0", ".").forEach { ch ->
-                KeyboardKey(
-                    key = Key(ch, code = ch, width = midW, type = KeyType.CHARACTER),
-                    state = state, onAction = onAction,
-                )
-            }
-            KeyboardKey(
-                key = Key("⏎", code = "enter", width = sideW, type = KeyType.ENTER, icon = "enter"),
-                state = state, onAction = onAction,
-            )
-        }
-        // 增高行（反馈轮10：九宫格也支持，与主键盘切换时高度一致）
-        // 轮19.3：**不要再加显式 Spacer**——外层 Column 已有 Arrangement.spacedBy(rowGap)，
-        // 显式 Spacer 会多出一个 rowGap，使九宫格比主键盘高 2×rowGap（切页高度跳变根因）。
-        if (KeyboardManager.barEnabled()) {
-            Row(modifier = Modifier.fillMaxWidth().height(KeyboardManager.barHeightDp().dp)) {}
-        }
-    }
-}
-
 /**
- * 轮19.157：**九宫格主键盘**专用渲染（page=main 且 activeMain=t9 ✓）。
- *
- * 结构（外层一行三段，行式布局表达不了跨行键 ✗）：
- *   [滑键(3 行高) + 123] | [4 行键区：3 列字母数字 + 半宽逗句 + 宽空格] | [⌫ / 符号 / ⏎(2 行高)]
- * - 滑键复用 NumpadSliderKey（左列滑动符号带 ✓ 用户要求"滑动符号键不变" ✓）
- * - 逗号 / 句号 = 字母键**一半宽**，省下的宽度给空格（空格 = 2 单位 ✓）
- * - 回车 = **竖跨 2 行**的长方形（右列：⌫ / 符号 / ⏎ ✓ 清空键已删 ✓ 符号键上移 ✓）
- * - 空格上滑 = 切中英 ✓（切英文跳 26 键英文键盘，见 ToggleAscii 处理 ✓）
+ * 轮19.158：九宫格数字页 —— **布局驱动** ✓（编辑器改 numpad 键宽/键位真实生效 ✓，与 T9Pane 同模式）：
+ * 列宽 = 行1 五键 width；中间三列纵向 1/4/7/00、2/5/8/0、3/6/9/. ✓；左列滑键跨 3 行 ✓。
+ * （历史版本键宽写死 ✗ 编辑器只影响预览 ✗ —— 本轮修复 ✓）
  */
 @Composable
-private fun T9Pane(state: KeyboardUiState, onAction: (KeyAction) -> Unit, keyHeight: androidx.compose.ui.unit.Dp) {
+private fun NumpadPane(state: KeyboardUiState, onAction: (KeyAction) -> Unit, keyHeight: androidx.compose.ui.unit.Dp) {
     val rowGap = KeyboardManager.rowGapDp().dp
     val colGap = KeyboardManager.colGapDp().dp
+    val layout = remember(KeyboardManager.layoutRev()) {
+        KeyboardManager.loadLayout("numpad") ?: KeyboardPages.numpad
+    }
+    fun keyAt(r: Int, c: Int): Key =
+        layout.rows.getOrNull(r)?.keys?.getOrNull(c)
+            ?: Key("", code = "spacer", width = 1f, type = KeyType.FUNCTION)
+
+    val wSlider = keyAt(0, 0).width
+    val wMid = keyAt(0, 1).width + keyAt(0, 2).width + keyAt(0, 3).width
+    val wRight = keyAt(0, 4).width
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -2841,107 +2757,138 @@ private fun T9Pane(state: KeyboardUiState, onAction: (KeyAction) -> Unit, keyHei
                 .height(keyHeight * 4 + rowGap * 3),
             horizontalArrangement = Arrangement.spacedBy(colGap),
         ) {
-            // ── 左列：滑动符号键（跨 3 行）+ 123 ✓ ──
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(rowGap),
-            ) {
+            // 左列：滑键（跨 3 行）+ 行4 首键（返回 ✓）
+            Column(modifier = Modifier.weight(wSlider)) {
                 NumpadSliderKey(
                     onAction = onAction,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(3f),
+                        .height(keyHeight * 3 + rowGap * 2),
                 )
-                Row(Modifier.weight(1f)) {
-                    KeyboardKey(
-                        key = Key("123", code = "numpad", width = 1f, type = KeyType.FUNCTION),
-                        state = state, onAction = onAction,
-                    )
+                Row(Modifier.height(keyHeight)) {
+                    KeyboardKey(key = keyAt(3, 0), state = state, onAction = onAction)
                 }
             }
-            // ── 中间 3 列：数字 / 字母 + 半宽逗句 + 宽空格 ──
+            // 中间三列：纵向 1/4/7/00、2/5/8/0、3/6/9/. ✓（键宽来自布局 ✓）
+            for (c in 1..3) {
+                Column(
+                    modifier = Modifier.weight(keyAt(0, c).width),
+                    verticalArrangement = Arrangement.spacedBy(rowGap),
+                ) {
+                    for (r in 0..3) {
+                        Row(Modifier.height(keyHeight)) {
+                            KeyboardKey(key = keyAt(r, c), state = state, onAction = onAction)
+                        }
+                    }
+                }
+            }
+            // 右列：⌫ / 符号 / 空格 / ⏎ ✓
+            Column(modifier = Modifier.weight(wRight)) {
+                for (r in 0..3) {
+                    Row(Modifier.height(keyHeight)) {
+                        KeyboardKey(key = keyAt(r, 4), state = state, onAction = onAction)
+                    }
+                }
+            }
+        }
+        // 增高行（与主键盘一致 ✓ 不加显式 Spacer ✓）
+        if (KeyboardManager.barEnabled()) {
+            Row(modifier = Modifier.fillMaxWidth().height(KeyboardManager.barHeightDp().dp)) {}
+        }
+    }
+}
+
+/**
+ * 轮19.158：**九宫格主键盘**专用渲染 —— **布局驱动** ✓（用户要求在编辑器里调真实键宽 ✓）：
+ * 从 `t9` 布局（loadLayout("t9")，编辑器可改 ✓）读取各键的**键宽 / 键面 / 动作**：
+ *   列宽 = 行1 五键的 width；底行 ，/空格/。 宽度 = 行4 对应键的 width；
+ *   键面与动作全部来自布局键位 ⇒ **编辑器里改了真实生效** ✓
+ * （数字页 numpad 仍是写死的 Pane，编辑器只影响预览 ✗ 历史遗留）
+ * 默认键宽与 NumpadPane 一致（0.78 / 1.1467 / 0.78 ✓）。
+ * 结构（行式布局表达不了跨行键 ✗，外层一行三段）：
+ *   [滑键(3 行高) + 行4 首键] | [中间 3 列 × 4 行] | [⌫ / 符号 / ⏎(2 行高)]
+ */
+@Composable
+private fun T9Pane(state: KeyboardUiState, onAction: (KeyAction) -> Unit, keyHeight: androidx.compose.ui.unit.Dp) {
+    val rowGap = KeyboardManager.rowGapDp().dp
+    val colGap = KeyboardManager.colGapDp().dp
+    val layout = remember(KeyboardManager.layoutRev()) {
+        KeyboardManager.loadLayout("t9") ?: KeyboardPages.t9
+    }
+    fun keyAt(r: Int, c: Int): Key =
+        layout.rows.getOrNull(r)?.keys?.getOrNull(c)
+            ?: Key("", code = "spacer", width = 1f, type = KeyType.FUNCTION)
+
+    // 列宽全部来自布局行 1 的五键 ✓（编辑器可调 ✓）
+    val wSlider = keyAt(0, 0).width
+    val wMid = keyAt(0, 1).width + keyAt(0, 2).width + keyAt(0, 3).width
+    val wRight = keyAt(0, 4).width
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = colGap, end = colGap, top = 0.dp, bottom = 2.dp),
+        verticalArrangement = Arrangement.spacedBy(rowGap),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(keyHeight * 4 + rowGap * 3),
+            horizontalArrangement = Arrangement.spacedBy(colGap),
+        ) {
+            // ── 左列：滑动符号键（跨 3 行）+ 行4 首键（123 ✓）──
+            Column(modifier = Modifier.weight(wSlider)) {
+                NumpadSliderKey(
+                    onAction = onAction,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(keyHeight * 3 + rowGap * 2),
+                )
+                Row(Modifier.height(keyHeight)) {
+                    KeyboardKey(key = keyAt(3, 0), state = state, onAction = onAction)
+                }
+            }
+            // ── 中间 3 列：行1~3 数字/字母 + 行4 半宽逗句 + 宽空格（键宽全部来自布局 ✓）──
             Column(
-                modifier = Modifier.weight(3f),
+                modifier = Modifier.weight(wMid),
                 verticalArrangement = Arrangement.spacedBy(rowGap),
             ) {
-                listOf(
-                    listOf("1", "2", "3"),
-                    listOf("4", "5", "6"),
-                    listOf("7", "8", "9"),
-                ).forEach { rowDigits ->
+                for (r in 0..2) {
                     Row(
-                        modifier = Modifier.fillMaxWidth().weight(1f),
+                        modifier = Modifier.fillMaxWidth().height(keyHeight),
                         horizontalArrangement = Arrangement.spacedBy(colGap),
                     ) {
-                        rowDigits.forEach { d ->
-                            val label = when (d) {
-                                "2" -> "ABC"; "3" -> "DEF"; "4" -> "GHI"; "5" -> "JKL"
-                                "6" -> "MNO"; "7" -> "PQRS"; "8" -> "TUV"; "9" -> "WXYZ"
-                                else -> d
-                            }
-                            Row(Modifier.weight(1f)) {
-                                KeyboardKey(
-                                    key = Key(label, code = d, width = 1f, type = KeyType.CHARACTER),
-                                    state = state, onAction = onAction,
-                                )
+                        for (c in 1..3) {
+                            val k = keyAt(r, c)
+                            Row(Modifier.weight(k.width)) {
+                                KeyboardKey(key = k, state = state, onAction = onAction)
                             }
                         }
                     }
                 }
-                // 底行：，(0.5) + 空格(2) + 。(0.5) —— 权重和 = 3 ✓ 与上方三列对齐 ✓
                 Row(
-                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    modifier = Modifier.fillMaxWidth().height(keyHeight),
                     horizontalArrangement = Arrangement.spacedBy(colGap),
                 ) {
-                    Row(Modifier.weight(0.5f)) {
-                        KeyboardKey(
-                            key = Key("，", code = ",", width = 1f, type = KeyType.CHARACTER),
-                            state = state, onAction = onAction,
-                        )
-                    }
-                    Row(Modifier.weight(2f)) {
-                        KeyboardKey(
-                            key = Key(
-                                label = "", code = "space", width = 1f, type = KeyType.SPACE, icon = "space",
-                                swipeUp = KeyActions.SPACE_LONG,   // 空格上滑 = 切中英 ✓（与 26 键一致 ✓）
-                            ),
-                            state = state, onAction = onAction,
-                        )
-                    }
-                    Row(Modifier.weight(0.5f)) {
-                        KeyboardKey(
-                            key = Key("。", code = ".", width = 1f, type = KeyType.CHARACTER),
-                            state = state, onAction = onAction,
-                        )
+                    for (c in 1..3) {
+                        val k = keyAt(3, c)
+                        Row(Modifier.weight(k.width)) {
+                            KeyboardKey(key = k, state = state, onAction = onAction)
+                        }
                     }
                 }
             }
-            // ── 右列：⌫ / 符号 / ⏎（竖跨 2 行 ✓ 清空已删 ✓ 符号上移 ✓）──
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(rowGap),
-            ) {
+            // ── 右列：⌫ / 符号 / ⏎（⏎ 竖跨 2 行 ✓）──
+            Column(modifier = Modifier.weight(wRight)) {
                 Row(Modifier.height(keyHeight)) {
-                    KeyboardKey(
-                        key = Key(
-                            label = "⌫", code = "backspace", width = 1f, type = KeyType.DELETE, icon = "backspace",
-                            swipeUp = KeyActions.BS_UP, swipeDown = KeyActions.BS_DOWN, swipeLeft = KeyActions.BS_LEFT,
-                        ),
-                        state = state, onAction = onAction,
-                    )
+                    KeyboardKey(key = keyAt(0, 4), state = state, onAction = onAction)
                 }
                 Row(Modifier.height(keyHeight)) {
-                    KeyboardKey(
-                        key = Key("符号", code = "symgrid", width = 1f, type = KeyType.FUNCTION),
-                        state = state, onAction = onAction,
-                    )
+                    KeyboardKey(key = keyAt(1, 4), state = state, onAction = onAction)
                 }
-                // 回车：竖跨 2 行（2×键高 + 1×行距 ✓）
+                // 回车 = 行3 右键，竖跨 2 行（2×键高 + 1×行距 ✓）
                 Row(Modifier.height(keyHeight * 2 + rowGap)) {
-                    KeyboardKey(
-                        key = Key("⏎", code = "enter", width = 1f, type = KeyType.ENTER, icon = "enter"),
-                        state = state, onAction = onAction,
-                    )
+                    KeyboardKey(key = keyAt(2, 4), state = state, onAction = onAction)
                 }
             }
         }
@@ -3143,6 +3090,11 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
         when {
             state.page == "symbols" || key.type != KeyType.CHARACTER -> emptyList()
             custom.isNotEmpty() -> custom
+            // 轮19.158：九宫格 / 十四键主键盘**不套用 26 键内置长按表** ✓
+            // （用户反馈"原有的长按符号无法被覆盖"✗ —— 内置表按字母 code 命中，
+            //   14 键字母对恰好全是字母 ⇒ 编辑器清空/改写后内置值又回来 ✗）
+            // ⇒ 非qwerty主键盘一律以**编辑器键位为准**（默认值已烘焙进 key14 布局 ✓）
+            state.page == "main" && KeyboardManager.activeMainName() != "qwerty" -> emptyList()
             // 轮19.24：随中英自动切换（K 键括号表也有 ASCII 变体）
             else -> com.azime.input.data.keyboard.longPressSymbolsFor(key.code, state.asciiMode)
         }
@@ -3165,7 +3117,10 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
         }
     }
     val hasCustomLong = !key.longClick.isNullOrBlank()
-    val isPageKey = key.type == KeyType.FUNCTION && key.code == "symbols"
+    // 轮19.158：页键判定扩展到**所有页跳转键**（symbols / numpad / symgrid ✓）——
+    // 九宫格 / 十四键的「符号」「123」键长按也能呼出"默认打开页"选择气泡 ✓（用户要求 ✓）
+    val isPageKey = key.type == KeyType.FUNCTION &&
+        (key.code == "symbols" || key.code == "numpad" || key.code == "symgrid")
     // 轮19.43：退格键 + **空格键** 都走长按连发（空格连发 = 像电脑空格键那样连续输入）
     val autoRepeat = key.type == KeyType.DELETE || key.type == KeyType.SPACE
 

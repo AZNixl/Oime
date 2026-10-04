@@ -301,51 +301,64 @@ object KeyboardPages {
     )
 
     /**
+     * 轮19.158：九宫格列宽常量 —— **与 NumpadPane 完全一致** ✓（0.78 / 1.1467 / 0.78）：
+     * 滑键列与功能列收窄、数字列加宽 ✓；逗号/句号 = 字母键一半（0.5733 ✓），
+     * 省下的宽度给空格（2.2933 ✓）。
+     * ⚠️ 这些宽度**可在键盘布局编辑器里修改** ✓ —— T9Pane 从布局数据读列宽（布局驱动 ✓），
+     * 编辑器里改宽度**真实生效** ✓（数字页 numpad 仍是写死的，编辑器只影响预览 ✗ 历史遗留）
+     */
+    const val T9_SIDE_W = 0.78f
+    const val T9_MID_W = 1.1467f
+    const val T9_HALF_W = 0.5733f
+    const val T9_SPACE_W = 2.2933f
+
+    /**
      * 轮19.157：**九宫格主键盘**（参考 trime2 `中文2_T9 基础键盘` + 用户布局规范）：
      * 行1: [滑键][1][2 ABC][3 DEF]      右列: ⌫
      * 行2: [滑键][4 GHI][5 JKL][6 MNO]  右列: 符号（**上移** ✓ 原第三行位）
      * 行3: [滑键][7 PQRS][8 TUV][9 WXYZ] 右列: ⏎（**竖跨 3、4 两行** ✓）
      * 行4: [123][，半宽][空格 ×2][。半宽][⏎ 下段]
      * - 笔划行**不加** ✓（用户要求）；左列 = 滑动符号键（3 行跨 ✓）+ 123 键 ✓
-     * - 逗号 / 句号 = 字母键一半宽，省下的宽度加给空格 ✓
      * - 实际渲染在 **T9Pane**（滑键跨 3 行 / 回车跨 2 行，行式布局表达不了 ✗），
-     *   本布局是**编辑器预览**表达 ✓（与 numpad 同模式 ✓）
+     *   T9Pane **从本布局读键宽/键面/动作** ⇒ 编辑器里改了就真实生效 ✓（轮19.158 ✓）
      */
     val t9: KeyboardLayout = KeyboardLayout(
         name = "t9",
         rows = listOf(
             row(
-                Key("滑键", code = "slider", width = 1f, type = KeyType.FUNCTION),
-                charKey("1"),
-                Key("ABC", code = "2", width = 1f, type = KeyType.CHARACTER),
-                Key("DEF", code = "3", width = 1f, type = KeyType.CHARACTER),
-                backspace(width = 1f),
+                Key("滑键", code = "slider", width = T9_SIDE_W, type = KeyType.FUNCTION),
+                Key("1", code = "1", width = T9_MID_W, type = KeyType.CHARACTER),
+                Key("ABC", code = "2", width = T9_MID_W, type = KeyType.CHARACTER),
+                Key("DEF", code = "3", width = T9_MID_W, type = KeyType.CHARACTER),
+                Key("⌫", code = "backspace", width = T9_SIDE_W, type = KeyType.DELETE, icon = "backspace",
+                    swipeUp = KeyActions.BS_UP, swipeDown = KeyActions.BS_DOWN, swipeLeft = KeyActions.BS_LEFT),
             ),
             row(
-                Key("滑键", code = "slider", width = 1f, type = KeyType.FUNCTION),
-                Key("GHI", code = "4", width = 1f, type = KeyType.CHARACTER),
-                Key("JKL", code = "5", width = 1f, type = KeyType.CHARACTER),
-                Key("MNO", code = "6", width = 1f, type = KeyType.CHARACTER),
-                Key("符号", code = "symgrid", width = 1f, type = KeyType.FUNCTION),
+                Key("滑键", code = "slider", width = T9_SIDE_W, type = KeyType.FUNCTION),
+                Key("GHI", code = "4", width = T9_MID_W, type = KeyType.CHARACTER),
+                Key("JKL", code = "5", width = T9_MID_W, type = KeyType.CHARACTER),
+                Key("MNO", code = "6", width = T9_MID_W, type = KeyType.CHARACTER),
+                Key("符号", code = "symgrid", width = T9_SIDE_W, type = KeyType.FUNCTION),
             ),
             row(
-                Key("滑键", code = "slider", width = 1f, type = KeyType.FUNCTION),
-                Key("PQRS", code = "7", width = 1f, type = KeyType.CHARACTER),
-                Key("TUV", code = "8", width = 1f, type = KeyType.CHARACTER),
-                Key("WXYZ", code = "9", width = 1f, type = KeyType.CHARACTER),
+                Key("滑键", code = "slider", width = T9_SIDE_W, type = KeyType.FUNCTION),
+                Key("PQRS", code = "7", width = T9_MID_W, type = KeyType.CHARACTER),
+                Key("TUV", code = "8", width = T9_MID_W, type = KeyType.CHARACTER),
+                Key("WXYZ", code = "9", width = T9_MID_W, type = KeyType.CHARACTER),
                 // 回车**上半**（T9Pane 里与下半连成竖跨 2 行的长方形 ✓）
-                Key("⏎", code = "enter", width = 1f, type = KeyType.ENTER, icon = "enter"),
+                Key("⏎", code = "enter", width = T9_SIDE_W, type = KeyType.ENTER, icon = "enter"),
             ),
             row(
-                pageKey("123", target = "numpad", width = 1f),
-                charKey(",", width = 0.5f),
-                space(width = 2f),
-                charKey(".", width = 0.5f),
+                pageKey("123", target = "numpad", width = T9_SIDE_W),
+                Key("，", code = ",", width = T9_HALF_W, type = KeyType.CHARACTER),
+                Key("", code = "space", width = T9_SPACE_W, type = KeyType.SPACE, icon = "space",
+                    swipeUp = KeyActions.SPACE_LONG),
+                Key("。", code = ".", width = T9_HALF_W, type = KeyType.CHARACTER),
                 // 回车**下半**（预览占位；T9Pane 里两段连成一体 ✓）
-                Key("", code = "enter", width = 1f, type = KeyType.ENTER, icon = "enter"),
+                Key("", code = "enter", width = T9_SIDE_W, type = KeyType.ENTER, icon = "enter"),
             ),
         ),
-        rev = 1,
+        rev = 2, // 轮19.158：键宽对齐数字页（0.78/1.1467/0.78）且编辑器可调 ✓
     )
 
     /**
@@ -354,36 +367,48 @@ object KeyboardPages {
      * 键位可在编辑器里自行调整 ✓）；第三行行首**分词键保留**（`'` 分词符，拼音方案用 ✓）；
      * 底行：符 / 123 / ，/ 空格 / 。/ ⏎（中英切换 = **空格上滑**，切英文跳 26 键 ✓）
      */
-    private fun pairKey(label: String, code: String): Key =
-        Key(label = label, code = code, width = 1f, type = KeyType.CHARACTER)
+    /**
+     * 轮19.158：十四键字母键 = 每对首字母 + **长按显式烘焙** ✓
+     * （非 qwerty 主键盘不再回落内置长按表 ⇒ 默认值必须写进布局，编辑器可清空/改写 ✓）
+     * 长按值取自 LongPressSymbols（中文模式 ✓ ASCII 变体不适用十四键，可在编辑器自改 ✓）
+     */
+    private fun pairKey(label: String, code: String, longClick: String? = null): Key =
+        Key(
+            label = label, code = code, width = 1f, type = KeyType.CHARACTER,
+            longClick = longClick,
+            popup = longClick?.split(' ')?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList(),
+        )
 
     val key14: KeyboardLayout = KeyboardLayout(
         name = "key14",
         rows = listOf(
             row(
-                pairKey("QW", "q"), pairKey("ER", "e"), pairKey("TY", "t"),
-                pairKey("UI", "u"), pairKey("OP", "o"),
+                pairKey("QW", "q", "1"), pairKey("ER", "e", "3"), pairKey("TY", "t", "5"),
+                pairKey("UI", "u", "7"), pairKey("OP", "o", "9"),
             ),
             row(
-                pairKey("AS", "a"), pairKey("DF", "d"), pairKey("GH", "g"),
-                pairKey("JK", "j"), pairKey("L", "l"),
+                pairKey("AS", "a", "select_all"), pairKey("DF", "d", "@"), pairKey("GH", "g", "/"),
+                pairKey("JK", "j", "+"), pairKey("L", "l", "="),
             ),
             row(
                 // 分词键：上屏 RIME 分词符 `'`（拼音方案组句用 ✓）
                 Key("分词", code = "'", width = 1f, type = KeyType.CHARACTER),
-                pairKey("ZX", "z"), pairKey("CV", "c"), pairKey("BN", "b"), pairKey("M", "m"),
+                pairKey("ZX", "z", "`"), pairKey("CV", "c", "copy"), pairKey("BN", "b", "\""), pairKey("M", "m", "："),
                 backspace(width = 1f),
             ),
             row(
                 pageKey("符", target = "symbols", width = 1f),
                 pageKey("123", target = "numpad", width = 1f),
-                charKey(","),
+                // 轮19.158：逗句长按 = ！？（显式烘焙 ✓）
+                Key("，", code = ",", width = 1f, type = KeyType.CHARACTER, longClick = "！",
+                    popup = listOf("！")),
                 space(width = 2f),
-                charKey("."),
+                Key("。", code = ".", width = 1f, type = KeyType.CHARACTER, longClick = "？",
+                    popup = listOf("？")),
                 enter(width = 1f),
             ),
         ),
-        rev = 1,
+        rev = 2, // 轮19.158：长按显式烘焙（非 qwerty 主键盘不回落内置表 ✓）
     )
 
     /** 九宫格左列滑动选符号键的符号带（上下滑动选择，松手上屏）。 */
