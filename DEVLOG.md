@@ -2893,3 +2893,32 @@ java.lang.UnsatisfiedLinkError: dlopen failed: empty/missing DT_HASH in "librime
 
 ## 二、验证
 - `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · 版本 vc158 → **vc159 / 1.0.6** 测试版 ✓
+
+# 轮19.158 续8：key14 全量镜像用户自定义（含上下滑数字与滑动快捷动作）
+
+## 一、用户反馈
+"对齐 26 键的上滑下滑数字，你没补上呢" —— 我读用户自定义时**只打印了 label/code/width/longClick** ✗
+漏了 swipeUp/swipeDown/swipeLeft/swipeRight ✗ 导致滑动手势没镜像 ✗
+
+## 二、用户自定义实测（key14.json 全字段）
+| 键 | 滑动/长按 |
+|---|---|
+| 行1 QW/ER/TY/UI/OP | **上滑 1/3/5/7/9 + 下滑 2/4/6/8/0** ✓ |
+| AS | 上滑 = 全选 ✓ |
+| DF / GH / JK / L | 长按 = @ / + = ✓ |
+| ZX | 长按 ` + **下滑剪切** ✓ |
+| CV | **上滑复制 + 下滑粘贴** ✓ |
+| BN / M | 长按 " / ： ✓ |
+| ⌫ | 上全删 / 下撤回 / 左选择 ✓（默认带 ✓）|
+| 空格 | 上滑切中英 ✓ |
+| ⏎ / ，。 / 123 | 长按 换行 / ！？ / choose_page ✓ |
+
+## 三、修法
+- `pairKey` 助手补 swipeUp/swipeDown 参数 ✓
+- 内置 key14 **全量重写镜像**（键宽 2.0 / 行4 1.7-1.0-4.5-1.0-1.8 ✓ 全部滑动与长按 ✓）rev 5 ✓
+
+## 四、教训
+读用户自定义做镜像时，**必须打印/核对全部字段**（swipe×4 / hint / icon / height ✗ 不能只看 4 个 ✗）
+
+## 五、验证
+- `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · 版本 vc159 → **vc160 / 1.0.6** 测试版 ✓

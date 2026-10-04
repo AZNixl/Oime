@@ -384,13 +384,18 @@ object KeyboardPages {
      * 轮19.158：十四键字母键 = 每对首字母 + **编辑器完全接管** ✓
      * （`longPressBuiltin = false` ⇒ 不回落内置长按表 ✓ 键位/长按全部编辑器说了算 ✓）
      */
-    private fun pairKey(label: String, code: String, longClick: String? = null): Key =
+    private fun pairKey(
+        label: String, code: String, longClick: String? = null,
+        swipeUp: String? = null, swipeDown: String? = null,
+    ): Key =
         Key(
             // 轮19.158：宽度 = **2.0**（用户自定义实测值 ✓，行总宽 10 与 26 键对齐 ✓）
             label = label, code = code, width = 2f, type = KeyType.CHARACTER,
             longClick = longClick,
             popup = longClick?.split(' ')?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList(),
             longPressBuiltin = false,
+            swipeUp = swipeUp,
+            swipeDown = swipeDown,
         )
 
     /**
@@ -404,28 +409,45 @@ object KeyboardPages {
         name = "key14",
         rows = listOf(
             row(
-                pairKey("QW", "q"), pairKey("ER", "e"), pairKey("TY", "t"),
-                pairKey("UI", "u"), pairKey("OP", "o"),
+                // 轮19.158：行1 **上下滑 = 数字 1~0** ✓（用户自定义 ✓ 与 26 键上滑数字同思路 ✓）
+                pairKey("QW", "q", swipeUp = "1", swipeDown = "2"),
+                pairKey("ER", "e", swipeUp = "3", swipeDown = "4"),
+                pairKey("TY", "t", swipeUp = "5", swipeDown = "6"),
+                pairKey("UI", "u", swipeUp = "7", swipeDown = "8"),
+                pairKey("OP", "o", swipeUp = "9", swipeDown = "0"),
             ),
             row(
-                pairKey("AS", "a"), pairKey("DF", "d", "@"), pairKey("GH", "g", "/"),
-                pairKey("JK", "j", "+"), pairKey("L", "l", "="),
+                // AS：上滑全选 ✓；DF/GH/JK/L：长按 @ / + = ✓
+                pairKey("AS", "a", swipeUp = "select_all"),
+                pairKey("DF", "d", longClick = "@"),
+                pairKey("GH", "g", longClick = "/"),
+                pairKey("JK", "j", longClick = "+"),
+                pairKey("L", "l", longClick = "="),
             ),
             row(
-                pairKey("ZX", "z", "`"), pairKey("CV", "c"), pairKey("BN", "b", "\""), pairKey("M", "m", "："),
+                // ZX：长按 ` + 下滑剪切 ✓；CV：上滑复制 + 下滑粘贴 ✓
+                pairKey("ZX", "z", longClick = "`", swipeDown = "cut"),
+                pairKey("CV", "c", swipeUp = "copy", swipeDown = "paste"),
+                pairKey("BN", "b", longClick = "\""),
+                pairKey("M", "m", longClick = "："),
+                // ⌫：三向滑动（上全删 / 下撤回 / 左选择 ✓ backspace() 默认带 ✓）
                 backspace(width = 2f),
             ),
             row(
                 pageKey("123", target = "numpad", width = 1.7f, longClick = KeyActions.SYMBOLS_LONG),
+                // 逗句长按 = ！/？
                 Key("，", code = ",", width = 1f, type = KeyType.CHARACTER, longClick = "！",
                     popup = listOf("！"), longPressBuiltin = false),
-                space(width = 4.5f),
+                // 空格上滑 = 切中英 ✓
+                Key("", code = "space", width = 4.5f, type = KeyType.SPACE, icon = "space",
+                    swipeUp = KeyActions.SPACE_LONG, longPressBuiltin = false),
                 Key("。", code = ".", width = 1f, type = KeyType.CHARACTER, longClick = "？",
                     popup = listOf("？"), longPressBuiltin = false),
+                // ⏎：长按 = 换行 ✓
                 enter(width = 1.8f),
             ),
         ),
-        rev = 4, // 轮19.158：镜像用户自定义（删分词/符号键 ✓ 键宽/长按按用户值 ✓）
+        rev = 5, // 轮19.158：全量镜像用户自定义（键宽 / 长按 / **上下滑数字与快捷动作** ✓）
     )
 
     /** 九宫格左列滑动选符号键的符号带（上下滑动选择，松手上屏）。 */
