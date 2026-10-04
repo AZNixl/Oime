@@ -2879,3 +2879,17 @@ java.lang.UnsatisfiedLinkError: dlopen failed: empty/missing DT_HASH in "librime
 
 ## 三、验证
 - `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · 版本 vc157 → **vc158 / 1.0.6** 测试版 ✓
+
+# 轮19.158 续7：英文键盘长按符号对齐 26 键 + key14 镜像用户最新自定义
+
+## 一、用户反馈（vc158）
+1. 十四键自定义了符号 ⇒ 读取并写入默认 ✓
+   （用户最新 key14.json：**AS 长按清空**（原 select_all ✓）其余与内置一致 ✓）
+2. **十四键 / 九宫格切英文键盘后"没有符号"** ✗ 要对齐 26 键英文键盘 ✓
+   → 根因：英文模式下渲染的是 **qwerty 布局** ✓ 但"非 qwerty 主键盘不回落内置表"的判断
+     只看了 activeMain（仍是 t9/key14）✗ ⇒ 长按符号被抑制 ✗（英文键盘空白 ✗）
+   → 修法：回落条件加 **`!state.asciiMode`** ✓（英文 ⇒ 渲染 qwerty ⇒ 正常回落 ✓
+     ASCII 变体也随 asciiMode 生效 ✓ 与 26 键英文键盘完全一致 ✓）；提示同规则 ✓
+
+## 二、验证
+- `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · 版本 vc158 → **vc159 / 1.0.6** 测试版 ✓

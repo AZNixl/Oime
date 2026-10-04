@@ -408,7 +408,7 @@ object KeyboardPages {
                 pairKey("UI", "u"), pairKey("OP", "o"),
             ),
             row(
-                pairKey("AS", "a", "select_all"), pairKey("DF", "d", "@"), pairKey("GH", "g", "/"),
+                pairKey("AS", "a"), pairKey("DF", "d", "@"), pairKey("GH", "g", "/"),
                 pairKey("JK", "j", "+"), pairKey("L", "l", "="),
             ),
             row(

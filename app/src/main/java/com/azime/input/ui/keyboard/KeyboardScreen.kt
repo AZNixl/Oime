@@ -3095,7 +3095,10 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
             key.longPressBuiltin == false -> emptyList()
             // 轮19.158 续：**非 qwerty 主键盘不套 26 键内置表** ✓
             // （旧 JSON 无标记字段 = null = 视为 true ✗ 会把用户清空的长按复活 ✗ ⇒ 双重判断 ✓）
-            state.page == "main" && KeyboardManager.activeMainName() != "qwerty" -> emptyList()
+            // ⚠️ 必须排除**英文模式**：英文下渲染的是 qwerty 布局 ✓ 应正常回落 ✓
+            //   （否则九宫格/十四键切英文后长按符号全空 ✗ 用户反馈"英文键盘没有符号" ✗）
+            state.page == "main" && !state.asciiMode &&
+                KeyboardManager.activeMainName() != "qwerty" -> emptyList()
             // 轮19.24：随中英自动切换（K 键括号表也有 ASCII 变体）
             else -> com.azime.input.data.keyboard.longPressSymbolsFor(key.code, state.asciiMode)
         }
@@ -3494,9 +3497,10 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
             ?: firstSymbolOf(key.longClick)
             ?: key.longClick?.takeIf { it.isNotBlank() }?.let { actionDisplayName(it) }
                 ?.takeIf { it != key.longClick }
-            // 轮19.158 续：与长按行为同规则 ✓（非 qwerty 主键盘也不显示内置提示 ✓）
+            // 轮19.158 续：与长按行为同规则 ✓（含英文模式例外 ✓）
             ?: (if (key.longPressBuiltin == false ||
-                    (state.page == "main" && KeyboardManager.activeMainName() != "qwerty")) null
+                    (state.page == "main" && !state.asciiMode &&
+                        KeyboardManager.activeMainName() != "qwerty")) null
                 else com.azime.input.data.keyboard.longPressHint(key.code, state.asciiMode))
         if (swipePreview == null && KeyboardManager.hintLong() && hintText != null && key.type == KeyType.CHARACTER) {
             Text(
