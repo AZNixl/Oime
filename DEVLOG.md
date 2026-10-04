@@ -2790,3 +2790,29 @@ java.lang.UnsatisfiedLinkError: dlopen failed: empty/missing DT_HASH in "librime
 ## 二、验证
 - `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · 版本 vc153 → **vc154 / 1.0.6** 测试版 ✓
 - ⚠️ 踩坑：object 内 `const val` **不能被声明行之前的属性初始化器引用**（前向引用 ✗）⇒ 常量移到 object 顶部 ✓
+
+# 轮19.158 续3：长按三态落库（编辑器与运行时同步）+ 移除 rev 自动删自定义 + 十四键镜像用户布局
+
+## 一、用户反馈（vc154 实测，两条）
+1. **26 键默认符号在编辑器看不到（长按空白），打字时又能出** ✗ 不合理
+   → 上一轮移除预填矫枉过正 ✗：编辑器字段与运行时不同步 ✗
+2. **十四键自定义删掉的键（分词 / 符号键）又"加回来"了** ✗
+   → 根因：`reloadCustomsLocked` 的 **rev 过期机制** —— builtin.rev > custom.rev 即**删除同名自定义** ✗
+     （本轮 builtin rev 2→3 ⇒ 用户自定义 JSON 被静默删除 ✗ 设计与"编辑器接管"方针冲突 ✗）
+
+## 二、修法
+1. **Key 模型加 `longPressBuiltin: Boolean? = true`** ✓（三态落库 ✓ Gson 缺字段=null=视为 true ✓ 兼容旧 JSON ✓）：
+   - true/null → 长按回落内置表 ✓（26 键字母键默认 ✓ 中英变体保留 ✓）
+   - false → 编辑器已显式处理（自定义或**清空**）⇒ **不回落** ✓ 留空即空 ✓
+2. **编辑器对话框**：字段显示**有效值**（内置表键显示内置默认 ✓ 与打字一致 ✓ = 用户要的"同步" ✓）；
+   保存三态：与内置一致且未自定义 ⇒ 保持内置（不烘焙 ✓ 中英变体保留 ✓）；
+   改写 ⇒ 自定义（flag=false ✓）；**留空 ⇒ 显式无长按**（flag=false ✓ 不再复活 ✓）
+3. **移除 rev 自动删自定义** ✓（reloadCustomsLocked ✗ 块删除；rev 仅作热重载信号与记录 ✓）
+4. **key14 内置默认 = 用户自定义布局镜像** ✓（设备 key14.json 读取 ✓）：
+   分词键 / 符号键**删除** ✓（用户实测决定 ✓）；行1~3 键宽 2.0 ✓ 行4 同用户值 ✓；
+   长按按用户 JSON（QW/ER/TY/UI/OP/CV 清空 ✓ AS/DF/GH/JK/L/ZX/BN/M 保留 ✓）；
+   全键 `longPressBuiltin = false` ✓
+5. 长按**提示**同规则 ✓（longPressBuiltin == false ⇒ 不显示内置提示 ✓）
+
+## 三、验证
+- `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · 版本 vc154 → **vc155 / 1.0.6** 测试版 ✓

@@ -81,13 +81,9 @@ object KeyboardManager {
                 file.delete()
                 continue
             }
-            // 与内置同名的旧版本自定义布局视为过期：删除并回退新版内置（防旧 JSON 遮蔽新布局结构）
-            val builtin = builtinByName(layout.name)
-            if (builtin != null && builtin.rev > layout.rev) {
-                file.delete()
-                if (activeMain == layout.name) setActiveMainLocked(builtin.name)
-                continue
-            }
+            // 轮19.158：**不再按 rev 丢弃同名自定义** ✗ —— 编辑器完全接管内置布局后，
+            // 用户对内置布局的自定义（键宽/键位/长按/删键）必须跨版本保留 ✓
+            //（原逻辑：builtin.rev > custom.rev 即删自定义 ✗ 用户删掉的键被"加回来" ✗ 实测 ✓）
             customs[layout.name] = layout
         }
     }

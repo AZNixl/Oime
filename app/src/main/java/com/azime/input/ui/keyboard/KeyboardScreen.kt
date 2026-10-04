@@ -3090,11 +3090,10 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
         when {
             state.page == "symbols" || key.type != KeyType.CHARACTER -> emptyList()
             custom.isNotEmpty() -> custom
-            // 轮19.158：九宫格 / 十四键主键盘**不套用 26 键内置长按表** ✓
-            // （用户反馈"原有的长按符号无法被覆盖"✗ —— 内置表按字母 code 命中，
-            //   14 键字母对恰好全是字母 ⇒ 编辑器清空/改写后内置值又回来 ✗）
-            // ⇒ 非qwerty主键盘一律以**编辑器键位为准**（默认值已烘焙进 key14 布局 ✓）
-            state.page == "main" && KeyboardManager.activeMainName() != "qwerty" -> emptyList()
+            // 轮19.158：**按键上标记回落** ✓（编辑器三态落库 ✓）：
+            // longPressBuiltin == false = 编辑器已显式处理（自定义或清空）⇒ 不回落 ✓
+            // （替换上一版"按 activeMain 抑制"——按键粒度更准 ✓ 九宫格逗句保留 ！？ ✓）
+            key.longPressBuiltin == false -> emptyList()
             // 轮19.24：随中英自动切换（K 键括号表也有 ASCII 变体）
             else -> com.azime.input.data.keyboard.longPressSymbolsFor(key.code, state.asciiMode)
         }
@@ -3475,8 +3474,8 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
             ?: firstSymbolOf(key.longClick)
             ?: key.longClick?.takeIf { it.isNotBlank() }?.let { actionDisplayName(it) }
                 ?.takeIf { it != key.longClick }
-            // 轮19.158：九宫格 / 十四键主键盘不回落内置长按表 ✓（与长按行为同规则 ✓）
-            ?: (if (state.page == "main" && KeyboardManager.activeMainName() != "qwerty") null
+            // 轮19.158：与长按行为同规则 ✓（longPressBuiltin == false ⇒ 不显示内置提示 ✓）
+            ?: (if (key.longPressBuiltin == false) null
                 else com.azime.input.data.keyboard.longPressHint(key.code, state.asciiMode))
         if (swipePreview == null && KeyboardManager.hintLong() && hintText != null && key.type == KeyType.CHARACTER) {
             Text(

@@ -372,9 +372,8 @@ object KeyboardPages {
      * 底行：符 / 123 / ，/ 空格 / 。/ ⏎（中英切换 = **空格上滑**，切英文跳 26 键 ✓）
      */
     /**
-     * 轮19.158：十四键字母键 = 每对首字母 + **长按显式烘焙** ✓
-     * （非 qwerty 主键盘不再回落内置长按表 ⇒ 默认值必须写进布局，编辑器可清空/改写 ✓）
-     * 长按值取自 LongPressSymbols（中文模式 ✓ ASCII 变体不适用十四键，可在编辑器自改 ✓）
+     * 轮19.158：十四键字母键 = 每对首字母 + **编辑器完全接管** ✓
+     * （`longPressBuiltin = false` ⇒ 不回落内置长按表 ✓ 键位/长按全部编辑器说了算 ✓）
      */
     private fun pairKey(label: String, code: String, longClick: String? = null): Key =
         Key(
@@ -382,39 +381,42 @@ object KeyboardPages {
             label = label, code = code, width = 2f, type = KeyType.CHARACTER,
             longClick = longClick,
             popup = longClick?.split(' ')?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList(),
+            longPressBuiltin = false,
         )
 
+    /**
+     * 轮19.158：十四键内置默认 = **用户自定义布局** ✓（从设备 key14.json 镜像 ✓）：
+     * - **分词键与符号键已删** ✓（用户实测删掉后又"加回来"✗ —— 根因是 rev 升级自动删自定义 ✗ 已修 ✓）
+     * - 行1~3 字母键宽 **2.0**（行总宽 10 ✓）；行4：123 1.7 / ，1.0 / 空格 4.5 / 。1.0 / ⏎ 1.8 ✓
+     * - 长按 = 用户 JSON 的值 ✓（QW/ER/TY/UI/OP/CV 用户已清空 = 无长按 ✓）
+     * - 全部键 `longPressBuiltin = false` ⇒ **完全编辑器接管** ✓（内置表不回落 ✓）
+     */
     val key14: KeyboardLayout = KeyboardLayout(
         name = "key14",
         rows = listOf(
             row(
-                pairKey("QW", "q", "1"), pairKey("ER", "e", "3"), pairKey("TY", "t", "5"),
-                pairKey("UI", "u", "7"), pairKey("OP", "o", "9"),
+                pairKey("QW", "q"), pairKey("ER", "e"), pairKey("TY", "t"),
+                pairKey("UI", "u"), pairKey("OP", "o"),
             ),
             row(
                 pairKey("AS", "a", "select_all"), pairKey("DF", "d", "@"), pairKey("GH", "g", "/"),
                 pairKey("JK", "j", "+"), pairKey("L", "l", "="),
             ),
             row(
-                // 分词键：上屏 RIME 分词符 `'`（拼音方案组句用 ✓）
-                Key("分词", code = "'", width = 1f, type = KeyType.CHARACTER),
-                pairKey("ZX", "z", "`"), pairKey("CV", "c", "copy"), pairKey("BN", "b", "\""), pairKey("M", "m", "："),
+                pairKey("ZX", "z", "`"), pairKey("CV", "c"), pairKey("BN", "b", "\""), pairKey("M", "m", "："),
                 backspace(width = 2f),
             ),
             row(
-                // 轮19.158：行4 键宽 = **用户自定义实测值** ✓（与 26 键底行比例一致 ✓）
-                pageKey("符", target = "symbols", width = 1.7f),
                 pageKey("123", target = "numpad", width = 1.7f),
-                // 逗句长按 = ！？（显式烘焙 ✓）
                 Key("，", code = ",", width = 1f, type = KeyType.CHARACTER, longClick = "！",
-                    popup = listOf("！")),
+                    popup = listOf("！"), longPressBuiltin = false),
                 space(width = 4.5f),
                 Key("。", code = ".", width = 1f, type = KeyType.CHARACTER, longClick = "？",
-                    popup = listOf("？")),
+                    popup = listOf("？"), longPressBuiltin = false),
                 enter(width = 1.8f),
             ),
         ),
-        rev = 3, // 轮19.158：键宽采用用户自定义值（行1~3 键宽 2.0 / 行4 同 26 键底行 ✓）
+        rev = 4, // 轮19.158：镜像用户自定义（删分词/符号键 ✓ 键宽/长按按用户值 ✓）
     )
 
     /** 九宫格左列滑动选符号键的符号带（上下滑动选择，松手上屏）。 */

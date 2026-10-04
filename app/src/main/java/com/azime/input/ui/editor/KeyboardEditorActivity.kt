@@ -589,11 +589,24 @@ private fun KeyEditDialog(
     var code by remember { mutableStateOf(key.code) }
     var widthText by remember { mutableStateOf(key.width.toString()) }
     var heightText by remember { mutableStateOf(key.height.toString()) }
-    // 轮19.158：**只显示真实存储值** ✓ —— 原来把内置长按表预填进输入框（轮19.52），
-    // 导致：① 留空保存后重开又"长出"默认符号 ✗ ② 非字母键（⌫/空格）被按 code 首字符
-    // 错误预填（⌫→" 、空格→- ✗ 实测用户布局被烘进垃圾值 ✓）
-    // ⇒ 空 = 无自定义长按 ✓（默认值已显式烘焙进 t9/key14 布局 ✓ qwerty 仍走内置表 ✓）
-    var longClick by remember { mutableStateOf(key.longClick.orEmpty()) }
+    // 轮19.158：**字段显示"有效值"** ✓（编辑器与打字时长按看到的一致 ✓ 用户要求同步 ✓）：
+    // - 键上标记使用内置表（longPressBuiltin != false）→ 显示内置默认（26 键字母键 ✓）
+    // - 键上已有显式 longClick → 显示它 ✓
+    // - 都没有 → 显示空 ✓
+    // 保存三态落库：留空 = 显式无长按（不再回落内置 ✓）；与内置一致 = 保持内置（中英变体保留 ✓）；
+    // 改写 = 自定义 ✓
+    val builtinJoin = com.azime.input.data.keyboard
+        .longPressSymbolsFor(key.code, ascii = false).joinToString(" ")
+    var longClick by remember {
+        mutableStateOf(
+            key.longClick?.takeIf { it.isNotBlank() }
+                ?: (if (key.longPressBuiltin != false) builtinJoin else ""),
+        )
+    }
+    // 保存时判定：字段是否与内置默认一致（一致 ⇒ 保持内置回落 ✓ 不烘焙 ✓）
+    val keepBuiltinOnSave: (String) -> Boolean = { input ->
+        key.longPressBuiltin != false && key.longClick.isNullOrBlank() && input == builtinJoin
+    }
     var swipeUp by remember { mutableStateOf(key.swipeUp ?: "") }
     var swipeDown by remember { mutableStateOf(key.swipeDown ?: "") }
     var swipeLeft by remember { mutableStateOf(key.swipeLeft ?: "") }
@@ -709,7 +722,9 @@ private fun KeyEditDialog(
                         width = width,
                         height = height,
                         type = key.type,
+                        // 轮19.158：**长按三态落库** ✓
                         longClick = longClick.ifBlank { null },
+                        longPressBuiltin = if (keepBuiltinOnSave(longClick.trim())) true else false,
                         swipeUp = swipeUp.ifBlank { null },
                         swipeDown = swipeDown.ifBlank { null },
                         swipeLeft = swipeLeft.ifBlank { null },
@@ -718,7 +733,8 @@ private fun KeyEditDialog(
                         hint = key.hint,
                         // 轮19.24：长按动作与长按符号**合二为一**——同一个字段：
                         // 单个动作/符号 → 直接执行；空格分隔多个 → 长按气泡多选
-                        popup = longClick.split(' ').map { it.trim() }.filter { it.isNotEmpty() },
+                        popup = if (keepBuiltinOnSave(longClick.trim())) emptyList()
+                        else longClick.split(' ').map { it.trim() }.filter { it.isNotEmpty() },
                     )
                 )
             }) { Text("保存") }
