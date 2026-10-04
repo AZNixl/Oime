@@ -382,7 +382,8 @@ private fun GridEditorScreen(initial: KeyboardLayout, onDone: (KeyboardLayout?) 
                 singleLine = true,
             )
             // 九宫格专用：滑键符号带自定义（空格分隔；留空 = 内置默认）
-            if (initial.name == "numpad") {
+            // 轮19.158：**t9 主键盘同样可用** ✓（滑键符号带全局共用一份 ✓ 用户要求 ✓）
+            if (initial.name == "numpad" || initial.name == "t9") {
                 var sliderRaw by remember { mutableStateOf(
                     com.azime.input.core.keyboard.KeyboardManager.sliderSymbolsRaw()
                 ) }
@@ -588,16 +589,11 @@ private fun KeyEditDialog(
     var code by remember { mutableStateOf(key.code) }
     var widthText by remember { mutableStateOf(key.width.toString()) }
     var heightText by remember { mutableStateOf(key.height.toString()) }
-    // 轮19.52：**把默认长按动作写进输入框** —— 原来只有自定义过的键才显示（用户反馈"一部分写一部分没得"）。
-    // 默认值取内置长按符号表（可与长按气泡共存：空格分隔多个即气泡）。
-    var longClick by remember {
-        mutableStateOf(
-            key.longClick?.takeIf { it.isNotBlank() }
-                ?: com.azime.input.data.keyboard
-                    .longPressSymbolsFor(key.code, ascii = false)
-                    .joinToString(" "),
-        )
-    }
+    // 轮19.158：**只显示真实存储值** ✓ —— 原来把内置长按表预填进输入框（轮19.52），
+    // 导致：① 留空保存后重开又"长出"默认符号 ✗ ② 非字母键（⌫/空格）被按 code 首字符
+    // 错误预填（⌫→" 、空格→- ✗ 实测用户布局被烘进垃圾值 ✓）
+    // ⇒ 空 = 无自定义长按 ✓（默认值已显式烘焙进 t9/key14 布局 ✓ qwerty 仍走内置表 ✓）
+    var longClick by remember { mutableStateOf(key.longClick.orEmpty()) }
     var swipeUp by remember { mutableStateOf(key.swipeUp ?: "") }
     var swipeDown by remember { mutableStateOf(key.swipeDown ?: "") }
     var swipeLeft by remember { mutableStateOf(key.swipeLeft ?: "") }

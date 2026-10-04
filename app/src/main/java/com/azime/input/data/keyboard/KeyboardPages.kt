@@ -99,6 +99,18 @@ object KeyActions {
  */
 object KeyboardPages {
 
+    /**
+     * 轮19.158：九宫格列宽常量 —— **与 NumpadPane 完全一致** ✓（0.78 / 1.1467 / 0.78）：
+     * 滑键列与功能列收窄、数字列加宽 ✓；逗号/句号 = 字母键一半（0.5733 ✓），
+     * 省下的宽度给空格（2.2933 ✓）。
+     * ⚠️ 这些宽度**可在键盘布局编辑器里修改** ✓ —— T9Pane 从布局数据读列宽（布局驱动 ✓），
+     * 编辑器里改宽度**真实生效** ✓（数字页 numpad 仍是写死的，编辑器只影响预览 ✗ 历史遗留）
+     */
+    const val T9_SIDE_W = 0.78f
+    const val T9_MID_W = 1.1467f
+    const val T9_HALF_W = 0.5733f
+    const val T9_SPACE_W = 2.2933f
+
     private fun row(vararg keys: Key) = KeyboardRow(keys.toList())
 
     private fun charKey(label: String, width: Float = 1f): Key =
@@ -272,45 +284,37 @@ object KeyboardPages {
      * （实际渲染中左列滑键为跨 3 行的单键，此处以「滑键」占位对齐编辑器预览；
      *   数字横向 123/456/789 排布，0 左 = 号、右 . 号 —— 反馈轮9。）
      */
+    /**
+     * 轮19.158：数字页键宽**恢复与旧硬编码 NumpadPane 一致** ✓
+     * （0.78 / 1.1467 / 0.78 —— 布局驱动改造时误用均分 1.0 ✗ 用户实测"变宽了" ✗ 已恢复 ✓）
+     */
     val numpad: KeyboardLayout = KeyboardLayout(
         name = "numpad",
         rows = listOf(
             row(
-                Key("滑键", code = "slider", width = 1f, type = KeyType.FUNCTION),
-                charKey("1"), charKey("2"), charKey("3"),
-                backspace(width = 1f),
+                Key("滑键", code = "slider", width = T9_SIDE_W, type = KeyType.FUNCTION),
+                charKey("1", width = T9_MID_W), charKey("2", width = T9_MID_W), charKey("3", width = T9_MID_W),
+                backspace(width = T9_SIDE_W),
             ),
             row(
-                Key("滑键", code = "slider", width = 1f, type = KeyType.FUNCTION),
-                charKey("4"), charKey("5"), charKey("6"),
-                Key("符号", code = "symgrid", width = 1f, type = KeyType.FUNCTION),
+                Key("滑键", code = "slider", width = T9_SIDE_W, type = KeyType.FUNCTION),
+                charKey("4", width = T9_MID_W), charKey("5", width = T9_MID_W), charKey("6", width = T9_MID_W),
+                Key("符号", code = "symgrid", width = T9_SIDE_W, type = KeyType.FUNCTION),
             ),
             row(
-                Key("滑键", code = "slider", width = 1f, type = KeyType.FUNCTION),
-                charKey("7"), charKey("8"), charKey("9"),
-                space(width = 1f),
+                Key("滑键", code = "slider", width = T9_SIDE_W, type = KeyType.FUNCTION),
+                charKey("7", width = T9_MID_W), charKey("8", width = T9_MID_W), charKey("9", width = T9_MID_W),
+                space(width = T9_SIDE_W),
             ),
             row(
-                pageKey("abc", target = "main", width = 1f),   // 轮19.66：同上，文字
+                pageKey("abc", target = "main", width = T9_SIDE_W),   // 轮19.66：同上，文字
                 // 轮19.2：原 = 号键改为 00（= 已并入左列滑键符号带）
-                charKey("00"), charKey("0"), charKey("."),
-                enter(width = 1f),
+                charKey("00", width = T9_MID_W), charKey("0", width = T9_MID_W), charKey(".", width = T9_MID_W),
+                enter(width = T9_SIDE_W),
             ),
         ),
-        rev = 4,
+        rev = 5, // 轮19.158：键宽恢复 0.78/1.1467/0.78 ✓
     )
-
-    /**
-     * 轮19.158：九宫格列宽常量 —— **与 NumpadPane 完全一致** ✓（0.78 / 1.1467 / 0.78）：
-     * 滑键列与功能列收窄、数字列加宽 ✓；逗号/句号 = 字母键一半（0.5733 ✓），
-     * 省下的宽度给空格（2.2933 ✓）。
-     * ⚠️ 这些宽度**可在键盘布局编辑器里修改** ✓ —— T9Pane 从布局数据读列宽（布局驱动 ✓），
-     * 编辑器里改宽度**真实生效** ✓（数字页 numpad 仍是写死的，编辑器只影响预览 ✗ 历史遗留）
-     */
-    const val T9_SIDE_W = 0.78f
-    const val T9_MID_W = 1.1467f
-    const val T9_HALF_W = 0.5733f
-    const val T9_SPACE_W = 2.2933f
 
     /**
      * 轮19.157：**九宫格主键盘**（参考 trime2 `中文2_T9 基础键盘` + 用户布局规范）：
@@ -374,7 +378,8 @@ object KeyboardPages {
      */
     private fun pairKey(label: String, code: String, longClick: String? = null): Key =
         Key(
-            label = label, code = code, width = 1f, type = KeyType.CHARACTER,
+            // 轮19.158：宽度 = **2.0**（用户自定义实测值 ✓，行总宽 10 与 26 键对齐 ✓）
+            label = label, code = code, width = 2f, type = KeyType.CHARACTER,
             longClick = longClick,
             popup = longClick?.split(' ')?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList(),
         )
@@ -394,21 +399,22 @@ object KeyboardPages {
                 // 分词键：上屏 RIME 分词符 `'`（拼音方案组句用 ✓）
                 Key("分词", code = "'", width = 1f, type = KeyType.CHARACTER),
                 pairKey("ZX", "z", "`"), pairKey("CV", "c", "copy"), pairKey("BN", "b", "\""), pairKey("M", "m", "："),
-                backspace(width = 1f),
+                backspace(width = 2f),
             ),
             row(
-                pageKey("符", target = "symbols", width = 1f),
-                pageKey("123", target = "numpad", width = 1f),
-                // 轮19.158：逗句长按 = ！？（显式烘焙 ✓）
+                // 轮19.158：行4 键宽 = **用户自定义实测值** ✓（与 26 键底行比例一致 ✓）
+                pageKey("符", target = "symbols", width = 1.7f),
+                pageKey("123", target = "numpad", width = 1.7f),
+                // 逗句长按 = ！？（显式烘焙 ✓）
                 Key("，", code = ",", width = 1f, type = KeyType.CHARACTER, longClick = "！",
                     popup = listOf("！")),
-                space(width = 2f),
+                space(width = 4.5f),
                 Key("。", code = ".", width = 1f, type = KeyType.CHARACTER, longClick = "？",
                     popup = listOf("？")),
-                enter(width = 1f),
+                enter(width = 1.8f),
             ),
         ),
-        rev = 2, // 轮19.158：长按显式烘焙（非 qwerty 主键盘不回落内置表 ✓）
+        rev = 3, // 轮19.158：键宽采用用户自定义值（行1~3 键宽 2.0 / 行4 同 26 键底行 ✓）
     )
 
     /** 九宫格左列滑动选符号键的符号带（上下滑动选择，松手上屏）。 */

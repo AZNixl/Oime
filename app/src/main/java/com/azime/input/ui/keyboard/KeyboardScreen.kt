@@ -2758,7 +2758,7 @@ private fun NumpadPane(state: KeyboardUiState, onAction: (KeyAction) -> Unit, ke
             horizontalArrangement = Arrangement.spacedBy(colGap),
         ) {
             // 左列：滑键（跨 3 行）+ 行4 首键（返回 ✓）
-            Column(modifier = Modifier.weight(wSlider)) {
+            Column(modifier = Modifier.weight(wSlider), verticalArrangement = Arrangement.spacedBy(rowGap)) {
                 NumpadSliderKey(
                     onAction = onAction,
                     modifier = Modifier
@@ -2783,7 +2783,7 @@ private fun NumpadPane(state: KeyboardUiState, onAction: (KeyAction) -> Unit, ke
                 }
             }
             // 右列：⌫ / 符号 / 空格 / ⏎ ✓
-            Column(modifier = Modifier.weight(wRight)) {
+            Column(modifier = Modifier.weight(wRight), verticalArrangement = Arrangement.spacedBy(rowGap)) {
                 for (r in 0..3) {
                     Row(Modifier.height(keyHeight)) {
                         KeyboardKey(key = keyAt(r, 4), state = state, onAction = onAction)
@@ -2837,7 +2837,7 @@ private fun T9Pane(state: KeyboardUiState, onAction: (KeyAction) -> Unit, keyHei
             horizontalArrangement = Arrangement.spacedBy(colGap),
         ) {
             // ── 左列：滑动符号键（跨 3 行）+ 行4 首键（123 ✓）──
-            Column(modifier = Modifier.weight(wSlider)) {
+            Column(modifier = Modifier.weight(wSlider), verticalArrangement = Arrangement.spacedBy(rowGap)) {
                 NumpadSliderKey(
                     onAction = onAction,
                     modifier = Modifier
@@ -2879,7 +2879,7 @@ private fun T9Pane(state: KeyboardUiState, onAction: (KeyAction) -> Unit, keyHei
                 }
             }
             // ── 右列：⌫ / 符号 / ⏎（⏎ 竖跨 2 行 ✓）──
-            Column(modifier = Modifier.weight(wRight)) {
+            Column(modifier = Modifier.weight(wRight), verticalArrangement = Arrangement.spacedBy(rowGap)) {
                 Row(Modifier.height(keyHeight)) {
                     KeyboardKey(key = keyAt(0, 4), state = state, onAction = onAction)
                 }
@@ -3189,7 +3189,7 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
                         longFired = true
                         delay(KeyboardManager.repeatStartMs().toLong())
                         while (pressing) {
-                            onKeyAction(key, onAction)
+                            onKeyAction(key, state.page, onAction)
                             delay(KeyboardManager.repeatIntervalMs().toLong())
                         }
                     }
@@ -3385,7 +3385,7 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
                         longSelIdx = 0
                         showBubble = false
                     }
-                    !longFired -> onKeyAction(key, onAction)
+                    !longFired -> onKeyAction(key, state.page, onAction)
                 }
             }
         }
@@ -3395,7 +3395,7 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
             indication = null,
         ) {
             HapticsManager.press(); com.azime.input.core.sound.SoundManager.playPress()
-            onKeyAction(key, onAction)
+            onKeyAction(key, state.page, onAction)
             HapticsManager.release()
         }
     }
@@ -3475,7 +3475,9 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
             ?: firstSymbolOf(key.longClick)
             ?: key.longClick?.takeIf { it.isNotBlank() }?.let { actionDisplayName(it) }
                 ?.takeIf { it != key.longClick }
-            ?: com.azime.input.data.keyboard.longPressHint(key.code, state.asciiMode)
+            // 轮19.158：九宫格 / 十四键主键盘不回落内置长按表 ✓（与长按行为同规则 ✓）
+            ?: (if (state.page == "main" && KeyboardManager.activeMainName() != "qwerty") null
+                else com.azime.input.data.keyboard.longPressHint(key.code, state.asciiMode))
         if (swipePreview == null && KeyboardManager.hintLong() && hintText != null && key.type == KeyType.CHARACTER) {
             Text(
                 text = hintText,
@@ -4035,7 +4037,7 @@ private fun actionPreview(action: String): String = when (action) {
     }
 }
 
-private fun onKeyAction(key: Key, onAction: (KeyAction) -> Unit) {
+private fun onKeyAction(key: Key, fromPage: String, onAction: (KeyAction) -> Unit) {
     when (key.type) {
         // 轮19.10：多字符 code（如九宫格的 "00"）必须整串上屏——原来取 .first() 只出一个 0
         KeyType.CHARACTER ->
@@ -4051,8 +4053,19 @@ private fun onKeyAction(key: Key, onAction: (KeyAction) -> Unit) {
             "symbols" -> onAction(KeyAction.ToggleSymbols)
             "emoji_back" -> onAction(KeyAction.SwitchPage("main"))
             "main" -> onAction(KeyAction.SwitchPage("main"))
-            "numpad" -> onAction(KeyAction.SwitchPage("numpad"))
-            "symgrid" -> onAction(KeyAction.SwitchPage("symgrid"))
+            // 轮19.158：页键点击**按 preferredPage 偏好解析** ✓（与 26 键 symbols 键同语义 ✓）
+            // 用户反馈：长按选"默认打开符号页"后，点击 123 键仍开数字页 ✗
+            // ⇒ 仅主键盘（page=main）时跟随偏好；专用页内的页键行为不变 ✓
+            "numpad" -> if (fromPage == "main" && KeyboardManager.preferredPage() == "symbols") {
+                onAction(KeyAction.SwitchPage("symbols"))
+            } else {
+                onAction(KeyAction.SwitchPage("numpad"))
+            }
+            "symgrid" -> if (fromPage == "main" && KeyboardManager.preferredPage() == "numpad") {
+                onAction(KeyAction.SwitchPage("numpad"))
+            } else {
+                onAction(KeyAction.SwitchPage("symgrid"))
+            }
             "emoji" -> onAction(KeyAction.SwitchPage("emoji"))
             // lua 布局的自定义 FUNCTION 键：命令 / preset 引用 / 文本上屏（trime2 语义，Service 端解析）
             else -> {
