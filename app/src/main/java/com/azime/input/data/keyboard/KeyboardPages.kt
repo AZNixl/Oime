@@ -354,10 +354,13 @@ object KeyboardPages {
             ),
             row(
                 pageKey("123", target = "numpad", width = T9_SIDE_W),
-                Key("，", code = ",", width = T9_HALF_W, type = KeyType.CHARACTER),
+                // 逗句长按 = ！/？（对齐 26 键逗句长按 ✓ 功能键全对齐 ✓）
+                Key("，", code = ",", width = T9_HALF_W, type = KeyType.CHARACTER, longClick = "！",
+                    popup = listOf("！"), longPressBuiltin = false),
                 Key("", code = "space", width = T9_SPACE_W, type = KeyType.SPACE, icon = "space",
-                    swipeUp = KeyActions.SPACE_LONG),
-                Key("。", code = ".", width = T9_HALF_W, type = KeyType.CHARACTER),
+                    swipeUp = KeyActions.SPACE_LONG, longPressBuiltin = false),
+                Key("。", code = ".", width = T9_HALF_W, type = KeyType.CHARACTER, longClick = "？",
+                    popup = listOf("？"), longPressBuiltin = false),
                 // 回车**下半**（预览占位；T9Pane 里两段连成一体 ✓）
                 Key("", code = "enter", width = T9_SIDE_W, type = KeyType.ENTER, icon = "enter"),
             ),

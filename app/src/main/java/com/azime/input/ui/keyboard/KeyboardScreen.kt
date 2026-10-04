@@ -3092,8 +3092,10 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
             custom.isNotEmpty() -> custom
             // 轮19.158：**按键上标记回落** ✓（编辑器三态落库 ✓）：
             // longPressBuiltin == false = 编辑器已显式处理（自定义或清空）⇒ 不回落 ✓
-            // （替换上一版"按 activeMain 抑制"——按键粒度更准 ✓ 九宫格逗句保留 ！？ ✓）
             key.longPressBuiltin == false -> emptyList()
+            // 轮19.158 续：**非 qwerty 主键盘不套 26 键内置表** ✓
+            // （旧 JSON 无标记字段 = null = 视为 true ✗ 会把用户清空的长按复活 ✗ ⇒ 双重判断 ✓）
+            state.page == "main" && KeyboardManager.activeMainName() != "qwerty" -> emptyList()
             // 轮19.24：随中英自动切换（K 键括号表也有 ASCII 变体）
             else -> com.azime.input.data.keyboard.longPressSymbolsFor(key.code, state.asciiMode)
         }
@@ -3408,9 +3410,21 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
         // 轮19.25：第四行首键（符号/数字入口）的图标跟随设置偏好——26 键符号 ↔ 九宫格
         // 轮19.67（按用户要求修正）：**符号仍是图标**，只有「数字（九宫格）」这一态用文字 123
         val isSymbolsKey = key.code == "symbols"
-        val symbolsKeyGoesNumpad = isSymbolsKey && KeyboardManager.preferredPage() == "numpad"
-        val iconName = if (symbolsKeyGoesNumpad) null else key.icon
-        val labelText = if (symbolsKeyGoesNumpad) "123" else label
+        // 轮19.158：页键键面**跟随偏好** ✓（扩展到 numpad / symgrid 页键 ✓ 与点击解析同规则 ✓）：
+        // 十四键/九宫格的「符」「123」键在偏好切换后，键面跟着变（符 ⇄ 123 ✓）
+        val pageJumpKey = key.type == KeyType.FUNCTION && state.page == "main" &&
+            (key.code == "symbols" || key.code == "numpad" || key.code == "symgrid")
+        val goesNumpad = pageJumpKey && key.code != "numpad" &&
+            KeyboardManager.preferredPage() == "numpad"
+        val goesSymbols = pageJumpKey && key.code == "numpad" &&
+            KeyboardManager.preferredPage() == "symbols"
+        val symbolsKeyGoesNumpad = goesNumpad
+        val iconName = if (goesNumpad || goesSymbols) null else key.icon
+        val labelText = when {
+            goesNumpad -> "123"
+            goesSymbols -> "符"
+            else -> label
+        }
         val keyIcon = if (iconName != null && swipePreview == null) {
             com.azime.input.ui.icons.OimeIcons.byName(iconName)
         } else null
@@ -3474,8 +3488,9 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
             ?: firstSymbolOf(key.longClick)
             ?: key.longClick?.takeIf { it.isNotBlank() }?.let { actionDisplayName(it) }
                 ?.takeIf { it != key.longClick }
-            // 轮19.158：与长按行为同规则 ✓（longPressBuiltin == false ⇒ 不显示内置提示 ✓）
-            ?: (if (key.longPressBuiltin == false) null
+            // 轮19.158 续：与长按行为同规则 ✓（非 qwerty 主键盘也不显示内置提示 ✓）
+            ?: (if (key.longPressBuiltin == false ||
+                    (state.page == "main" && KeyboardManager.activeMainName() != "qwerty")) null
                 else com.azime.input.data.keyboard.longPressHint(key.code, state.asciiMode))
         if (swipePreview == null && KeyboardManager.hintLong() && hintText != null && key.type == KeyType.CHARACTER) {
             Text(
