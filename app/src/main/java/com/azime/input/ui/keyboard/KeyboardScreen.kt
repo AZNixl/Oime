@@ -143,6 +143,11 @@ sealed interface KeyAction {
     data class Candidate(val index: Int) : KeyAction
     /** 轮19.159：**按全部候选的全局下标选候选** ✓（面板点击 → 跳页 + 页内选择 ✓）。 */
     data class CandidateGlobal(val index: Int) : KeyAction
+    /**
+     * 轮19.161：**笔划筛选** ✓ —— [stroke] = "h"/"s"/"p"/"n"/"z" 追加筛选；
+     * null = ✕ **清除**（反向删除已追加的笔划 ✓）。对齐 trime2 脚本语义 ✓
+     */
+    data class StrokeFilter(val stroke: String?) : KeyAction
     data object PageDown : KeyAction
     data class SelectSchema(val schemaId: String) : KeyAction
     /** ○ 菜单「方案组」（轮18 trime2 架构）：切换方案组（记录组 id + 重启进程）。 */
@@ -238,6 +243,11 @@ data class KeyboardUiState(
     val allCandidates: List<Candidate> = emptyList(),
     /** 全部候选的**每页数量**（按下标定位：页 = idx / pageSize，页内偏移 = idx % pageSize ✓）。 */
     val allCandPageSize: Int = 5,
+    /**
+     * 轮19.161：**笔划筛选**已叠加的笔划标签（一/丨/丿/丶/乙 ✓，空 = 未筛选 ✓）。
+     * 对齐 trime2「候选面板显示优化.lua」的 filterStroke 语义 ✓（h/s/p/n/z 追加进输入 ✓）。
+     */
+    val strokeFilter: List<String> = emptyList(),
     val preedit: String = "",
     val asciiMode: Boolean = false,
     val shiftOn: Boolean = false,
@@ -2491,20 +2501,57 @@ private fun CandidatePanel(state: KeyboardUiState, onAction: (KeyAction) -> Unit
             .padding(horizontal = KeySpacing, vertical = KeySpacing),
         verticalArrangement = Arrangement.spacedBy(KeySpacing),
     ) {
-        // 顶行：标题 + 总数 + 收起（翻页箭头已移除 ✓ 全部候选无需翻页 ✓）
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        // 顶栏：标题 + 数量（+ 已筛选笔划）+ **笔划筛选按钮横排**（方案 B ✓）+ 收起
+        // 用 FlowRow ⇒ 窄屏自动折行，不会挤爆 ✓
+        androidx.compose.foundation.layout.FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
             Text("全部候选", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = c.text)
-            if (list.isNotEmpty()) {
-                Text(" ${list.size}", fontSize = 12.sp, color = c.subText)
+            Text(
+                if (state.strokeFilter.isEmpty()) "${list.size}"
+                else "${list.size} · ${state.strokeFilter.joinToString("")}",
+                fontSize = 12.sp,
+                color = c.subText,
+                maxLines = 1,
+            )
+            // 笔划筛选：一丨丿丶乙（可连续叠加 ✓ 选中态高亮 ✓ 对齐 trime2 脚本 ✓）
+            StrokeButtons.forEach { (label, key) ->
+                val on = state.strokeFilter.contains(label)
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .background(if (on) c.accentKeyBg else c.funcKeyBg, RoundedCornerShape(8.dp))
+                        .clickable {
+                            com.azime.input.core.haptic.HapticsManager.press()
+                            onAction(KeyAction.StrokeFilter(key))
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(label, fontSize = 15.sp, color = if (on) c.accentKeyText else c.text)
+                }
             }
-            Spacer(Modifier.weight(1f))
+            // ✕ 清除筛选（反向删除已追加的笔划 ✓）
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .background(c.funcKeyBg, RoundedCornerShape(8.dp))
+                    .clickable {
+                        com.azime.input.core.haptic.HapticsManager.press()
+                        onAction(KeyAction.StrokeFilter(null))
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("✕", fontSize = 13.sp, color = c.subText)
+            }
             Text(
                 "收起 ▲",
                 fontSize = 12.sp,
                 color = c.subText,
                 modifier = Modifier
                     .clickable { onAction(KeyAction.ToggleCandidatePanel) }
-                    .padding(horizontal = 6.dp, vertical = 4.dp),
+                    .padding(horizontal = 6.dp, vertical = 6.dp),
             )
         }
         if (list.isEmpty()) {
@@ -2576,6 +2623,14 @@ private fun CandidatePanel(state: KeyboardUiState, onAction: (KeyAction) -> Unit
 // ── emoji 键盘 ───────────────────────────────────────────────
 
 // ── 分类网格键盘（emoji / 符号共用）：标签行 + 左右滑动翻页 ──
+
+/**
+ * 轮19.161：**笔划筛选按钮**（标签 → 键值 ✓ 对齐 trime2「候选面板显示优化.lua」的 strokes 表 ✓）。
+ * 键值追加进输入收窄候选 ✓；✕ 清除（反向删除 ✓）✓
+ */
+private val StrokeButtons: List<Pair<String, String>> = listOf(
+    "一" to "h", "丨" to "s", "丿" to "p", "丶" to "n", "乙" to "z",
+)
 
 /** 分类网格键盘数据源：标题 + (分类标签, 内容列表)。 */
 private data class CategoryGridData(

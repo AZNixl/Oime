@@ -1095,6 +1095,30 @@ class AZimeService : InputMethodService() {
                     if (selected.isNotEmpty()) pushUndo(selected)
                     applyResult(RimeManager.getProcessResult())
                 }
+                // 轮19.161：**笔划筛选** ✓（对齐 trime2 脚本：h/s/p/n/z 追加进输入收窄候选 ✓
+                // ✕ = 反向删除已追加的笔划 ✓ 可连续叠加 ✓ 面板不关 ✓）
+                is KeyAction.StrokeFilter -> {
+                    if (action.stroke == null) {
+                        if (strokeApplied.isNotEmpty()) {
+                            repeat(strokeApplied.length) { RimeManager.processKey(RimeManager.KEY_BACKSPACE) }
+                            strokeApplied.setLength(0)
+                            uiState.update { it.copy(strokeFilter = emptyList()) }
+                            applyResult(RimeManager.getProcessResult())
+                        }
+                    } else {
+                        val ch = action.stroke.firstOrNull()
+                        if (ch != null) {
+                            val r = RimeManager.processKey(ch.code)
+                            if (r.processed) {
+                                strokeApplied.append(ch)
+                                uiState.update {
+                                    it.copy(strokeFilter = strokeApplied.toString().map { k -> strokeLabel[k] ?: "" })
+                                }
+                                applyResult(RimeManager.getProcessResult())
+                            }
+                        }
+                    }
+                }
                 KeyAction.PageUp -> {
                     // 轮19.159：同上修正（原 0xFF54 = XK_Down ✗ ⇒ 改成 0xFF55 = XK_Prior/PageUp ✓）
                     RimeManager.processKey(KEY_PAGE_UP)
@@ -1441,6 +1465,14 @@ class AZimeService : InputMethodService() {
      * （键事件路径拿不到 App 实际删除量，按识别出的 token 长度记 ——
      *   普通文本精确 ✓ 短代码表情在识别出时也精确 ✓ 未知格式宁少勿多 ✓）
      */
+    /** 轮19.161：**笔划筛选**已追加的键（h/s/p/n/z ✓ 清除时反向删除 ✓ 对齐 trime2 脚本 ✓）。 */
+    private val strokeApplied = StringBuilder()
+
+    /** 轮19.161：笔划键 → 标签（对齐 trime2「候选面板显示优化.lua」的 strokes 表 ✓）。 */
+    private val strokeLabel: Map<Char, String> = mapOf(
+        'h' to "一", 's' to "丨", 'p' to "丿", 'n' to "丶", 'z' to "乙",
+    )
+
     /**
      * 轮19.159：**逐页收集全部候选** ✓（用户要求"全部显示 + 上下滑动"✓ 参考 trime2 脚本语义 ✓）
      * 步骤：先回首页 → 逐页 PageDown 收集 → **回到原页** ✓（原页 = 从首页向下 up 次的页 ✓）
@@ -1685,6 +1717,8 @@ class AZimeService : InputMethodService() {
             com.azime.input.core.diag.Diag.log("Embed",
                 "mode=$embedMode preedit='${result.preeditText}' 预览='$preview' 候选=${result.candidates.size}")
         }
+        // 轮19.161：候选清空（候选上屏 / 编码删光）⇒ **笔划跟踪重置** ✓（笔划已随输入一起消失 ✓）
+        if (newList.isEmpty() && strokeApplied.isNotEmpty()) strokeApplied.setLength(0)
         // 轮19.159：面板开着 ⇒ 输入变化后**重新收集全部候选** ✓（内容保持最新 ✓）
         if (uiState.value.showCandidatePanel) {
             val (all, ps) = collectAllCandidates()
@@ -1702,6 +1736,8 @@ class AZimeService : InputMethodService() {
                 hasPrevPage = result.hasPrevPage,
                 // 编码清空（候选消失）时自动收起更多候选面板
                 showCandidatePanel = it.showCandidatePanel && result.candidates.isNotEmpty(),
+                // 轮19.161：候选清空 ⇒ 笔划筛选显示同步清空 ✓
+                strokeFilter = if (newList.isEmpty()) emptyList() else it.strokeFilter,
                 // 轮19.15：**打字即消亡**复制条（兜底，覆盖所有按键路径）。
                 // 反馈轮12 曾特意做成「组词不清空」，但用户明确要求「直接打字也要消失」。
                 // 轮19.17：组词**不再**消亡复制条（只有「点击上屏」与「无候选时按退格」两条途径）

@@ -2963,3 +2963,23 @@ java.lang.UnsatisfiedLinkError: dlopen failed: empty/missing DT_HASH in "librime
 ## 四、验证
 - `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · 版本 vc161 → **vc162 / 1.0.6** 测试版 ✓
 - 待真机验证：打开更多候选 → 全部候选一次列出、可上下滑动、点任意候选正确上屏 ✓
+
+# 轮19.161：候选面板加「笔划筛选」（方案 B：顶栏横排 ✓ 用户选定 ✓）
+
+## 一、需求与选型
+- 参考 trime2「候选面板显示优化.lua」的笔划筛选（`CandidatesManager.filterStroke` ✓ 可叠加 ✓ X 清除 ✓）
+- 用户看效果图后**选定方案 B** ✓：筛选按钮放在「全部候选」顶栏**横排**（不占候选区宽度 ✓）
+
+## 二、实现
+- **筛选机制**（对齐脚本语义 ✓）：笔划 = 把键值 **h/s/p/n/z**（一丨丿丶乙 ✓）
+  **追加进输入** → RIME 重新解码 ⇒ 候选收窄 ✓；**✕ = 反向删除**已追加的笔划 ✓（KEY_BACKSPACE × N ✓）
+- Service：`strokeApplied` 跟踪串 ✓ + `strokeLabel` 表 ✓ + `KeyAction.StrokeFilter(stroke: String?)` ✓
+  （null = 清除 ✓；候选清空/上屏时自动重置跟踪 ✓）
+- UI 状态：`strokeFilter: List<String>`（标签 ✓ 用于高亮与显示"12 · 一丨" ✓）
+- 面板顶栏：标题 + 数量（+ 已筛选笔划）+ **一丨丿丶乙 ✕ 横排（32dp，选中态用强调色底 + on 色 ✓）**
+  + 收起 ▲；用 **FlowRow** ⇒ 窄屏自动折行不挤爆 ✓
+- 面板常驻显示（不像 trime2 还要点「笔」开合弹层 ✓）；筛选期间面板不关、候选实时刷新 ✓
+  （applyResult 里面板开着就重新收集全部候选 ✓）
+
+## 三、验证
+- `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · 版本 vc162 → **vc163 / 1.0.6** 测试版 ✓
