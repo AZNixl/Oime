@@ -2922,3 +2922,19 @@ java.lang.UnsatisfiedLinkError: dlopen failed: empty/missing DT_HASH in "librime
 
 ## 五、验证
 - `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · 版本 vc159 → **vc160 / 1.0.6** 测试版 ✓
+
+# 轮19.159：退格删选区 + t9 数字键符号镜像 + ○菜单主键盘双排
+
+## 一、用户反馈（vc160 实测）
+1. **全选文本后单击退格不能删除** ✗
+   → 根因：handleBackspace 只走 `sendDownUpKeyEvents(KEYCODE_DEL)` ✗ 部分 App 不处理选区 ✗
+   → 修法：**有选中文本时先删选区** ✓（`getSelectedText` + `getExtractedText` 选区范围双重检测 ✓
+     `commitText("", 1)` 用空串替换选区 ✓ 比键事件可靠 ✓ 并把选中内容记入撤回 ✓）
+2. 九宫格 1-9 键符号自定义 ⇒ 写入默认 ✓
+   （用户自定义：**@ 键上滑 = 1**；2~9 键各**上滑 = 自身数字** ✓ 已镜像进内置 t9 ✓）
+3. 候选显示不全 → 根因：**`menu: page_size: 5`**（pinyin_simp.schema.yaml + default.custom.yaml +
+   用户虎整 schema 都是 5 ✗）⇒ 每页只有 5 个、面板每次一页 ✗ 待用户确认目标页数后调整 ✓
+4. ○菜单-主键盘：**改双排显示** ✓ + **去掉灰色注释**（QWERTY 全键盘 等 ✗）✓
+
+## 二、验证
+- `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · 版本 vc160 → **vc161 / 1.0.6** 测试版 ✓

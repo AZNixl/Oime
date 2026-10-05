@@ -2164,48 +2164,48 @@ private fun MenuPanel(
                 }
             }
             "mainkb" -> {
-                // 轮19.157：○ 菜单「主键盘」——三选一 ✓ **切换即写为默认值** ✓（用户要求 ✓）
+                // 轮19.159：○ 菜单「主键盘」——**双排显示 + 无注释** ✓（用户要求 ✓）
+                // 切换即写为默认值 ✓（setActiveMain 持久化 ✓）
                 val choices = listOf(
-                    Triple("qwerty", "26键", "QWERTY 全键盘"),
-                    Triple("t9", "九宫格", "9 键字母 · 左列滑动符号"),
-                    Triple("key14", "十四键", "26 字母压 14 键 · 含分词"),
+                    "qwerty" to "26键",
+                    "t9" to "九宫格",
+                    "key14" to "十四键",
                 )
                 var sel by remember { mutableStateOf(KeyboardManager.activeMainName()) }
                 MenuSubPanel(
                     c = c, title = "主键盘", totalHeight = totalHeight,
                     onBack = { subPage = null }, onClose = { close() },
                 ) {
-                    choices.forEach { (name, label, desc) ->
-                        val active = sel == name
+                    choices.chunked(2).forEach { rowItems ->
                         Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(if (active) c.accentKeyBg else c.keyBg, RoundedCornerShape(12.dp))
-                                .clickable {
-                                    com.azime.input.core.haptic.HapticsManager.press()
-                                    KeyboardManager.setActiveMain(name)   // 切换即默认 ✓（持久化 ✓）
-                                    sel = name
-                                    onAction(KeyAction.SwitchPage("main"))
-                                }
-                                .padding(horizontal = 14.dp, vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
                         ) {
-                            Column(Modifier.weight(1f)) {
-                                Text(
-                                    label,
-                                    fontSize = 14.sp, fontWeight = FontWeight.Bold,
-                                    maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                    color = if (active) c.accentKeyText else c.text,
-                                )
-                                Text(
-                                    desc,
-                                    fontSize = 11.sp,
-                                    color = if (active) c.accentKeyText.copy(alpha = 0.85f) else c.subText,
-                                )
+                            rowItems.forEach { (name, label) ->
+                                val active = sel == name
+                                Column(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .background(if (active) c.accentKeyBg else c.keyBg, RoundedCornerShape(12.dp))
+                                        .clickable {
+                                            com.azime.input.core.haptic.HapticsManager.press()
+                                            KeyboardManager.setActiveMain(name)   // 切换即默认 ✓
+                                            sel = name
+                                            onAction(KeyAction.SwitchPage("main"))
+                                        }
+                                        .padding(vertical = 14.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                ) {
+                                    Text(
+                                        label,
+                                        fontSize = 14.sp,
+                                        fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
+                                        maxLines = 1,
+                                        color = if (active) c.accentKeyText else c.text,
+                                    )
+                                }
                             }
-                            if (active) {
-                                Text("使用中", fontSize = 11.sp, color = c.accentKeyText)
-                            }
+                            repeat(2 - rowItems.size) { Spacer(Modifier.weight(1f)) }
                         }
                         Spacer(Modifier.height(8.dp))
                     }

@@ -334,24 +334,25 @@ object KeyboardPages {
         rows = listOf(
             row(
                 Key("滑键", code = "slider", width = T9_SIDE_W, type = KeyType.FUNCTION),
-                Key("1", code = "1", width = T9_MID_W, type = KeyType.CHARACTER),
-                Key("ABC", code = "2", width = T9_MID_W, type = KeyType.CHARACTER),
-                Key("DEF", code = "3", width = T9_MID_W, type = KeyType.CHARACTER),
+                // 轮19.159：**@ 键（上滑 = 数字 1）** ✓ 用户自定义镜像 ✓
+                Key("@", code = "@", width = T9_MID_W, type = KeyType.CHARACTER, swipeUp = "1"),
+                Key("ABC", code = "2", width = T9_MID_W, type = KeyType.CHARACTER, swipeUp = "2"),
+                Key("DEF", code = "3", width = T9_MID_W, type = KeyType.CHARACTER, swipeUp = "3"),
                 Key("⌫", code = "backspace", width = T9_SIDE_W, type = KeyType.DELETE, icon = "backspace",
                     swipeUp = KeyActions.BS_UP, swipeDown = KeyActions.BS_DOWN, swipeLeft = KeyActions.BS_LEFT),
             ),
             row(
                 Key("滑键", code = "slider", width = T9_SIDE_W, type = KeyType.FUNCTION),
-                Key("GHI", code = "4", width = T9_MID_W, type = KeyType.CHARACTER),
-                Key("JKL", code = "5", width = T9_MID_W, type = KeyType.CHARACTER),
-                Key("MNO", code = "6", width = T9_MID_W, type = KeyType.CHARACTER),
+                Key("GHI", code = "4", width = T9_MID_W, type = KeyType.CHARACTER, swipeUp = "4"),
+                Key("JKL", code = "5", width = T9_MID_W, type = KeyType.CHARACTER, swipeUp = "5"),
+                Key("MNO", code = "6", width = T9_MID_W, type = KeyType.CHARACTER, swipeUp = "6"),
                 Key("符号", code = "symgrid", width = T9_SIDE_W, type = KeyType.FUNCTION, icon = "symbols"),
             ),
             row(
                 Key("滑键", code = "slider", width = T9_SIDE_W, type = KeyType.FUNCTION),
-                Key("PQRS", code = "7", width = T9_MID_W, type = KeyType.CHARACTER),
-                Key("TUV", code = "8", width = T9_MID_W, type = KeyType.CHARACTER),
-                Key("WXYZ", code = "9", width = T9_MID_W, type = KeyType.CHARACTER),
+                Key("PQRS", code = "7", width = T9_MID_W, type = KeyType.CHARACTER, swipeUp = "7"),
+                Key("TUV", code = "8", width = T9_MID_W, type = KeyType.CHARACTER, swipeUp = "8"),
+                Key("WXYZ", code = "9", width = T9_MID_W, type = KeyType.CHARACTER, swipeUp = "9"),
                 // 回车**上半**（T9Pane 里与下半连成竖跨 2 行的长方形 ✓）
                 // 长按 = 换行 ✓（对齐 26 键回车功能 ✓）
                 Key("⏎", code = "enter", width = T9_SIDE_W, type = KeyType.ENTER, icon = "enter",

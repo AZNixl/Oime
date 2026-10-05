@@ -1422,6 +1422,22 @@ class AZimeService : InputMethodService() {
         }
         val ic = currentInputConnection
         if (ic != null) {
+            // 轮19.159：**有选中文本 ⇒ 先删选区** ✓（用户反馈"全选后单击退格删不掉"✗）
+            // 原因：sendKeyEvent 路径在部分 App 里不处理选区 ✗ ⇒ 改用 commitText("", 1) 替换选区 ✓
+            val sel = runCatching { ic.getSelectedText(0) }.getOrNull()
+            var selLen = sel?.length ?: 0
+            if (selLen == 0) {
+                selLen = runCatching {
+                    val st = ic.getExtractedText(android.view.inputmethod.ExtractedTextRequest(), 0)
+                    ((st?.selectionEnd ?: 0) - (st?.selectionStart ?: 0)).coerceAtLeast(0)
+                }.getOrDefault(0)
+            }
+            if (selLen > 0) {
+                if (!sel.isNullOrEmpty()) pushDeleted(sel.toString())   // 撤回记录 ✓
+                runCatching { ic.commitText("", 1) }                    // 空串替换选区 = 删除选中内容 ✓
+                refreshState()
+                return
+            }
             val pre = textBeforeCursor(ic, BACKSPACE_LOOKAHEAD)
             val spanLen = spanBackedLength(pre)
             val emojiLen = if (spanLen > 0) 0 else emoticonTokenLength(pre)
