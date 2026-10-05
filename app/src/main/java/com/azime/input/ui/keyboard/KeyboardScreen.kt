@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -144,8 +145,8 @@ sealed interface KeyAction {
     /** 轮19.159：**按全部候选的全局下标选候选** ✓（面板点击 → 跳页 + 页内选择 ✓）。 */
     data class CandidateGlobal(val index: Int) : KeyAction
     /**
-     * 轮19.161：**笔划筛选** ✓ —— [stroke] = "h"/"s"/"p"/"n"/"z" 追加筛选；
-     * null = ✕ **清除**（反向删除已追加的笔划 ✓）。对齐 trime2 脚本语义 ✓
+     * 轮19.162：**笔划筛选** ✓ —— [stroke] = "h"/"s"/"p"/"n"/"z" 叠加筛选（本地按笔顺 ✓）；
+     * null = ✕ **清除** ✓。**不动输入** ✓（对齐 trime2 脚本"筛选候选"语义 ✓）
      */
     data class StrokeFilter(val stroke: String?) : KeyAction
     data object PageDown : KeyAction
@@ -244,10 +245,12 @@ data class KeyboardUiState(
     /** 全部候选的**每页数量**（按下标定位：页 = idx / pageSize，页内偏移 = idx % pageSize ✓）。 */
     val allCandPageSize: Int = 5,
     /**
-     * 轮19.161：**笔划筛选**已叠加的笔划标签（一/丨/丿/丶/乙 ✓，空 = 未筛选 ✓）。
-     * 对齐 trime2「候选面板显示优化.lua」的 filterStroke 语义 ✓（h/s/p/n/z 追加进输入 ✓）。
+     * 轮19.162：**笔划筛选**已叠加的键串（h/s/p/n/z = 横竖撇捺折 ✓，空 = 未筛选 ✓）。
+     * ⚠️ 语义 = **本地筛选候选里的字（按笔顺前缀）** ✓ ✗ 不是把笔划打进输入 ✗
      */
-    val strokeFilter: List<String> = emptyList(),
+    val strokeFilter: String = "",
+    /** 笔顺表是否已就绪（后台解析 1.7MB 资产 ✓ 未就绪前不筛选，避免"点了没反应"✗）。 */
+    val strokeReady: Boolean = false,
     val preedit: String = "",
     val asciiMode: Boolean = false,
     val shiftOn: Boolean = false,
@@ -2491,7 +2494,16 @@ private fun ToolbarCustomizePanel(
 private fun CandidatePanel(state: KeyboardUiState, onAction: (KeyAction) -> Unit, totalHeight: androidx.compose.ui.unit.Dp) {
     val c = keyboardColors()
     val usingAll = state.allCandidates.isNotEmpty()
-    val list = if (usingAll) state.allCandidates else state.candidates
+    val src = if (usingAll) state.allCandidates else state.candidates
+    val seq = state.strokeFilter
+    // 轮19.162：**本地筛选** ✓ —— 按候选**首字**的笔顺前缀过滤（笔顺表就绪前不筛选 ✓）
+    // 用户语义："输入 wang 出 王/旺 ⇒ 点横筛出王" ✓ ✗ 不是把笔划打进输入 ✗
+    val items = androidx.compose.runtime.remember(src, seq, state.strokeReady) {
+        if (seq.isEmpty() || !state.strokeReady) src.withIndex().toList()
+        else src.withIndex().filter {
+            com.azime.input.core.stroke.StrokeTable.matches(it.value.text.firstOrNull(), seq)
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -2501,60 +2513,18 @@ private fun CandidatePanel(state: KeyboardUiState, onAction: (KeyAction) -> Unit
             .padding(horizontal = KeySpacing, vertical = KeySpacing),
         verticalArrangement = Arrangement.spacedBy(KeySpacing),
     ) {
-        // 顶栏：标题 + 数量（+ 已筛选笔划）+ **笔划筛选按钮横排**（方案 B ✓）+ 收起
-        // 用 FlowRow ⇒ 窄屏自动折行，不会挤爆 ✓
-        androidx.compose.foundation.layout.FlowRow(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
+        // 顶栏：标题 + 数量（筛选时显示 "命中 / 全部 · 笔划"）
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Text("全部候选", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = c.text)
             Text(
-                if (state.strokeFilter.isEmpty()) "${list.size}"
-                else "${list.size} · ${state.strokeFilter.joinToString("")}",
+                if (seq.isEmpty()) "${src.size}"
+                else "${items.size} / ${src.size} · ${strokeLabels(seq)}",
                 fontSize = 12.sp,
                 color = c.subText,
                 maxLines = 1,
             )
-            // 笔划筛选：一丨丿丶乙（可连续叠加 ✓ 选中态高亮 ✓ 对齐 trime2 脚本 ✓）
-            StrokeButtons.forEach { (label, key) ->
-                val on = state.strokeFilter.contains(label)
-                Box(
-                    modifier = Modifier
-                        .size(32.dp)
-                        .background(if (on) c.accentKeyBg else c.funcKeyBg, RoundedCornerShape(8.dp))
-                        .clickable {
-                            com.azime.input.core.haptic.HapticsManager.press()
-                            onAction(KeyAction.StrokeFilter(key))
-                        },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(label, fontSize = 15.sp, color = if (on) c.accentKeyText else c.text)
-                }
-            }
-            // ✕ 清除筛选（反向删除已追加的笔划 ✓）
-            Box(
-                modifier = Modifier
-                    .size(32.dp)
-                    .background(c.funcKeyBg, RoundedCornerShape(8.dp))
-                    .clickable {
-                        com.azime.input.core.haptic.HapticsManager.press()
-                        onAction(KeyAction.StrokeFilter(null))
-                    },
-                contentAlignment = Alignment.Center,
-            ) {
-                Text("✕", fontSize = 13.sp, color = c.subText)
-            }
-            Text(
-                "收起 ▲",
-                fontSize = 12.sp,
-                color = c.subText,
-                modifier = Modifier
-                    .clickable { onAction(KeyAction.ToggleCandidatePanel) }
-                    .padding(horizontal = 6.dp, vertical = 6.dp),
-            )
         }
-        if (list.isEmpty()) {
+        if (src.isEmpty()) {
             Text(
                 "暂无候选：请先输入编码",
                 fontSize = 13.sp,
@@ -2562,57 +2532,117 @@ private fun CandidatePanel(state: KeyboardUiState, onAction: (KeyAction) -> Unit
                 modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
             )
         } else {
-            androidx.compose.foundation.layout.FlowRow(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .verticalScroll(rememberScrollState()),
+            Row(
+                modifier = Modifier.fillMaxWidth().weight(1f),
                 horizontalArrangement = Arrangement.spacedBy(KeySpacing),
-                verticalArrangement = Arrangement.spacedBy(KeySpacing),
             ) {
-                list.forEachIndexed { idx, candidate ->
-                    Box(
+                // ── 候选区（上下滑动 ✓）──
+                if (items.isEmpty()) {
+                    Text(
+                        "无匹配候选（笔划筛选）",
+                        fontSize = 13.sp,
+                        color = c.subText,
+                        modifier = Modifier.weight(1f).padding(vertical = 12.dp),
+                    )
+                } else {
+                    androidx.compose.foundation.layout.FlowRow(
                         modifier = Modifier
-                            .background(c.keyBg, RoundedCornerShape(8.dp))
-                            .clickable {
-                                if (usingAll) onAction(KeyAction.CandidateGlobal(idx))
-                                else onAction(KeyAction.Candidate(idx))
-                            }
-                            .padding(horizontal = 10.dp, vertical = 5.dp),
-                        contentAlignment = Alignment.Center,
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .verticalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(KeySpacing),
+                        verticalArrangement = Arrangement.spacedBy(KeySpacing),
                     ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            // 轮19.43：注释（拆字/拼音）放候选字上方，胶囊背景随文字长度伸缩
-                            if (candidate.comment.isNotBlank()) {
-                                Box(
-                                    modifier = Modifier
-                                        .background(c.funcKeyBg, RoundedCornerShape(5.dp))
-                                        .padding(horizontal = 5.dp, vertical = 1.dp),
-                                ) {
-                                    Text(
-                                        candidate.comment,
-                                        fontSize = (KeyboardManager.fontSizeBar() * 0.58f).sp,
-                                        maxLines = 1,
-                                        color = c.subText,
-                                    )
+                        items.forEach { (idx, candidate) ->
+                            Box(
+                                modifier = Modifier
+                                    .background(c.keyBg, RoundedCornerShape(8.dp))
+                                    .clickable {
+                                        // 用**原始下标** ✓（筛选后仍能精确定位到该候选 ✓）
+                                        if (usingAll) onAction(KeyAction.CandidateGlobal(idx))
+                                        else onAction(KeyAction.Candidate(idx))
+                                    }
+                                    .padding(horizontal = 10.dp, vertical = 5.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    if (candidate.comment.isNotBlank()) {
+                                        Box(
+                                            modifier = Modifier
+                                                .background(c.funcKeyBg, RoundedCornerShape(5.dp))
+                                                .padding(horizontal = 5.dp, vertical = 1.dp),
+                                        ) {
+                                            Text(
+                                                candidate.comment,
+                                                fontSize = (KeyboardManager.fontSizeBar() * 0.58f).sp,
+                                                maxLines = 1,
+                                                color = c.subText,
+                                            )
+                                        }
+                                        Spacer(Modifier.height(2.dp))
+                                    }
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            "${idx + 1} ",
+                                            fontSize = (KeyboardManager.fontSizeBar() * 0.65f).sp,
+                                            color = c.subText,
+                                        )
+                                        Text(
+                                            candidate.text,
+                                            fontSize = (KeyboardManager.fontSizeBar() + 2).sp,
+                                            maxLines = 1,
+                                            color = c.text,
+                                        )
+                                    }
                                 }
-                                Spacer(Modifier.height(2.dp))
-                            }
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                // 轮19.159：序号**不再只到 9** ✓（全部候选可能几十个 ✓）
-                                Text(
-                                    "${idx + 1} ",
-                                    fontSize = (KeyboardManager.fontSizeBar() * 0.65f).sp,
-                                    color = c.subText,
-                                )
-                                Text(
-                                    candidate.text,
-                                    fontSize = (KeyboardManager.fontSizeBar() + 2).sp,
-                                    maxLines = 1,
-                                    color = c.text,
-                                )
                             }
                         }
+                    }
+                }
+                // ── 右侧竖列：**收起（顶部）** + 一丨丿丶乙 + ✕ ✓（用户要求：竖列 ✓ 不占纵向空间 ✓）──
+                Column(
+                    modifier = Modifier.width(40.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .background(c.funcKeyBg, RoundedCornerShape(8.dp))
+                            .clickable { onAction(KeyAction.ToggleCandidatePanel) },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text("▲", fontSize = 13.sp, color = c.subText)
+                    }
+                    StrokeButtons.forEach { (label, key) ->
+                        val on = seq.contains(key)
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                                .background(if (on) c.accentKeyBg else c.funcKeyBg, RoundedCornerShape(8.dp))
+                                .clickable {
+                                    com.azime.input.core.haptic.HapticsManager.press()
+                                    onAction(KeyAction.StrokeFilter(key))
+                                },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(label, fontSize = 16.sp, color = if (on) c.accentKeyText else c.text)
+                        }
+                    }
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .background(c.funcKeyBg, RoundedCornerShape(8.dp))
+                            .clickable {
+                                com.azime.input.core.haptic.HapticsManager.press()
+                                onAction(KeyAction.StrokeFilter(null))
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text("✕", fontSize = 13.sp, color = c.subText)
                     }
                 }
             }
@@ -2620,13 +2650,17 @@ private fun CandidatePanel(state: KeyboardUiState, onAction: (KeyAction) -> Unit
     }
 }
 
-// ── emoji 键盘 ───────────────────────────────────────────────
-
-// ── 分类网格键盘（emoji / 符号共用）：标签行 + 左右滑动翻页 ──
+/** 轮19.162：笔划键串 → 标签串（hspnz → 一丨丿丶乙 ✓ 面板标题显示用 ✓） */
+private fun strokeLabels(seq: String): String = seq.mapNotNull {
+    when (it) {
+        'h' -> "一"; 's' -> "丨"; 'p' -> "丿"; 'n' -> "丶"; 'z' -> "乙"
+        else -> null
+    }
+}.joinToString("")
 
 /**
- * 轮19.161：**笔划筛选按钮**（标签 → 键值 ✓ 对齐 trime2「候选面板显示优化.lua」的 strokes 表 ✓）。
- * 键值追加进输入收窄候选 ✓；✕ 清除（反向删除 ✓）✓
+ * 轮19.162：**笔划筛选按钮**（标签 → 键值 ✓ 对齐 trime2「候选面板显示优化.lua」的 strokes 表 ✓）。
+ * 键值用于**本地按笔顺筛选候选** ✓（h/s/p/n/z = 横竖撇捺折 ✓）
  */
 private val StrokeButtons: List<Pair<String, String>> = listOf(
     "一" to "h", "丨" to "s", "丿" to "p", "丶" to "n", "乙" to "z",

@@ -2983,3 +2983,25 @@ java.lang.UnsatisfiedLinkError: dlopen failed: empty/missing DT_HASH in "librime
 
 ## 三、验证
 - `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · 版本 vc162 → **vc163 / 1.0.6** 测试版 ✓
+
+# 轮19.162：笔划筛选**语义修正**（本地按笔顺筛选候选）+ 移到右侧竖列
+
+## 一、用户反馈（vc163 实测）
+1. 笔划筛选**语义错了** ✗：现在是把笔划打进输入（"输入 wang 点横" 变成打字 "wangh" ⇒ 出"王一" ✗）
+   正确语义 = **筛选候选列表里的字**（输入 wang 出 王/旺 ⇒ 点横 ⇒ 只剩王 ✓）
+2. 笔划要放在**右侧竖列** ✓（不用横排 ✓）
+3. 横排那一行**整行删除**（占纵向空间 ✗）；**收起按钮放笔划列顶部** ✓
+
+## 二、实现
+- **数据**：`assets/stroke/stroke_table.txt`（1.7MB / 114,947 条 ✓）由 RIME「五筆畫」字典
+  `stroke.dict.yaml` 转换而来（每字保留**前 10 笔** ✓ 抽查：王=hhsh ✓ 旺=szhhhhsh ✓ 与用户例子一致 ✓）
+- **StrokeTable**（新）：后台解析 ✓（11.5 万行 ✗ 不能卡主线程 ✗）+ `matches(字, 键串)` 前缀匹配 ✓
+  + `ready` 标记（未就绪不筛选 ✓ 服务在面板打开时后台加载 ✓）
+- **Service**：笔划动作**不再动输入** ✓ 只叠加/清空 `strokeFilter` 键串 ✓
+- **面板**：右侧 40dp 竖列 = **▲收起（顶部）** + 一丨丿丶乙 + ✕ ✓（每格 `weight(1f)` ⇒ 自适应高度 ✓）
+  候选区 FlowRow 上下滑动 ✓ **本地筛选**（按首字笔顺前缀 ✓ remember 缓存 ✓）
+  点候选仍用**原始下标** ⇒ CandidateGlobal 精确定位 ✓；无匹配时提示"无匹配候选（笔划筛选）" ✓
+  标题：未筛选显示总数；筛选时显示「命中 / 全部 · 一丨」✓
+
+## 三、验证
+- `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · 版本 vc163 → **vc164 / 1.0.6** 测试版 ✓
