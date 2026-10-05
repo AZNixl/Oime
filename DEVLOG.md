@@ -3023,3 +3023,24 @@ java.lang.UnsatisfiedLinkError: dlopen failed: empty/missing DT_HASH in "librime
 
 ## 四、验证
 - `compileDebugKotlin` **BUILD SUCCESSFUL** ✓（回退后无残留引用 ✓）
+
+# 轮19.164：悬浮窗「自定义图片」（1.0.7 首个功能；功能一"小窗打开"按用户决定不做）
+
+## 一、需求（用户）
+- 现有「自定义」⇒ 改名 **自定义颜色** ✓；**新增自定义图片** ✓
+- 外置目录新增 **`Documents/Oime/images/`**（放自定义悬浮窗图片 ✓ 当前只支持 png ✓）
+- 选项：**下拉选择图片** + **候选文字 X/Y 轴调整**（两滑条 ✓ 最大 ±80dp ✓ 默认 0 居中 ✓）
+- **自定义图片后仍跟随光标** ✓
+- ⚠️ 原「O 圆环上滑始终用小窗打开 App」经用户确认**不做** ✗（freeform 依赖系统 ✗ 无测试条件 ✗）
+
+## 二、实现
+| 层 | 改动 |
+|---|---|
+| `StorageManager` | 新增 `imagesDir`（`Documents/Oime/images` ✓ 自动创建 ✓）+ `listFloatImages()`（只列 png ✓ 按名排序 ✓）|
+| `KeyboardManager` | 新增偏好：`floatImage()`（文件名 ✓）/ `floatImgOffX()` / `floatImgOffY()`（±80 钳位 ✓ 默认 0 ✓）<br>+ **尺寸签名**加入三项 ⇒ 改完立即重建 IME 视图 ✓（原来改了要重开键盘 ✓）|
+| `FloatingWindowSettings` | 模式三选：默认悬浮窗 / **自定义颜色** / **自定义图片** ✓<br>图片模式：下拉选图（空列表提示"images/ 里还没有 png" ✓ + 刷新按钮 ✓）+ X/Y 滑条（-80..+80 ✓）|
+| 悬浮窗渲染 | 图片模式 ⇒ 图片作背景：**尺寸 = 图片尺寸**（超屏宽等比缩小 ✓ 内容驱动 ✓ 符合 IME 窗口尺寸规则 ✓）<br>`alpha` 沿用「背景不透明度」（作用于图片 ✓）；无图/解码失败 ⇒ 回退原背景色卡片 ✓<br>**候选文字**按 X/Y 偏移（`Modifier.offset` ✓ 横竖两种排列都加了 ✓）；**编码文字不偏移**（按用户原话"候选文字的xy轴调整" ✓）<br>**跟随光标逻辑不动** ✓（只换了背景与内容偏移 ✓）|
+
+## 三、验证
+- `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · 版本 vc165 → **vc166 / 1.0.7** 测试版 ✓
+- 待真机：images/ 放 png → 设置选图 → 悬浮窗显示图片背景 + 跟随光标 + 两滑条调候选位置 ✓

@@ -1730,6 +1730,8 @@ private fun FloatingWindowSettings() {
     var textSp by remember { mutableStateOf(km.floatTextSp().toFloat()) }
     var alpha by remember { mutableStateOf(km.floatBgAlpha().toFloat()) }
     val custom = mode == "custom"
+    // 轮19.164：第三种模式 = **自定义图片** ✓
+    val imageMode = mode == "image"
     // 轮19.141 ★ 崩溃修复：**外层 LazyColumn 本身就是滚动容器**（见调用处 item ✓）
     //   ⇒ 这里再套 `verticalScroll()` 会抛
     //   `IllegalStateException: Vertically scrollable component was measured with an
@@ -1759,15 +1761,77 @@ private fun FloatingWindowSettings() {
         Spacer(Modifier.height(6.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OimeChip(
-                selected = !custom,
+                selected = mode == "default",
                 onClick = { mode = "default"; km.setFloatMode("default") },
                 label = { Text("默认悬浮窗") },
             )
+            // 轮19.164：「自定义」拆成两项 ✓（用户要求：现有自定义 = **自定义颜色** ✓）
             OimeChip(
                 selected = custom,
                 onClick = { mode = "custom"; km.setFloatMode("custom") },
-                label = { Text("自定义悬浮窗") },
+                label = { Text("自定义颜色") },
             )
+            OimeChip(
+                selected = imageMode,
+                onClick = { mode = "image"; km.setFloatMode("image") },
+                label = { Text("自定义图片") },
+            )
+        }
+        if (imageMode) {
+            // ── 轮19.164：**自定义图片** ✓（`Documents/Oime/images/` 里的 png ✓ 仍跟随光标 ✓）──
+            Spacer(Modifier.height(8.dp))
+            var imgRev by remember { mutableStateOf(0) }
+            val imageList = androidx.compose.runtime.remember(imgRev) {
+                com.azime.input.core.storage.StorageManager.listFloatImages()
+            }
+            var selImage by remember { mutableStateOf(km.floatImage()) }
+            var ddOpen by remember { mutableStateOf(false) }
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("图片", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                Box {
+                    Row(
+                        modifier = Modifier
+                            .clickable { ddOpen = true }
+                            .border(0.5.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(8.dp))
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(selImage.ifEmpty { "选择图片" }, style = MaterialTheme.typography.bodyMedium)
+                        Spacer(Modifier.width(6.dp))
+                        Text("▾", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    DropdownMenu(expanded = ddOpen, onDismissRequest = { ddOpen = false }) {
+                        if (imageList.isEmpty()) {
+                            DropdownMenuItem(text = { Text("images/ 里还没有 png") }, onClick = { ddOpen = false })
+                        }
+                        imageList.forEach { f ->
+                            DropdownMenuItem(
+                                text = { Text(f.name) },
+                                onClick = {
+                                    selImage = f.name
+                                    km.setFloatImage(f.name)
+                                    ddOpen = false
+                                },
+                            )
+                        }
+                    }
+                }
+                TextButton(onClick = { imgRev++ }) { Text("刷新") }
+            }
+            Text(
+                "把 png 图片放进 Documents/Oime/images/ 即可选用；图片作为悬浮窗背景，尺寸按图片，" +
+                    "超出屏宽自动等比缩小；**仍跟随光标**。下面的滑条用于微调候选文字在图片上的位置。",
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            var offX by remember { mutableStateOf(km.floatImgOffX().toFloat()) }
+            var offY by remember { mutableStateOf(km.floatImgOffY().toFloat()) }
+            XimeSlider("候选文字 X 轴", "${offX.toInt()}dp", offX, -80f..80f) {
+                offX = it; km.setFloatImgOffX(it.toInt())
+            }
+            XimeSlider("候选文字 Y 轴", "${offY.toInt()}dp", offY, -80f..80f) {
+                offY = it; km.setFloatImgOffY(it.toInt())
+            }
         }
         if (custom) {
             Spacer(Modifier.height(8.dp))

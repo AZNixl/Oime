@@ -253,6 +253,10 @@ object KeyboardManager {
     private const val PREF_FLOAT_FIRST_ACCENT = "float_first_accent"
     private const val PREF_FLOAT_CAND_COUNT = "float_cand_count"
     private const val PREF_FLOAT_ORIENT = "float_orient"
+    // 轮19.164：悬浮窗自定义图片（文件名 + 候选文字 X/Y 偏移 ✓）
+    private const val PREF_FLOAT_IMAGE = "float_image"
+    private const val PREF_FLOAT_IMG_OFFX = "float_img_offx"
+    private const val PREF_FLOAT_IMG_OFFY = "float_img_offy"
 
     /** 悬浮窗背景色（ARGB）；**0 = 跟随键盘工具栏底色**（默认）。 */
     fun floatBgColor(): Int = prefs.getInt(PREF_FLOAT_BG_COLOR, 0)
@@ -273,6 +277,29 @@ object KeyboardManager {
     fun floatOrientation(): String = prefs.getString(PREF_FLOAT_ORIENT, "h") ?: "h"
 
     fun setFloatOrientation(v: String) { synchronized(lock) { prefs.edit().putString(PREF_FLOAT_ORIENT, if (v == "v") "v" else "h").apply() } }
+
+    // ── 轮19.164：悬浮窗「自定义图片」（`Documents/Oime/images/` 里的 png ✓）────
+
+    /** 选中的图片**文件名**（空 = 未选 ✓ 相对 `images/` 目录 ✓）。 */
+    fun floatImage(): String = prefs.getString(PREF_FLOAT_IMAGE, "") ?: ""
+
+    fun setFloatImage(v: String) {
+        synchronized(lock) { prefs.edit().putString(PREF_FLOAT_IMAGE, v).apply() }
+    }
+
+    /** 候选文字在图片上的 **X 偏移**（dp ✓ ±80 ✓ 0 = 居中 ✓）。 */
+    fun floatImgOffX(): Int = prefs.getInt(PREF_FLOAT_IMG_OFFX, 0).coerceIn(-80, 80)
+
+    fun setFloatImgOffX(v: Int) {
+        synchronized(lock) { prefs.edit().putInt(PREF_FLOAT_IMG_OFFX, v.coerceIn(-80, 80)).apply() }
+    }
+
+    /** 候选文字在图片上的 **Y 偏移**（dp ✓ ±80 ✓ 0 = 居中 ✓）。 */
+    fun floatImgOffY(): Int = prefs.getInt(PREF_FLOAT_IMG_OFFY, 0).coerceIn(-80, 80)
+
+    fun setFloatImgOffY(v: Int) {
+        synchronized(lock) { prefs.edit().putInt(PREF_FLOAT_IMG_OFFY, v.coerceIn(-80, 80)).apply() }
+    }
 
     // ── 打字音效（轮19.34） ──
 
@@ -825,6 +852,7 @@ object KeyboardManager {
             "x${com.azime.input.core.theme.KeyboardTheme.funcBgColor(true)}" +
             "x${floatKbdX()}x${floatKbdY()}" +
             "x${floatEnabled()}x${floatMode()}x${floatXDp()}x${floatYDp()}x${floatTextSp()}x${floatBgAlpha()}" +
+            "x${floatImage()}x${floatImgOffX()}x${floatImgOffY()}" +
             "x${bubbleXDp()}x${bubbleYExtraDp()}" +
             "x${com.azime.input.core.theme.KeyboardTheme.mode()}" +
             "x${com.azime.input.core.font.FontManager.rev()}"

@@ -16,6 +16,9 @@ object StorageManager {
     private const val BACKUP_DIR = "backup"
     private const val LOGS_DIR = "logs"
 
+    /** 轮19.164：**悬浮窗自定义图片**目录（用户放 png ✓ 当前只支持 png ✓）。 */
+    private const val IMAGES_DIR = "images"
+
     lateinit var externalRootDir: File
         private set
     lateinit var schemaDir: File
@@ -37,11 +40,25 @@ object StorageManager {
     lateinit var logsDir: File
         private set
 
+    /** 轮19.164：悬浮窗自定义图片目录（`Documents/Oime/images/` ✓）。 */
+    lateinit var imagesDir: File
+        private set
+
     /** 轮19.56：键面提示坐标文件（外置可改，改了直接生效）。 */
     lateinit var hintCoordFile: File
         private set
     lateinit var internalDataDir: File
         private set
+
+    /**
+     * 轮19.164：`images/` 里的 **png 图片列表**（按文件名排序 ✓）。
+     * 悬浮窗「自定义图片」下拉用 ✓ 用户自行放图 ✓
+     */
+    fun listFloatImages(): List<File> =
+        runCatching {
+            imagesDir.listFiles { f -> f.isFile && f.extension.equals("png", ignoreCase = true) }
+                ?.sortedBy { it.name } ?: emptyList()
+        }.getOrDefault(emptyList())
 
     fun initializeDirectories(context: Context) {
         // External storage: /storage/emulated/0/Documents/Oime
@@ -57,6 +74,7 @@ object StorageManager {
         soundsDir = File(externalRootDir, SOUNDS_DIR)
         backupDir = File(externalRootDir, BACKUP_DIR)
         logsDir = File(externalRootDir, LOGS_DIR)
+        imagesDir = File(externalRootDir, IMAGES_DIR)
 
         // Create all directories
         externalRootDir.mkdirs()
@@ -67,6 +85,7 @@ object StorageManager {
         soundsDir.mkdirs()
         backupDir.mkdirs()
         logsDir.mkdirs()
+        imagesDir.mkdirs()
 
         // 轮19.46：把内置默认音效释放到外置目录（不覆盖用户自己的文件）
         copyDefaultSounds(context)

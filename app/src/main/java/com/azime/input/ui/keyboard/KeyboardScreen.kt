@@ -80,6 +80,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
@@ -695,6 +696,20 @@ fun AzimeKeyboardScreen(
                 else c.barBg.copy(alpha = bgAlpha)
                 val vertical = KeyboardManager.floatOrientation() == "v"
                 val firstAccent = KeyboardManager.floatFirstAccent()
+                // 轮19.164：**自定义图片模式** ✓（`Documents/Oime/images/` 里的 png 作背景）
+                // 尺寸 = 图片尺寸（内容驱动 ✓ IME 窗口尺寸规则 ✓）；仍跟随光标 ✓（上面 offset 逻辑不变 ✓）
+                val imageMode = KeyboardManager.floatMode() == "image"
+                val imageName = if (imageMode) KeyboardManager.floatImage() else ""
+                val imageBitmap = androidx.compose.runtime.remember(imageName) {
+                    if (imageName.isBlank()) null else runCatching {
+                        android.graphics.BitmapFactory.decodeFile(
+                            java.io.File(com.azime.input.core.storage.StorageManager.imagesDir, imageName)
+                                .absolutePath,
+                        )?.asImageBitmap()
+                    }.getOrNull()
+                }
+                val imgOffX = KeyboardManager.floatImgOffX()
+                val imgOffY = KeyboardManager.floatImgOffY()
                 Popup(
                     alignment = Alignment.TopStart,
                     offset = if (hasCursor) {
@@ -713,12 +728,36 @@ fun AzimeKeyboardScreen(
                         )
                     },
                 ) {
-                    Column(
+                    // 轮19.164：有图 ⇒ 图片作背景（尺寸 = 图片尺寸，超屏宽则等比缩小 ✓）
+                    //           无图 ⇒ 沿用原背景色卡片 ✓（图片加载失败也回退卡片 ✓）
+                    val useImage = imageBitmap != null
+                    val imgW = if (useImage) with(density) { imageBitmap!!.width.toDp() } else 0.dp
+                    val imgH = if (useImage) with(density) { imageBitmap!!.height.toDp() } else 0.dp
+                    val maxW = (androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp - 24.dp)
+                        .coerceAtLeast(80.dp)
+                    val imgScale = if (useImage) minOf(1f, maxW / imgW) else 1f
+                    Box(
                         modifier = Modifier
                             .onGloballyPositioned { floatH = it.size.height }
-                            .background(floatBg, RoundedCornerShape(10.dp))
-                            .padding(horizontal = 12.dp, vertical = 7.dp),
+                            .then(
+                                if (useImage) Modifier.size(imgW * imgScale, imgH * imgScale)
+                                else Modifier.background(floatBg, RoundedCornerShape(10.dp)),
+                            ),
                     ) {
+                        if (useImage) {
+                            androidx.compose.foundation.Image(
+                                bitmap = imageBitmap!!,
+                                contentDescription = null,
+                                contentScale = androidx.compose.ui.layout.ContentScale.FillBounds,
+                                alpha = bgAlpha,
+                                modifier = Modifier.matchParentSize(),
+                            )
+                        }
+                        Column(
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .padding(horizontal = 12.dp, vertical = 7.dp),
+                        ) {
                         // 轮19.55：**显示完整输入码**（原来只显示前三码，余下的丢给工具栏 ⇒ 用户反馈"mn 跑到工具栏去了"）
                         Text(
                             text = state.preedit,
@@ -759,8 +798,9 @@ fun AzimeKeyboardScreen(
                             }
                             if (vertical) {
                                 // 轮19.55：竖向可反向（反向 = 第 1 个候选在最下）
+                                // 轮19.164：**候选文字 X/Y 偏移** ✓（图片模式 ±80dp ✓ 默认 0 ✓）
                                 val vReverse = KeyboardManager.floatVerticalReverse()
-                                Column {
+                                Column(modifier = Modifier.offset(x = imgOffX.dp, y = imgOffY.dp)) {
                                     // 正向：1 在最上；反向：1 在最下（越靠后越靠上），序号始终按真实候选号
                                     val order = if (vReverse) showCandidates.indices.reversed().toList()
                                     else showCandidates.indices.toList()
@@ -770,7 +810,11 @@ fun AzimeKeyboardScreen(
                                     }
                                 }
                             } else {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    // 轮19.164：候选文字 X/Y 偏移 ✓
+                                    modifier = Modifier.offset(x = imgOffX.dp, y = imgOffY.dp),
+                                ) {
                                     showCandidates.forEachIndexed { i, cand ->
                                         if (i > 0) Spacer(Modifier.width(10.dp))
                                         CandItem(i, cand.text)
@@ -778,6 +822,7 @@ fun AzimeKeyboardScreen(
                                 }
                             }
                         }
+                    }
                     }
                 }
             }
