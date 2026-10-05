@@ -1076,19 +1076,6 @@ class AZimeService : InputMethodService() {
                     if (open) {
                         val (all, ps) = collectAllCandidates()
                         uiState.update { it.copy(allCandidates = all, allCandPageSize = ps) }
-                        // 轮19.162：**后台解析笔顺表** ✓（1.7MB / 11.5 万行 ✗ 不能卡主线程 ✓）
-                        if (!com.azime.input.core.stroke.StrokeTable.ready) {
-                            scope.launch(kotlinx.coroutines.Dispatchers.Default) {
-                                com.azime.input.core.stroke.StrokeTable.ensureLoaded(this@AZimeService)
-                                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                    uiState.update {
-                                        it.copy(strokeReady = com.azime.input.core.stroke.StrokeTable.ready)
-                                    }
-                                }
-                            }
-                        } else {
-                            uiState.update { it.copy(strokeReady = true) }
-                        }
                     }
                 }
                 // 轮19.159：面板点击候选（全局下标）→ 跳到该候选所在页 + 页内选择 ✓
@@ -1107,22 +1094,6 @@ class AZimeService : InputMethodService() {
                     RimeManager.selectCandidate(offset)
                     if (selected.isNotEmpty()) pushUndo(selected)
                     applyResult(RimeManager.getProcessResult())
-                }
-                // 轮19.162：**笔划筛选（本地）** ✓ —— 语义修正 ✗：不把笔划打进输入 ✗
-                // （用户实测："输入 wang 点横" 不该变成打字"wangh"✗）
-                // 现在只是**叠加筛选键串** ✓ 面板据此按候选字的**笔顺前缀**过滤 ✓ 输入不受影响 ✓
-                is KeyAction.StrokeFilter -> {
-                    if (action.stroke == null) {
-                        uiState.update { it.copy(strokeFilter = "") }        // ✕ 清除筛选 ✓
-                    } else {
-                        val ch = action.stroke.firstOrNull()
-                        if (ch != null) {
-                            val cur = uiState.value.strokeFilter
-                            if (cur.length < com.azime.input.core.stroke.StrokeTable.MAX_STROKES) {
-                                uiState.update { it.copy(strokeFilter = cur + ch) }
-                            }
-                        }
-                    }
                 }
                 KeyAction.PageUp -> {
                     // 轮19.159：同上修正（原 0xFF54 = XK_Down ✗ ⇒ 改成 0xFF55 = XK_Prior/PageUp ✓）
@@ -1731,8 +1702,6 @@ class AZimeService : InputMethodService() {
                 hasPrevPage = result.hasPrevPage,
                 // 编码清空（候选消失）时自动收起更多候选面板
                 showCandidatePanel = it.showCandidatePanel && result.candidates.isNotEmpty(),
-                // 轮19.162：候选清空 ⇒ 笔划筛选同步清空 ✓（本地筛选状态 ✓）
-                strokeFilter = if (newList.isEmpty()) "" else it.strokeFilter,
                 // 轮19.15：**打字即消亡**复制条（兜底，覆盖所有按键路径）。
                 // 反馈轮12 曾特意做成「组词不清空」，但用户明确要求「直接打字也要消失」。
                 // 轮19.17：组词**不再**消亡复制条（只有「点击上屏」与「无候选时按退格」两条途径）

@@ -3005,3 +3005,21 @@ java.lang.UnsatisfiedLinkError: dlopen failed: empty/missing DT_HASH in "librime
 
 ## 三、验证
 - `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · 版本 vc163 → **vc164 / 1.0.6** 测试版 ✓
+
+# 轮19.163：**回退笔划筛选**（代码回到 72d9ed14 状态）+ 1.0.6 发版准备
+
+## 一、用户决定
+经过两轮实测（vc163 横排 / vc164 右侧竖列 + 本地笔顺筛选），用户决定**不要笔划筛选** ✗
+⇒ 代码**整体回退到 `72d9ed14`**（= vc162：候选面板「全部候选 + 上下滑动」）✓
+
+## 二、回退内容
+- `KeyboardScreen.kt` / `AZimeService.kt`：从仓库 `72d9ed14` 取回原文件覆盖 ✓（逐字节还原 ✓）
+- 删除本轮新增：`core/stroke/StrokeTable.kt` ✗ + `assets/stroke/stroke_table.txt`（1.7MB）✗
+- 保留 72d9ed14 已有的：全部候选收集（collectAllCandidates ✓）/ CandidateGlobal ✓ / 翻页 keysym 修正 ✓
+
+## 三、发版准备（1.0.6）
+- 版本：**vc165 / versionName 1.0.6** ✓（versionCode 需 > 曾装过的 vc164 ✓ 保证可覆盖升级 ✓）
+- Release 说明（about）另出草稿**先给用户审核** ✓，通过后再改 release.yml body + 关于页 UPDATE_LOG 并打 tag ✓
+
+## 四、验证
+- `compileDebugKotlin` **BUILD SUCCESSFUL** ✓（回退后无残留引用 ✓）
