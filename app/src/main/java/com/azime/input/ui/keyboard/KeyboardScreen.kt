@@ -141,6 +141,8 @@ sealed interface KeyAction {
     data object ToggleSymbols : KeyAction
     data object ToggleAscii : KeyAction
     data class Candidate(val index: Int) : KeyAction
+    /** 轮19.159：**按全部候选的全局下标选候选** ✓（面板点击 → 跳页 + 页内选择 ✓）。 */
+    data class CandidateGlobal(val index: Int) : KeyAction
     data object PageDown : KeyAction
     data class SelectSchema(val schemaId: String) : KeyAction
     /** ○ 菜单「方案组」（轮18 trime2 架构）：切换方案组（记录组 id + 重启进程）。 */
@@ -229,6 +231,13 @@ sealed interface KeyAction {
 /** 键盘 UI 状态，由 AZimeService 持有并驱动。 */
 data class KeyboardUiState(
     val candidates: List<Candidate> = emptyList(),
+    /**
+     * 轮19.159：**全部候选**（面板打开时由 Service 逐页收集 ✓ 面板上下滑动显示 ✓ 不翻页 ✓）
+     * 参考 trime2「候选面板显示优化.lua」的"全部显示 + 滑动"语义 ✓
+     */
+    val allCandidates: List<Candidate> = emptyList(),
+    /** 全部候选的**每页数量**（按下标定位：页 = idx / pageSize，页内偏移 = idx % pageSize ✓）。 */
+    val allCandPageSize: Int = 5,
     val preedit: String = "",
     val asciiMode: Boolean = false,
     val shiftOn: Boolean = false,
@@ -2462,11 +2471,17 @@ private fun ToolbarCustomizePanel(
 
 // ── 更多候选面板：网格展示当前页全部候选，◀▶ 翻页，点选上屏 ──
 
+/**
+ * 轮19.159：**全部候选面板（上下滑动，不翻页）** ✓ —— 参考 trime2「候选面板显示优化.lua」语义 ✓
+ * Service 在面板打开时**逐页收集全部候选**（原来只显示当前页 ✗；翻页键还发错 keysym ✗ 已修 ✓）；
+ * 点击候选 → CandidateGlobal(全局下标) → Service 跳页 + 页内选择 ✓
+ */
 @Composable
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 private fun CandidatePanel(state: KeyboardUiState, onAction: (KeyAction) -> Unit, totalHeight: androidx.compose.ui.unit.Dp) {
     val c = keyboardColors()
-    val keyH = KeyboardManager.keyHeightDp().dp
+    val usingAll = state.allCandidates.isNotEmpty()
+    val list = if (usingAll) state.allCandidates else state.candidates
 
     Column(
         modifier = Modifier
@@ -2476,30 +2491,13 @@ private fun CandidatePanel(state: KeyboardUiState, onAction: (KeyAction) -> Unit
             .padding(horizontal = KeySpacing, vertical = KeySpacing),
         verticalArrangement = Arrangement.spacedBy(KeySpacing),
     ) {
-        // 顶行：标题 + 翻页 + 收起
+        // 顶行：标题 + 总数 + 收起（翻页箭头已移除 ✓ 全部候选无需翻页 ✓）
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("更多候选", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = c.text)
+            Text("全部候选", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = c.text)
+            if (list.isNotEmpty()) {
+                Text(" ${list.size}", fontSize = 12.sp, color = c.subText)
+            }
             Spacer(Modifier.weight(1f))
-            if (state.hasPrevPage) {
-                Text(
-                    "◀",
-                    fontSize = 16.sp,
-                    color = c.text,
-                    modifier = Modifier
-                        .clickable { onAction(KeyAction.PageUp) }
-                        .padding(horizontal = 12.dp, vertical = 4.dp),
-                )
-            }
-            if (state.hasNextPage) {
-                Text(
-                    "▶",
-                    fontSize = 16.sp,
-                    color = c.text,
-                    modifier = Modifier
-                        .clickable { onAction(KeyAction.PageDown) }
-                        .padding(horizontal = 12.dp, vertical = 4.dp),
-                )
-            }
             Text(
                 "收起 ▲",
                 fontSize = 12.sp,
@@ -2509,8 +2507,7 @@ private fun CandidatePanel(state: KeyboardUiState, onAction: (KeyAction) -> Unit
                     .padding(horizontal = 6.dp, vertical = 4.dp),
             )
         }
-        // 候选网格：5 列（选中后候选变化，候选为空时 Service 自动收起面板）
-        if (state.candidates.isEmpty()) {
+        if (list.isEmpty()) {
             Text(
                 "暂无候选：请先输入编码",
                 fontSize = 13.sp,
@@ -2518,66 +2515,55 @@ private fun CandidatePanel(state: KeyboardUiState, onAction: (KeyAction) -> Unit
                 modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
             )
         } else {
-            var base = 0
-            Column(
+            androidx.compose.foundation.layout.FlowRow(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
                     .verticalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(KeySpacing),
                 verticalArrangement = Arrangement.spacedBy(KeySpacing),
             ) {
-                // 轮19.48：**按内容自适应宽度 + 自动换行**（FlowRow）。
-                // 原来用「等宽 5 列网格」——注释（拆字/编码）很长时会被单元格裁掉，
-                // 看起来像"固定长度"。改为内容决定宽度后，注释能完整显示，背景自然贴合文字。
-                androidx.compose.foundation.layout.FlowRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(KeySpacing),
-                    verticalArrangement = Arrangement.spacedBy(KeySpacing),
-                ) {
-                    run {
-                        state.candidates.forEachIndexed { idx, candidate ->
-                            Box(
-                                modifier = Modifier
-                                    .background(c.keyBg, RoundedCornerShape(8.dp))
-                                    .clickable { onAction(KeyAction.Candidate(idx)) }
-                                    .padding(horizontal = 10.dp, vertical = 5.dp),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                // 轮19.43（按用户要求）：注释（拆字/拼音）**放到候选字上方**，
-                                // 并给它一个**随文字长度伸缩**的胶囊背景（原来在右侧、被裁切）
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    if (candidate.comment.isNotBlank()) {
-                                        Box(
-                                            modifier = Modifier
-                                                .background(c.funcKeyBg, RoundedCornerShape(5.dp))
-                                                .padding(horizontal = 5.dp, vertical = 1.dp),
-                                        ) {
-                                            Text(
-                                                candidate.comment,
-                                                fontSize = (KeyboardManager.fontSizeBar() * 0.58f).sp,
-                                                maxLines = 1,
-                                                color = c.subText,
-                                            )
-                                        }
-                                        Spacer(Modifier.height(2.dp))
-                                    }
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        if (idx < 9) {
-                                            Text(
-                                                "${idx + 1} ",
-                                                fontSize = (KeyboardManager.fontSizeBar() * 0.65f).sp,
-                                                color = c.subText,
-                                            )
-                                        }
-                                        Text(
-                                            candidate.text,
-                                            // 轮18.2：更多候选字号 = 工具栏候选字号 + 2（面板空间更大）
-                                            fontSize = (KeyboardManager.fontSizeBar() + 2).sp,
-                                            maxLines = 1,
-                                            color = c.text,
-                                        )
-                                    }
+                list.forEachIndexed { idx, candidate ->
+                    Box(
+                        modifier = Modifier
+                            .background(c.keyBg, RoundedCornerShape(8.dp))
+                            .clickable {
+                                if (usingAll) onAction(KeyAction.CandidateGlobal(idx))
+                                else onAction(KeyAction.Candidate(idx))
+                            }
+                            .padding(horizontal = 10.dp, vertical = 5.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            // 轮19.43：注释（拆字/拼音）放候选字上方，胶囊背景随文字长度伸缩
+                            if (candidate.comment.isNotBlank()) {
+                                Box(
+                                    modifier = Modifier
+                                        .background(c.funcKeyBg, RoundedCornerShape(5.dp))
+                                        .padding(horizontal = 5.dp, vertical = 1.dp),
+                                ) {
+                                    Text(
+                                        candidate.comment,
+                                        fontSize = (KeyboardManager.fontSizeBar() * 0.58f).sp,
+                                        maxLines = 1,
+                                        color = c.subText,
+                                    )
                                 }
+                                Spacer(Modifier.height(2.dp))
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                // 轮19.159：序号**不再只到 9** ✓（全部候选可能几十个 ✓）
+                                Text(
+                                    "${idx + 1} ",
+                                    fontSize = (KeyboardManager.fontSizeBar() * 0.65f).sp,
+                                    color = c.subText,
+                                )
+                                Text(
+                                    candidate.text,
+                                    fontSize = (KeyboardManager.fontSizeBar() + 2).sp,
+                                    maxLines = 1,
+                                    color = c.text,
+                                )
                             }
                         }
                     }

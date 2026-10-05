@@ -2938,3 +2938,28 @@ java.lang.UnsatisfiedLinkError: dlopen failed: empty/missing DT_HASH in "librime
 
 ## 二、验证
 - `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · 版本 vc160 → **vc161 / 1.0.6** 测试版 ✓
+
+# 轮19.160：候选面板改为「全部候选 + 上下滑动」+ 修正翻页 keysym
+
+## 一、用户反馈
+"候选显示不全"的真实现象：**打开更多候选后点翻页没有任何动作** ✗
+（参考 trime2「候选面板显示优化.lua」：全部显示 + 上下滑动，不翻页 ✓）
+
+## 二、根因（两个）
+1. **翻页 keysym 写反** ✗：`PageDown` 发 `0xFF55`（= XK_Prior，其实是 **PageUp**），
+   `PageUp` 发 `0xFF54`（= XK_**Down** 方向键）✗ ⇒ 点 ▶ 等于往回翻/移动选择 ⇒ "没动作" ✗
+   → 修正：`KEY_PAGE_UP = 0xFF55` / `KEY_PAGE_DOWN = 0xFF56`（X11 标准 ✓）
+2. **面板只显示当前页** ✗（RIME 每页 5 个 = schema `page_size` ✗ 不是"全部"）
+
+## 三、实现（对齐 trime2 脚本语义）
+- Service 新增 `collectAllCandidates()` ✓：**先回首页 → 逐页 PageDown 收集 → 回到原页** ✓
+  （护栏 `MAX_COLLECT_PAGES = 40` 页 ✓；收集用 native 调用，不触发 applyResult ✓ 原页可精确还原 ✓）
+- 打开/收起面板（ToggleCandidatePanel）打开时收集 ✓；面板开着时**输入变化自动重收集** ✓（applyResult 里 ✓）
+- UI 状态加 `allCandidates` + `allCandPageSize` ✓；新动作 `KeyAction.CandidateGlobal(index)` ✓
+  → 选择时：回首页 → PageDown 到目标页 → 页内偏移选择 ✓（下标精确映射 ✓）
+- 面板：**去掉 ◀ ▶ 翻页** ✓ 标题"全部候选 + 总数" ✓ **整块上下滑动**（FlowRow + verticalScroll ✓）
+  序号**不再只到 9** ✓（全部候选可几十个 ✓）
+
+## 四、验证
+- `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · 版本 vc161 → **vc162 / 1.0.6** 测试版 ✓
+- 待真机验证：打开更多候选 → 全部候选一次列出、可上下滑动、点任意候选正确上屏 ✓

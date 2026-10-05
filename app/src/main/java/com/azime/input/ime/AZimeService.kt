@@ -908,7 +908,9 @@ class AZimeService : InputMethodService() {
                     refreshState()
                 }
                 KeyAction.PageDown -> {
-                    RimeManager.processKey(0xFF55) // Prior/PageDown keysym
+                    // 轮19.159：**keysym 修正** ✓ —— 原来 0xFF55 其实是 XK_Prior（Page**Up**）✗
+                    // 0xFF56 = XK_Next（PageDown）✗ 结果"点翻页没动作"✗
+                    RimeManager.processKey(KEY_PAGE_DOWN)
                     applyResult(RimeManager.getProcessResult())
                 }
 
@@ -1067,10 +1069,35 @@ class AZimeService : InputMethodService() {
                     KeyboardManager.setToolbarItems(action.ids)
                     uiState.update { it.copy(toolbarRev = it.toolbarRev + 1) }
                 }
-                KeyAction.ToggleCandidatePanel ->
-                    uiState.update { it.copy(showCandidatePanel = !it.showCandidatePanel) }
+                KeyAction.ToggleCandidatePanel -> {
+                    val open = !uiState.value.showCandidatePanel
+                    uiState.update { it.copy(showCandidatePanel = open) }
+                    // 轮19.159：打开面板 → **逐页收集全部候选** ✓（面板上下滑动显示，不翻页 ✓）
+                    if (open) {
+                        val (all, ps) = collectAllCandidates()
+                        uiState.update { it.copy(allCandidates = all, allCandPageSize = ps) }
+                    }
+                }
+                // 轮19.159：面板点击候选（全局下标）→ 跳到该候选所在页 + 页内选择 ✓
+                is KeyAction.CandidateGlobal -> {
+                    val ps = uiState.value.allCandPageSize.coerceAtLeast(1)
+                    val targetPage = action.index / ps
+                    val offset = action.index % ps
+                    var r = RimeManager.getProcessResult()
+                    var guard = 0
+                    while (r.hasPrevPage && guard++ < MAX_COLLECT_PAGES) {   // 先回首页 ✓
+                        RimeManager.processKey(KEY_PAGE_UP)
+                        r = RimeManager.getProcessResult()
+                    }
+                    repeat(targetPage) { RimeManager.processKey(KEY_PAGE_DOWN) }
+                    val selected = RimeManager.getProcessResult().candidates.getOrNull(offset)?.text ?: ""
+                    RimeManager.selectCandidate(offset)
+                    if (selected.isNotEmpty()) pushUndo(selected)
+                    applyResult(RimeManager.getProcessResult())
+                }
                 KeyAction.PageUp -> {
-                    RimeManager.processKey(0xFF54) // Prior/PageUp keysym
+                    // 轮19.159：同上修正（原 0xFF54 = XK_Down ✗ ⇒ 改成 0xFF55 = XK_Prior/PageUp ✓）
+                    RimeManager.processKey(KEY_PAGE_UP)
                     applyResult(RimeManager.getProcessResult())
                 }
 
@@ -1414,6 +1441,33 @@ class AZimeService : InputMethodService() {
      * （键事件路径拿不到 App 实际删除量，按识别出的 token 长度记 ——
      *   普通文本精确 ✓ 短代码表情在识别出时也精确 ✓ 未知格式宁少勿多 ✓）
      */
+    /**
+     * 轮19.159：**逐页收集全部候选** ✓（用户要求"全部显示 + 上下滑动"✓ 参考 trime2 脚本语义 ✓）
+     * 步骤：先回首页 → 逐页 PageDown 收集 → **回到原页** ✓（原页 = 从首页向下 up 次的页 ✓）
+     * 上限 [MAX_COLLECT_PAGES] 页（native 调用很快，但超长候选表要设护栏 ✓）
+     */
+    private fun collectAllCandidates(): Pair<List<com.azime.input.core.rime.Candidate>, Int> {
+        var r = RimeManager.getProcessResult()
+        var up = 0
+        while (r.hasPrevPage && up < MAX_COLLECT_PAGES) {
+            RimeManager.processKey(KEY_PAGE_UP)
+            r = RimeManager.getProcessResult()
+            up++
+        }
+        val pages = mutableListOf<List<com.azime.input.core.rime.Candidate>>()
+        while (pages.size < MAX_COLLECT_PAGES) {
+            r = RimeManager.getProcessResult()
+            val cur = r.candidates
+            if (cur.isEmpty()) break
+            pages.add(cur.map { it.toCandidate() })
+            if (!r.hasNextPage) break
+            RimeManager.processKey(KEY_PAGE_DOWN)
+        }
+        // 回到原页 ✓（收集后停在末页，向上回 (页数-1-原页下标) 次 ✓）
+        repeat((pages.size - 1 - up).coerceAtLeast(0)) { RimeManager.processKey(KEY_PAGE_UP) }
+        return pages.flatten() to (pages.firstOrNull()?.size ?: 0)
+    }
+
     private suspend fun handleBackspace() {
         val result = RimeManager.processKey(KEY_BACKSPACE)
         if (result.processed) {
@@ -1631,6 +1685,11 @@ class AZimeService : InputMethodService() {
             com.azime.input.core.diag.Diag.log("Embed",
                 "mode=$embedMode preedit='${result.preeditText}' 预览='$preview' 候选=${result.candidates.size}")
         }
+        // 轮19.159：面板开着 ⇒ 输入变化后**重新收集全部候选** ✓（内容保持最新 ✓）
+        if (uiState.value.showCandidatePanel) {
+            val (all, ps) = collectAllCandidates()
+            uiState.update { it.copy(allCandidates = all, allCandPageSize = ps) }
+        }
         uiState.update {
             it.copy(
                 candidates = newList,
@@ -1678,6 +1737,13 @@ class AZimeService : InputMethodService() {
          * 取 32 是因为要覆盖：ZWJ 家族 emoji（最多 11 码元）+ 前缀 ✓；不必取更多 ✗（热路径 ✓）
          */
         private const val BACKSPACE_LOOKAHEAD = 32
+
+        /** 轮19.159：翻页 keysym（X11 标准 ✓ 原实现把 PageUp/PageDown 写反了 ✗）。 */
+        private const val KEY_PAGE_UP = 0xFF55
+        private const val KEY_PAGE_DOWN = 0xFF56
+
+        /** 轮19.159：逐页收集全部候选的页数上限（护栏，防超长候选表卡顿 ✓）。 */
+        private const val MAX_COLLECT_PAGES = 40
 
         /**
          * 「编辑框里带自有表情 token」的 App 包名 ✓（只影响撤回记录的长度估算 ✓，
