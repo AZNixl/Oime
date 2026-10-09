@@ -32,21 +32,6 @@
   `assembleDebug` → 上传 APK / reports
 - AAR 不提交仓库（49MB 超 Git Data API blob 上限），由 CI `curl` 官方 release 获取
 
-### 本机环境
-
-| 组件 | 路径 |
-|---|---|
-| Android SDK | `C:\Users\HinYoung\AppData\Local\Android\Sdk` |
-| JDK 17 | `C:\Program Files\Eclipse Adoptium\jdk-17.0.20.8-hotspot` |
-| adb | SDK `platform-tools/adb.exe`（USB 真机，包名 `com.oime.input`） |
-
-本机构建/推送注意：
-
-1. 项目路径含中文（`Desktop\搞机\...`）→ `gradle.properties` 里 `android.overridePathCheck=true` 绕过
-2. AGP 8.3 不能配 Gradle 9，wrapper 固定 Gradle 8.4
-3. **本机 `.git` 已损坏**（`bad tree object HEAD`）：不能用 `git add/commit/push`；
-   改用 `push_via_api_tree.py`（遍历工作树 + 内置忽略规则 → Git Data API）
-
 ## 功能完成度（截至 vc146）
 
 | 模块 | 状态 | 说明 |
