@@ -29,3 +29,13 @@ app/libs/*.aar
 
 # Android Profiling
 *.hprof
+
+# 签名密钥材料（绝不入库：泄露 = 任何人可签出能覆盖升级的包）
+*.jks
+*.keystore
+*.p12
+*.p8
+*.pepk
+
+# WorkBuddy 本地工作记录（不属于 App 源码 ✓ 含本机路径等）
+.workbuddy/

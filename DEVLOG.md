@@ -154,7 +154,7 @@ vendored RimeEngine 中 `getAvailableSchemas / getSchemaString / getSchemaList`
 | 7 | 设置一级菜单 | 主页改纯入口（输入方案/键盘/外观/预设置/关于），滑杆、振动开关等全部收进对应二级页（键盘页含布局编辑器+键高+增高行+振动；外观页字体管理；关于页版本/GitHub） |
 | 8 | 设置主题跟随回车键颜色 | MaterialTheme colorScheme 按 system dark 选择基础方案，primary=键盘 accentActive、primaryContainer=回车键底色 accentKeyBg（keyboardAccentActiveColor/keyboardAccentKeyColor 公开） |
 
-### 真机验证（20:31-20:37, b72e0041）
+### 真机验证（20:31-20:37, b7****41）
 - 新包 com.oime.input 装机、ime enable、切默认输入法 ✅；旧外置资产（方案/fonts/lua）已复制到 Documents/Oime。
 - 键盘渲染 ✅（大写键帽/○ 工具栏/红摇杆/方案名）；○ 面板磁贴 ✅；设置页：运行正常·简体拼音（迁移方案自动部署）✅、打字振动卡片 ✅。
 - 无崩溃（logcat 无 FATAL）。期间屏幕跳变系人机同时操作，自动化盲测暂停，交由用户手测。
@@ -221,7 +221,7 @@ vendored RimeEngine 中 `getAvailableSchemas / getSchemaString / getSchemaList`
 - 首推 CI 失败发现 push_via_api.py 按 git 索引（ls-files -s）取文件，需先 git add -A；
 - 二推失败：NumpadSliderSymbols 误放在 object KeyboardPages 内部，KeyboardScreen 顶层 import 无法解析 → 改 KeyboardPages.NumpadSliderSymbols 引用。
 
-### 真机自动化验证（0.7.0-oime，commit 0ea23a7e，设备 b72e0041，Android 14）
+### 真机自动化验证（0.7.0-oime，commit 0ea23a7e，设备 b7****41，Android 14）
 装机 18:16:50 Success。逐项验证：
 - 跳过向导持久化 ✅：跳过后进设置；HOME 重新打开 App 直达设置不再出向导；关于页有「重新运行向导」。
 - 主题与配色 ✅：色彩模式三 chip、7 预设色板、自定义 RGB；点「中国红」→ 键帽勾选迁移、RGB 滑杆同步、键盘 preedit/选项卡/收起按钮全部变红（强调色即时生效）。
@@ -444,7 +444,7 @@ vendored RimeEngine 中 `getAvailableSchemas / getSchemaString / getSchemaList`
 - commit d6baf1f（按下动画 + 修复）二推 CI 失败：Spring.StiffnessMediumHigh Unresolved。
 - commit f5b402e（StiffnessHigh 修复）run 34128229025 ✅ success。
 - APK 已取回：app-debug.apk 26.4MB（artifact #10021193864），工作区副本 oime-0.9.4-vc14.apk。
-- 手机 b72e0041 在线，Streamed Install Success，dumpsys 确认 versionCode=14 / 0.9.4-oime。
+- 手机 b7****41 在线，Streamed Install Success，dumpsys 确认 versionCode=14 / 0.9.4-oime。
 - 按用户指令：记录上传后停止工作，等待下一步指令。
 
 ## 反馈轮 14（0.9.5-oime vc15）：3 条
@@ -464,7 +464,7 @@ vendored RimeEngine 中 `getAvailableSchemas / getSchemaString / getSchemaList`
 ## vc15 构建与装机记录
 - commit 4037803（parent 8544d48，67 文件），CI run 34131155961 ✅ success，一次通过。
 - APK 已取回：app-debug.apk 26.4MB（artifact），工作区副本 oime-0.9.5-vc15.apk。
-- 手机 b72e0041 装机 Success，dumpsys 确认 0.9.5-oime。
+- 手机 b7****41 装机 Success，dumpsys 确认 0.9.5-oime。
 - **修复实机验证通过**：切回 AZ 组重新部署后，default.custom.yaml 22 个唯一 id 无重复；shared 根 23 个 .schema.yaml（22 组内 + pinyin_simp 内置）全部拍平到位；build/ 编译产物 41 个（core2022/double_pinyin 全家/easy_english/japanese/rime_frost/tiger 等 prism+table+reverse）——librime 已完整部署组内全部方案。
 - 按工作流：记录上传后停止工作，等待下一步指令。
 
@@ -485,7 +485,7 @@ vendored RimeEngine 中 `getAvailableSchemas / getSchemaString / getSchemaList`
 - commit e367900（parent 6fa1803）首推 CI 失败：VoiceWavePanel 插入时原 toolbarToolItem 的 @Composable 注解被夹成孤立重复（"This annotation is not repeatable"），toolbarToolItem 失去注解报 Composable 上下文错误。
 - commit b3cc8eb（注解重排修复）run 34171999643 ✅ success。
 - APK 已取回：app-debug.apk 26.5MB（artifact），工作区副本 oime-0.9.6-vc16.apk。
-- 手机 b72e0041 装机 Success，dumpsys 确认 versionName=0.9.6-oime。
+- 手机 b7****41 装机 Success，dumpsys 确认 versionName=0.9.6-oime。
 - 按用户指令：记录上传后停止工作，等待下一步指令。
 
 ## 反馈轮 16（0.9.7-oime vc17）：5 条
@@ -499,7 +499,7 @@ vendored RimeEngine 中 `getAvailableSchemas / getSchemaString / getSchemaList`
 | 5 | 键盘设计器入口加到键盘 | KeyAction.OpenKeyboardEditor（data object）+ O 菜单「键盘编辑」（Icons.Default.Edit，第 9 项）+ AZimeService startActivity(KeyboardEditorActivity, NEW_TASK) |
 
 技术记录：
-- 实机排查（adb b72e0041）：**该 ROM 无任何系统语音识别服务**（cmd package query-services android.speech.RecognitionService = No services found；RECOGNIZE_SPEECH activity 亦无）→ isRecognitionAvailable=false，长按 ○ 的声纹动画从不出现（voiceState 停留 idle），属系统层缺失非代码 bug；本轮起 handleVoiceToggle 无服务时改 Toast 醒目告知（本地模型/联网 API 后续接入）
+- 实机排查（adb b7****41）：**该 ROM 无任何系统语音识别服务**（cmd package query-services android.speech.RecognitionService = No services found；RECOGNIZE_SPEECH activity 亦无）→ isRecognitionAvailable=false，长按 ○ 的声纹动画从不出现（voiceState 停留 idle），属系统层缺失非代码 bug；本轮起 handleVoiceToggle 无服务时改 Toast 醒目告知（本地模型/联网 API 后续接入）
 - O 键长按/拖动后松手误弹菜单修复：awaitEachGesture 抬起事件在 oLongFired 时 consume()，不再传给后面的 clickable
 - 混输方案（虎单整 tiger_danzheng）现场：schema_1788533984946 组内主码=tiger.extended（custom patch）、副=lua_translator@tiger_danzheng_sentence；当前设备 active 组=AZ，虎单整文件未同步进 shared（属预期，等切组修复后实测）
 - 版本 0.9.7-oime（versionCode 17）
