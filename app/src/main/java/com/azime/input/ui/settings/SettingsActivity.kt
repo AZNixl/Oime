@@ -52,6 +52,11 @@ import com.azime.input.ui.editor.KeyboardEditorActivity
 import com.azime.input.ui.font.FontManagerActivity
 import com.azime.input.utils.SchemaImporter
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -2579,30 +2584,85 @@ private fun KsuItem(
 }
 
 /**
- * 轮19.167：**联网语音 API 提供商预设** ✓（一键填 Base URL + 模型 ✓ API Key 仍需用户自填 ✓）
- * 全部走 **OpenAI 兼容**的 `POST {baseUrl}/audio/transcriptions` ✓ 与本项目实现一致 ✓
+ * 轮19.168：**联网语音 API 提供商预设** ✓（一键填 Base URL + 模型 + 调用方式 ✓ API Key 仍用户自填 ✓）
+ * - 转写接口：`POST {baseUrl}/audio/transcriptions`（multipart ✓ OpenAI / 智谱 / 硅基流动 / Groq / Mistral ✓）
+ * - 对话式：`POST {baseUrl}/chat/completions`（base64 input_audio ✓ 阿里云百炼 Qwen3-ASR-Flash 走这条 ✓）
  */
-private data class WebApiPreset(val name: String, val baseUrl: String, val model: String)
-
-private val WebApiPresets = listOf(
-    // 阿里云百炼（DashScope 兼容模式）—— issue #1 的需求 ✓
-    WebApiPreset("阿里云百炼", "https://dashscope.aliyuncs.com/compatible-mode/v1", "qwen3-asr-flash"),
-    WebApiPreset("OpenAI", "https://api.openai.com/v1", "whisper-1"),
-    WebApiPreset("硅基流动", "https://api.siliconflow.cn/v1", "FunAudioLLM/SenseVoiceSmall"),
-    // 自定义：只清空预设痕迹，不动用户已填内容（点它会填入空串 ⇒ 便于手填 ✓）
-    WebApiPreset("自定义", "", ""),
+private data class WebApiPreset(
+    val name: String,
+    val baseUrl: String,
+    val model: String,
+    val protocol: String = com.azime.input.core.speech.SpeechEngineManager.PROTO_TRANSCRIBE,
 )
 
-/** 轮19：联网 API 配置对话框（OpenAI 兼容 /v1/audio/transcriptions）。 */
+private val WebApiPresets = listOf(
+    WebApiPreset("智谱 BigModel", "https://open.bigmodel.cn/api/paas/v4", "glm-asr-2512"),
+    WebApiPreset(
+        "阿里云百炼（对话式）", "https://dashscope.aliyuncs.com/compatible-mode/v1", "qwen3-asr-flash",
+        com.azime.input.core.speech.SpeechEngineManager.PROTO_CHAT,
+    ),
+    WebApiPreset("硅基流动", "https://api.siliconflow.cn/v1", "FunAudioLLM/SenseVoiceSmall"),
+    WebApiPreset("OpenAI", "https://api.openai.com/v1", "whisper-1"),
+    WebApiPreset("Groq", "https://api.groq.com/openai/v1", "whisper-large-v3-turbo"),
+    WebApiPreset("Mistral", "https://api.mistral.ai/v1", "voxtral-mini-latest"),
+    WebApiPreset("自定义", "", "", com.azime.input.core.speech.SpeechEngineManager.PROTO_TRANSCRIBE),
+)
+
+/** 语音类模型关键词（`GET /models` 返回**全部**模型 ⇒ 需要过滤 ✓）。 */
+private val AsrModelKeywords = listOf(
+    "whisper", "transcribe", "asr", "audio", "sense", "paraformer", "voxtral", "glm-asr",
+)
+
+/** `GET {baseUrl}/models`（OpenAI 兼容 ✓）。失败 / 无该接口 ⇒ null（调用方回退手填 ✓）。 */
+private fun fetchWebApiModels(baseUrl: String, apiKey: String): List<String>? = runCatching {
+    val conn = java.net.URL("${baseUrl.trimEnd('/')}/models").openConnection() as java.net.HttpURLConnection
+    conn.requestMethod = "GET"
+    conn.connectTimeout = 8000
+    conn.readTimeout = 12000
+    conn.setRequestProperty("Authorization", "Bearer $apiKey")
+    if (conn.responseCode !in 200..299) return@runCatching null
+    val body = conn.inputStream.bufferedReader().readText()
+    val arr = org.json.JSONObject(body).optJSONArray("data") ?: return@runCatching emptyList()
+    (0 until arr.length()).mapNotNull { i -> arr.optJSONObject(i)?.optString("id")?.takeIf { it.isNotBlank() } }
+}.getOrNull()
+
+/** 轮19.168：联网 API 配置对话框（提供商下拉 + 模型下拉 + 自动拉取 ✓）。 */
 @Composable
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 private fun WebApiConfigDialog(onDismiss: () -> Unit) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("speech_prefs", android.content.Context.MODE_PRIVATE) }
-    val cfg = remember { com.azime.input.core.speech.SpeechEngineManager.webApiConfig(context) }
+    val engine = com.azime.input.core.speech.SpeechEngineManager
     var url by remember { mutableStateOf(prefs.getString("web_api_url", "") ?: "") }
     var key by remember { mutableStateOf(prefs.getString("web_api_key", "") ?: "") }
     var model by remember { mutableStateOf(prefs.getString("web_api_model", "whisper-1") ?: "whisper-1") }
+    var protocol by remember {
+        mutableStateOf(prefs.getString("web_api_protocol", engine.PROTO_TRANSCRIBE) ?: engine.PROTO_TRANSCRIBE)
+    }
+    var provName by remember {
+        mutableStateOf(WebApiPresets.firstOrNull { it.baseUrl.isNotBlank() && it.baseUrl == url }?.name ?: "自定义")
+    }
+    var provOpen by remember { mutableStateOf(false) }
+    var modelOpen by remember { mutableStateOf(false) }
+    var models by remember { mutableStateOf<List<String>>(emptyList()) }
+    var fetchState by remember { mutableStateOf("idle") }  // idle | loading | ok | empty | fail
+
+    // 轮19.168：Base URL 与 Key 都填好后**自动拉取一次**模型列表 ✓（输入停 700ms ✓ 变化即重拉 ✓）
+    LaunchedEffect(url, key) {
+        if (url.isBlank() || key.isBlank()) {
+            fetchState = "idle"; models = emptyList(); return@LaunchedEffect
+        }
+        delay(700)
+        fetchState = "loading"
+        val all = withContext(Dispatchers.IO) { fetchWebApiModels(url.trim(), key.trim()) }
+        if (all == null) {
+            fetchState = "fail"; models = emptyList()
+        } else {
+            val asr = all.filter { id -> AsrModelKeywords.any { k -> id.contains(k, ignoreCase = true) } }
+            models = asr
+            fetchState = if (asr.isEmpty()) "empty" else "ok"
+        }
+    }
 
     androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
         androidx.compose.material3.Surface(
@@ -2613,35 +2673,73 @@ private fun WebApiConfigDialog(onDismiss: () -> Unit) {
                 Text("联网 API 配置", style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "OpenAI 兼容接口（POST {baseUrl}/audio/transcriptions）",
+                    "选提供商自动填地址与模型；填入 API Key 后自动拉取可用模型（失败可手填）",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.height(12.dp))
-                // 轮19.167：**提供商预设** ✓ —— 一键填 Base URL + 模型（API Key 仍填自己的 ✓）
-                // 用户/issue 反馈：阿里云百炼需要更易于使用 ✓
-                Text("提供商预设", style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(Modifier.height(6.dp))
-                androidx.compose.foundation.layout.FlowRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    WebApiPresets.forEach { preset ->
-                        OimeChip(
-                            selected = url == preset.baseUrl && model == preset.model,
-                            onClick = {
-                                url = preset.baseUrl
-                                model = preset.model
-                            },
-                            label = { Text(preset.name) },
-                        )
+
+                // ── 提供商（下拉 ✓）──
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("提供商", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                    Box {
+                        Row(
+                            modifier = Modifier
+                                .clickable { provOpen = true }
+                                .border(0.5.dp, MaterialTheme.colorScheme.outline, androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(provName, style = MaterialTheme.typography.bodyMedium)
+                            Spacer(Modifier.width(6.dp))
+                            Text("▾", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        DropdownMenu(expanded = provOpen, onDismissRequest = { provOpen = false }) {
+                            WebApiPresets.forEach { preset ->
+                                DropdownMenuItem(
+                                    text = { Text(preset.name) },
+                                    onClick = {
+                                        provName = preset.name
+                                        url = preset.baseUrl
+                                        protocol = preset.protocol
+                                        if (preset.model.isNotBlank()) model = preset.model
+                                        provOpen = false
+                                    },
+                                )
+                            }
+                        }
                     }
                 }
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(8.dp))
+
+                // ── 调用方式（转写接口 / 对话式 ✓ 由提供商预设自动选 ✓ 可手改 ✓）──
+                Text("调用方式", style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(4.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    OimeChip(
+                        selected = protocol == engine.PROTO_TRANSCRIBE,
+                        onClick = { protocol = engine.PROTO_TRANSCRIBE },
+                        label = { Text("转写接口") },
+                    )
+                    OimeChip(
+                        selected = protocol == engine.PROTO_CHAT,
+                        onClick = { protocol = engine.PROTO_CHAT },
+                        label = { Text("对话式") },
+                    )
+                }
+                Text(
+                    "转写接口 = POST {baseUrl}/audio/transcriptions；对话式 = /chat/completions（阿里云百炼用这条）",
+                    fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
+
                 OutlinedTextField(
-                    value = url, onValueChange = { url = it },
+                    value = url, onValueChange = {
+                        url = it
+                        provName = WebApiPresets.firstOrNull { p -> p.baseUrl.isNotBlank() && p.baseUrl == it.trim() }?.name
+                            ?: "自定义"
+                    },
                     label = { Text("Base URL") },
                     placeholder = { Text("https://api.openai.com/v1") },
                     singleLine = true,
@@ -2660,7 +2758,38 @@ private fun WebApiConfigDialog(onDismiss: () -> Unit) {
                     label = { Text("模型") },
                     placeholder = { Text("whisper-1") },
                     singleLine = true,
+                    trailingIcon = {
+                        Box {
+                            Text(
+                                "▾",
+                                color = if (models.isEmpty()) MaterialTheme.colorScheme.outline
+                                else MaterialTheme.colorScheme.primary,
+                                modifier = Modifier
+                                    .clickable(enabled = models.isNotEmpty()) { modelOpen = true }
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                            )
+                            DropdownMenu(expanded = modelOpen, onDismissRequest = { modelOpen = false }) {
+                                models.forEach { id ->
+                                    DropdownMenuItem(
+                                        text = { Text(id) },
+                                        onClick = { model = id; modelOpen = false },
+                                    )
+                                }
+                            }
+                        }
+                    },
                     modifier = Modifier.fillMaxWidth(),
+                )
+                // 拉取状态（三态 + 手填回退 ✓）
+                Text(
+                    when (fetchState) {
+                        "loading" -> "正在拉取模型列表…"
+                        "ok" -> "已获取 ${models.size} 个语音模型，点右侧 ▾ 选择"
+                        "empty" -> "未找到语音类模型：可直接手填模型名"
+                        "fail" -> "未能拉取模型列表（该接口可能不支持）：可直接手填模型名"
+                        else -> if (url.isBlank() || key.isBlank()) "填入 Base URL 与 API Key 后会自动拉取模型列表" else ""
+                    },
+                    fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.height(16.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -2673,9 +2802,10 @@ private fun WebApiConfigDialog(onDismiss: () -> Unit) {
                                 .putString("web_api_url", url.trim())
                                 .putString("web_api_key", key.trim())
                                 .putString("web_api_model", model.trim().ifEmpty { "whisper-1" })
+                                .putString("web_api_protocol", protocol)
                                 .apply()
                             // 配置完成直接切换到联网引擎
-                            prefs.edit().putString("engine", com.azime.input.core.speech.SpeechEngineManager.ENGINE_WEB_API).apply()
+                            prefs.edit().putString("engine", engine.ENGINE_WEB_API).apply()
                             onDismiss()
                         },
                         modifier = Modifier.weight(1f),

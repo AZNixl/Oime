@@ -324,18 +324,30 @@ object SpeechEngineManager {
     data class WebApiConfig(
         val baseUrl: String,      // https://api.xxx.com/v1
         val apiKey: String,
-        val model: String,        // whisper-1 / gpt-4o-mini-transcribe 等
+        val model: String,        // whisper-1 / glm-asr-2512 / qwen3-asr-flash 等
+        /**
+         * 轮19.168：调用方式 ✓
+         * - [PROTO_TRANSCRIBE] `POST {baseUrl}/audio/transcriptions`（multipart ✓ OpenAI/智谱/硅基流动/Groq/Mistral ✓）
+         * - [PROTO_CHAT] `POST {baseUrl}/chat/completions`（base64 input_audio ✓ 阿里云百炼 qwen3-asr-flash ✓）
+         */
+        val protocol: String,
     )
+
+    const val PROTO_TRANSCRIBE = "transcribe"
+    const val PROTO_CHAT = "chat"
 
     fun webApiConfig(context: Context): WebApiConfig? {
         val prefs = context.getSharedPreferences("speech_prefs", Context.MODE_PRIVATE)
         val url = prefs.getString("web_api_url", "") ?: ""
         val key = prefs.getString("web_api_key", "") ?: ""
         val model = prefs.getString("web_api_model", "whisper-1") ?: "whisper-1"
-        return if (url.isNotBlank() && key.isNotBlank()) WebApiConfig(url.trimEnd('/'), key, model) else null
+        val proto = prefs.getString("web_api_protocol", PROTO_TRANSCRIBE) ?: PROTO_TRANSCRIBE
+        return if (url.isNotBlank() && key.isNotBlank()) {
+            WebApiConfig(url.trimEnd('/'), key, model, if (proto == PROTO_CHAT) PROTO_CHAT else PROTO_TRANSCRIBE)
+        } else null
     }
 
-    /** PCM16 mono 16k → wav → multipart 上传。结果回调 IO 线程。 */
+    /** PCM16 mono 16k → wav → 按配置的调用方式上传。结果回调 IO 线程。 */
     private fun webApiTranscribe(pcm: ShortArray, onDone: (Boolean, String) -> Unit) {
         scope.launch(Dispatchers.IO) {
             val cfg = webApiConfig(com.azime.input.AZimeApplication.instance)
@@ -343,7 +355,67 @@ object SpeechEngineManager {
                 onDone(false, "未配置联网 API（设置 → 语音输入）")
                 return@launch
             }
-            runCatching {
+            if (cfg.protocol == PROTO_CHAT) webApiTranscribeChat(pcm, cfg, onDone)
+            else webApiTranscribeMultipart(pcm, cfg, onDone)
+        }
+    }
+
+    /**
+     * 轮19.168：**对话式识别** ✓（`POST {baseUrl}/chat/completions` + base64 input_audio）
+     * 用于只开放对话式路径的提供商（如阿里云百炼 Qwen3-ASR-Flash ✓ 官方兼容路径是 chat/completions ✗
+     * 不是 audio/transcriptions ✗）。响应取 `choices[0].message.content` ✓
+     */
+    private fun webApiTranscribeChat(
+        pcm: ShortArray, cfg: WebApiConfig, onDone: (Boolean, String) -> Unit,
+    ) {
+        runCatching {
+            val wav = pcmToWav(pcm)
+            val b64 = android.util.Base64.encodeToString(wav, android.util.Base64.NO_WRAP)
+            val payload = JSONObject().apply {
+                put("model", cfg.model)
+                put("messages", org.json.JSONArray().put(JSONObject().apply {
+                    put("role", "user")
+                    put("content", org.json.JSONArray().put(JSONObject().apply {
+                        put("type", "input_audio")
+                        put("input_audio", JSONObject().apply {
+                            put("data", b64)
+                            put("format", "wav")
+                        })
+                    }))
+                }))
+            }
+            val conn = (URL("${cfg.baseUrl}/chat/completions").openConnection() as HttpURLConnection)
+            conn.requestMethod = "POST"
+            conn.doOutput = true
+            conn.connectTimeout = 15_000
+            conn.readTimeout = 60_000
+            conn.setRequestProperty("Authorization", "Bearer ${cfg.apiKey}")
+            conn.setRequestProperty("Content-Type", "application/json")
+            conn.outputStream.use { it.write(payload.toString().toByteArray()) }
+            val code = conn.responseCode
+            val body = if (code in 200..299) conn.inputStream.bufferedReader().readText()
+            else conn.errorStream?.bufferedReader()?.readText().orEmpty()
+            if (code !in 200..299) {
+                Log.e(TAG, "web api(chat) $code: ${body.take(200)}")
+                onDone(false, "API 请求失败（$code）")
+            } else {
+                val text = runCatching {
+                    JSONObject(body).optJSONArray("choices")?.optJSONObject(0)
+                        ?.optJSONObject("message")?.optString("content", "").orEmpty()
+                }.getOrDefault("")
+                onDone(true, text.trim())
+            }
+        }.onFailure {
+            Log.e(TAG, "web api(chat) error", it)
+            onDone(false, "网络请求失败：${it.message ?: "未知错误"}")
+        }
+    }
+
+    /** 转写接口（multipart `/audio/transcriptions` ✓）。 */
+    private fun webApiTranscribeMultipart(
+        pcm: ShortArray, cfg: WebApiConfig, onDone: (Boolean, String) -> Unit,
+    ) {
+        runCatching {
                 val boundary = "----OimeBoundary${System.currentTimeMillis()}"
                 val url = URL("${cfg.baseUrl}/audio/transcriptions")
                 val conn = url.openConnection() as HttpURLConnection
@@ -376,10 +448,9 @@ object SpeechEngineManager {
                     val text = runCatching { JSONObject(body).optString("text", "") }.getOrDefault("")
                     onDone(true, text.trim())
                 }
-            }.onFailure {
-                Log.e(TAG, "web api error", it)
-                onDone(false, "网络请求失败：${it.message ?: "未知错误"}")
-            }
+        }.onFailure {
+            Log.e(TAG, "web api error", it)
+            onDone(false, "网络请求失败：${it.message ?: "未知错误"}")
         }
     }
 

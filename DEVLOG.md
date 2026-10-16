@@ -3087,3 +3087,39 @@ java.lang.UnsatisfiedLinkError: dlopen failed: empty/missing DT_HASH in "librime
 ## 三、验证
 - `compileDebugKotlin` **BUILD SUCCESSFUL** ✓（FlowRow 需 `@OptIn(ExperimentalLayoutApi)` ✓）
 - 版本 **vc166 / 1.0.7** 测试版（用户先测，确认可用后再发布并回复 issue ✓）
+
+# 轮19.168：联网语音「提供商下拉 + 模型下拉（自动拉取）+ 对话式识别」
+
+## 一、用户确认的方案
+1. 预设清单 = 智谱 / 阿里云百炼 / 硅基流动 / OpenAI / Groq / Mistral + 自定义 ✓
+2. **两个同时做**（预设 + **对话式识别**）"做就要做好" ✓
+3. 拉取失败 ⇒ 回退内置默认 + 可手填 ✓
+4. **填入 Key 后自动拉取一次** ✓
+
+## 二、调研结论（本轮实测资料）
+| 提供商 | Base URL | 默认模型 | 调用方式 |
+|---|---|---|---|
+| 智谱 BigModel | `open.bigmodel.cn/api/paas/v4` | `glm-asr-2512` | 转写接口 ✓ 文档确认 multipart ✓ |
+| **阿里云百炼** | `dashscope.aliyuncs.com/compatible-mode/v1` | `qwen3-asr-flash` | **对话式** ✓（官方文档的兼容路径是 `/chat/completions` ✗ 不是 `/audio/transcriptions` ✗）|
+| 硅基流动 | `api.siliconflow.cn/v1` | `FunAudioLLM/SenseVoiceSmall` | 转写接口 ✓ |
+| OpenAI | `api.openai.com/v1` | `whisper-1` | 转写接口 ✓ |
+| Groq | `api.groq.com/openai/v1` | `whisper-large-v3-turbo` | 转写接口 ✓ |
+| Mistral | `api.mistral.ai/v1` | `voxtral-mini-latest` | 转写接口 ✓ |
+不兼容未列：OpenRouter（JSON+base64 ✗）· 讯飞/百度/腾讯/火山（私有签名 ✗）
+
+## 三、实现
+- **`SpeechEngineManager`**：`WebApiConfig` 加 `protocol`（`transcribe` / `chat` ✓）
+  - 原 multipart 逻辑抽出为 `webApiTranscribeMultipart` ✓（行为不变 ✓）
+  - 新增 **`webApiTranscribeChat`** ✓：WAV → base64 → `{"model":…,"messages":[{"role":"user","content":[{"type":"input_audio","input_audio":{"data":…,"format":"wav"}}]}]}`
+    POST `{baseUrl}/chat/completions` ✓ 解析 `choices[0].message.content` ✓
+- **设置对话框**（`WebApiConfigDialog`）重写：
+  - **提供商下拉** ✓（7 项 ✓ 选中即填 Base URL + 模型 + 调用方式 ✓）
+  - **调用方式**双芯片（转写接口 / 对话式 ✓ 由预设自动选 ✓ 可手改 ✓）
+  - **模型输入框 + 右侧 ▾ 下拉** ✓（列出拉取到的**语音类**模型 ✓）
+  - **自动拉取** ✓：Base URL + Key 都有值 ⇒ 输入停 700ms 触发 `GET {baseUrl}/models` ✓
+    过滤关键词 `whisper/transcribe/asr/audio/sense/paraformer/voxtral/glm-asr` ✓
+  - **三态提示** ✓：拉取中… / 已获取 N 个 / 未找到或失败（可手填）✓
+  - Base URL 手改 ⇒ 提供商显示「自定义」✓；保存写入 `web_api_protocol` ✓
+
+## 四、验证
+- `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · 版本 vc167 / 1.0.7 测试版 ✓
