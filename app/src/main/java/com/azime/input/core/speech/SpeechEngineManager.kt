@@ -382,7 +382,7 @@ object SpeechEngineManager {
                 "chat ${if (dataUri) "dataURI" else "rawB64"} code=$lastCode resp=${lastBody.take(400)}",
             )
             if (lastCode in 200..299) {
-                val text = parseChatText(lastBody)
+                val text = parseChatStream(lastBody)
                 if (text.isNotBlank()) {
                     onDone(true, text)
                     return
@@ -397,7 +397,10 @@ object SpeechEngineManager {
     private fun chatRequest(cfg: WebApiConfig, audioData: String): Pair<Int, String> = runCatching {
         val payload = JSONObject().apply {
             put("model", cfg.model)
-            put("stream", false)
+            // 轮19.170：**必须 stream: true** ✓ —— 阿里云官方错误码文档明确：
+            // 「current user api does not support http call」= 模型仅支持流式输出但未启用 ✗
+            // （qwen3-asr-flash 只支持流式 ✗ 上一轮的 false 正是 400 的根因 ✗）
+            put("stream", true)
             put("messages", org.json.JSONArray().put(JSONObject().apply {
                 put("role", "user")
                 put("content", org.json.JSONArray().put(JSONObject().apply {
@@ -424,6 +427,32 @@ object SpeechEngineManager {
     }.getOrElse { 
         com.azime.input.core.diag.Diag.warn("Speech", "chat 请求异常：${it.message}")
         -1 to (it.message ?: "网络异常")
+    }
+
+    /**
+     * 轮19.170：**先按 SSE 流式解析**（`stream:true` ✓ 百炼只支持流式 ✗），再回退普通 JSON ✓。
+     * SSE 形如：`data: {"choices":[{"delta":{"content":"识别文本"}}]}` … `data: [DONE]`
+     */
+    private fun parseChatStream(body: String): String {
+        if (body.contains("data:")) {
+            val sb = StringBuilder()
+            body.lineSequence().forEach { line ->
+                val s = line.trim()
+                if (!s.startsWith("data:")) return@forEach
+                val payload = s.removePrefix("data:").trim()
+                if (payload.isEmpty() || payload == "[DONE]") return@forEach
+                val o = runCatching { JSONObject(payload) }.getOrNull() ?: return@forEach
+                val ch = o.optJSONArray("choices")?.optJSONObject(0) ?: return@forEach
+                ch.optJSONObject("delta")?.optString("content", "")
+                    ?.takeIf { it.isNotBlank() }?.let { sb.append(it) }
+                if (sb.isEmpty()) {
+                    ch.optJSONObject("message")?.optString("content", "")
+                        ?.takeIf { it.isNotBlank() }?.let { sb.append(it) }
+                }
+            }
+            if (sb.isNotBlank()) return sb.toString()
+        }
+        return parseChatText(body)
     }
 
     /** 稳健解析对话式响应（多种形态 ✓ 百炼/其他兼容实现不一 ✗）。 */

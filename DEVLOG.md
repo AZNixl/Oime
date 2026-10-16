@@ -3142,3 +3142,25 @@ java.lang.UnsatisfiedLinkError: dlopen failed: empty/missing DT_HASH in "librime
 
 ## 三、验证
 - `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · 版本 vc168 / 1.0.7 测试版 ✓
+
+# 轮19.170：百炼 400 根因确认并修复 —— **必须流式**（stream:true）
+
+## 一、日志给出的确切原因（对比两轮）
+- vc168 日志（含响应正文 ✓）：
+  `chat dataURI code=400 resp={"error":{"message":"current user api does not support http call", ...}}`
+  `chat rawB64 code=400 resp={……同一句话……}` ⇒ **两种 data 格式同错** ⇒ 与数据格式无关 ✓（该假设排除 ✓）
+- 官方错误码文档（阿里云 Model Studio）原文：
+  > `This model only support stream mode, please enable the stream parameter to access the model.`
+  > **/ `current user api does not support http call.`**
+  > 原因：模型仅支持流式输出，但调用时未启用流式输出。解决：请使用流式输出方式调用模型。
+- ⇒ **`qwen3-asr-flash` 只支持 `stream: true`** ✗
+  ⚠️ **上一轮我按文档"想当然"加了 `"stream": false` ✗ 正是 400 的直接原因** ✗（自作聪明 ✗）
+
+## 二、修复
+1. 对话式请求：`"stream": true` ✓
+2. 响应解析：**先按 SSE 解析**（`data: {"choices":[{"delta":{"content":"…"}}]}` … `data: [DONE]` ✓
+   逐行取 `delta.content` 累加 ✓），非 SSE 再回退普通 JSON ✓（兼容其他实现 ✓）
+3. 保留上一轮的：正文入日志 ✓ / 失败消息带正文 ✓ / 双 data 格式重试 ✓ / 解析多形态 ✓
+
+## 三、验证
+- `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · 版本 vc169 / 1.0.7 测试版 ✓
