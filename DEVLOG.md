@@ -3123,3 +3123,22 @@ java.lang.UnsatisfiedLinkError: dlopen failed: empty/missing DT_HASH in "librime
 
 ## 四、验证
 - `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · 版本 vc167 / 1.0.7 测试版 ✓
+
+# 轮19.169：百炼「无文字」排查 —— 加正文日志 + 双 data 格式重试 + 稳健解析
+
+## 一、日志实测（用户真机）
+- App 日志（`Documents/Oime/logs/oime-2026-10-16.log`）已能读到语音失败摘要 ✓：
+  `W [Speech] 语音失败：API 请求失败（400）` ✓（另有 500/404 是不同尝试 ✓）
+- **但响应正文没记录** ✗（原来只有 `Log.e`，而 App 日志用的是 `Diag` ✓）⇒ 400 的具体原因看不到 ✗
+
+## 二、本轮改动（诊断 + 自愈）
+1. **正文入日志** ✓：对话式与转写接口两条路径的 **HTTP 码 + 响应体（前 400 字）** 都写 `Diag.warn("Speech", …)`
+   ⇒ 下次在 `Documents/Oime/logs/oime-*.log` 里可直接看到服务端报错原因 ✓
+2. **失败消息带正文片段** ✓（前 120 字）⇒ 用户当场就能看到原因 ✓
+3. **两种 data 格式都试** ✓：百炼文档说 "Base64-encoded files"（→ data URI ✓），OpenAI 规范是**裸 base64** ✗
+   ⇒ 先发 `data:audio/wav;base64,…`，失败再发裸 base64 ✓（两次都记日志 ✓ 成功即返回 ✓）
+4. **稳健解析** ✓：`choices[0].message.content`（string ✓ / 数组 `[{text}]` ✓）→ `text` → `output.text` ✓
+5. 请求体补 `"stream": false` ✓
+
+## 三、验证
+- `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · 版本 vc168 / 1.0.7 测试版 ✓

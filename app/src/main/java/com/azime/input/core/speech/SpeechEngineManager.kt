@@ -368,47 +368,84 @@ object SpeechEngineManager {
     private fun webApiTranscribeChat(
         pcm: ShortArray, cfg: WebApiConfig, onDone: (Boolean, String) -> Unit,
     ) {
-        runCatching {
-            val wav = pcmToWav(pcm)
-            val b64 = android.util.Base64.encodeToString(wav, android.util.Base64.NO_WRAP)
-            val payload = JSONObject().apply {
-                put("model", cfg.model)
-                put("messages", org.json.JSONArray().put(JSONObject().apply {
-                    put("role", "user")
-                    put("content", org.json.JSONArray().put(JSONObject().apply {
-                        put("type", "input_audio")
-                        put("input_audio", JSONObject().apply {
-                            put("data", b64)
-                            put("format", "wav")
-                        })
-                    }))
-                }))
+        // 轮19.169：**两种 data 格式都试** ✓ —— 百炼文档说 "Base64-encoded files"（倾向 data URI ✓），
+        // OpenAI 规范是**裸 base64** ✗ 二者不一致 ⇒ 先 data URI，失败再裸 base64 ✓（都会记日志 ✓）
+        val b64 = android.util.Base64.encodeToString(pcmToWav(pcm), android.util.Base64.NO_WRAP)
+        val attempts = listOf(true to "data:audio/wav;base64,$b64", false to b64)
+        var lastCode = -1
+        var lastBody = ""
+        for ((dataUri, data) in attempts) {
+            val r = chatRequest(cfg, data)
+            lastCode = r.first; lastBody = r.second
+            com.azime.input.core.diag.Diag.warn(
+                "Speech",
+                "chat ${if (dataUri) "dataURI" else "rawB64"} code=$lastCode resp=${lastBody.take(400)}",
+            )
+            if (lastCode in 200..299) {
+                val text = parseChatText(lastBody)
+                if (text.isNotBlank()) {
+                    onDone(true, text)
+                    return
+                }
+                com.azime.input.core.diag.Diag.warn("Speech", "chat 2xx 但解析为空：${lastBody.take(400)}")
             }
-            val conn = (URL("${cfg.baseUrl}/chat/completions").openConnection() as HttpURLConnection)
-            conn.requestMethod = "POST"
-            conn.doOutput = true
-            conn.connectTimeout = 15_000
-            conn.readTimeout = 60_000
-            conn.setRequestProperty("Authorization", "Bearer ${cfg.apiKey}")
-            conn.setRequestProperty("Content-Type", "application/json")
-            conn.outputStream.use { it.write(payload.toString().toByteArray()) }
-            val code = conn.responseCode
-            val body = if (code in 200..299) conn.inputStream.bufferedReader().readText()
-            else conn.errorStream?.bufferedReader()?.readText().orEmpty()
-            if (code !in 200..299) {
-                Log.e(TAG, "web api(chat) $code: ${body.take(200)}")
-                onDone(false, "API 请求失败（$code）")
-            } else {
-                val text = runCatching {
-                    JSONObject(body).optJSONArray("choices")?.optJSONObject(0)
-                        ?.optJSONObject("message")?.optString("content", "").orEmpty()
-                }.getOrDefault("")
-                onDone(true, text.trim())
-            }
-        }.onFailure {
-            Log.e(TAG, "web api(chat) error", it)
-            onDone(false, "网络请求失败：${it.message ?: "未知错误"}")
         }
+        onDone(false, "API 请求失败（$lastCode）：${lastBody.take(120)}")
+    }
+
+    /** 发一次对话式请求，返回 (HTTP 码, 响应体)。 */
+    private fun chatRequest(cfg: WebApiConfig, audioData: String): Pair<Int, String> = runCatching {
+        val payload = JSONObject().apply {
+            put("model", cfg.model)
+            put("stream", false)
+            put("messages", org.json.JSONArray().put(JSONObject().apply {
+                put("role", "user")
+                put("content", org.json.JSONArray().put(JSONObject().apply {
+                    put("type", "input_audio")
+                    put("input_audio", JSONObject().apply {
+                        put("data", audioData)
+                        put("format", "wav")
+                    })
+                }))
+            }))
+        }
+        val conn = (URL("${cfg.baseUrl}/chat/completions").openConnection() as HttpURLConnection)
+        conn.requestMethod = "POST"
+        conn.doOutput = true
+        conn.connectTimeout = 15_000
+        conn.readTimeout = 60_000
+        conn.setRequestProperty("Authorization", "Bearer ${cfg.apiKey}")
+        conn.setRequestProperty("Content-Type", "application/json")
+        conn.outputStream.use { it.write(payload.toString().toByteArray()) }
+        val code = conn.responseCode
+        val body = if (code in 200..299) conn.inputStream.bufferedReader().readText()
+        else conn.errorStream?.bufferedReader()?.readText().orEmpty()
+        code to body
+    }.getOrElse { 
+        com.azime.input.core.diag.Diag.warn("Speech", "chat 请求异常：${it.message}")
+        -1 to (it.message ?: "网络异常")
+    }
+
+    /** 稳健解析对话式响应（多种形态 ✓ 百炼/其他兼容实现不一 ✗）。 */
+    private fun parseChatText(body: String): String {
+        val o = runCatching { JSONObject(body) }.getOrNull() ?: return ""
+        // ① choices[0].message.content（string ✓ 或数组 [{type:text,text:...}] ✓）
+        o.optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message")?.let { msg ->
+            msg.optString("content", "").takeIf { it.isNotBlank() }?.let { return it }
+            msg.optJSONArray("content")?.let { arr ->
+                val sb = StringBuilder()
+                for (i in 0 until arr.length()) {
+                    val part = arr.optJSONObject(i) ?: continue
+                    val s = part.optString("text", "").ifBlank { part.optString("content", "") }
+                    if (s.isNotBlank()) sb.append(s)
+                }
+                if (sb.isNotBlank()) return sb.toString()
+            }
+        }
+        // ② 其他常见形态：text / output.text / data.text
+        o.optString("text", "").takeIf { it.isNotBlank() }?.let { return it }
+        o.optJSONObject("output")?.optString("text", "")?.takeIf { it.isNotBlank() }?.let { return it }
+        return ""
     }
 
     /** 转写接口（multipart `/audio/transcriptions` ✓）。 */
@@ -442,8 +479,8 @@ object SpeechEngineManager {
                 val body = if (code in 200..299) conn.inputStream.bufferedReader().readText()
                 else conn.errorStream?.bufferedReader()?.readText().orEmpty()
                 if (code !in 200..299) {
-                    Log.e(TAG, "web api $code: ${body.take(200)}")
-                    onDone(false, "API 请求失败（$code）")
+                    com.azime.input.core.diag.Diag.warn("Speech", "transcribe code=$code resp=${body.take(400)}")
+                    onDone(false, "API 请求失败（$code）：${body.take(120)}")
                 } else {
                     val text = runCatching { JSONObject(body).optString("text", "") }.getOrDefault("")
                     onDone(true, text.trim())
