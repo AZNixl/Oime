@@ -2578,8 +2578,24 @@ private fun KsuItem(
     }
 }
 
+/**
+ * 轮19.167：**联网语音 API 提供商预设** ✓（一键填 Base URL + 模型 ✓ API Key 仍需用户自填 ✓）
+ * 全部走 **OpenAI 兼容**的 `POST {baseUrl}/audio/transcriptions` ✓ 与本项目实现一致 ✓
+ */
+private data class WebApiPreset(val name: String, val baseUrl: String, val model: String)
+
+private val WebApiPresets = listOf(
+    // 阿里云百炼（DashScope 兼容模式）—— issue #1 的需求 ✓
+    WebApiPreset("阿里云百炼", "https://dashscope.aliyuncs.com/compatible-mode/v1", "qwen3-asr-flash"),
+    WebApiPreset("OpenAI", "https://api.openai.com/v1", "whisper-1"),
+    WebApiPreset("硅基流动", "https://api.siliconflow.cn/v1", "FunAudioLLM/SenseVoiceSmall"),
+    // 自定义：只清空预设痕迹，不动用户已填内容（点它会填入空串 ⇒ 便于手填 ✓）
+    WebApiPreset("自定义", "", ""),
+)
+
 /** 轮19：联网 API 配置对话框（OpenAI 兼容 /v1/audio/transcriptions）。 */
 @Composable
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 private fun WebApiConfigDialog(onDismiss: () -> Unit) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("speech_prefs", android.content.Context.MODE_PRIVATE) }
@@ -2601,6 +2617,28 @@ private fun WebApiConfigDialog(onDismiss: () -> Unit) {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                Spacer(Modifier.height(12.dp))
+                // 轮19.167：**提供商预设** ✓ —— 一键填 Base URL + 模型（API Key 仍填自己的 ✓）
+                // 用户/issue 反馈：阿里云百炼需要更易于使用 ✓
+                Text("提供商预设", style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(6.dp))
+                androidx.compose.foundation.layout.FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    WebApiPresets.forEach { preset ->
+                        OimeChip(
+                            selected = url == preset.baseUrl && model == preset.model,
+                            onClick = {
+                                url = preset.baseUrl
+                                model = preset.model
+                            },
+                            label = { Text(preset.name) },
+                        )
+                    }
+                }
                 Spacer(Modifier.height(12.dp))
                 OutlinedTextField(
                     value = url, onValueChange = { url = it },

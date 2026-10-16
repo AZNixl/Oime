@@ -3064,3 +3064,26 @@ java.lang.UnsatisfiedLinkError: dlopen failed: empty/missing DT_HASH in "librime
 
 ## 四、验证
 - `compileDebugKotlin` **BUILD SUCCESSFUL** ✓（回退后无残留引用 ✓）
+
+# 轮19.167：联网语音 API 加「提供商预设」（issue #1：阿里云百炼更易用）
+
+## 一、背景（GitHub issue #1，作者 raprat，2026-10-16）
+"联网 api 可以添加对阿里云百炼的支持吗" —— 实测**本已支持**（联网 API 是通用 **OpenAI 兼容**
+`POST {baseUrl}/audio/transcriptions` ✓ 实现在 `core/speech/SpeechEngineManager.kt:326+`），
+只是要手填 Base URL + 模型（对普通用户不友好 ✗）⇒ 本轮回应用户诉求做**易用性改进** ✓
+
+## 二、实现
+- 设置 → 语音 → 联网 API 配置对话框（`WebApiConfigDialog`）顶部新增 **「提供商预设」** 芯片行 ✓
+- 预设（均为 **OpenAI 兼容**端点 ✓ 与实际实现一致 ✓）：
+  | 提供商 | Base URL | 模型 |
+  |---|---|---|
+  | 阿里云百炼 | `https://dashscope.aliyuncs.com/compatible-mode/v1` | `qwen3-asr-flash` |
+  | OpenAI | `https://api.openai.com/v1` | `whisper-1` |
+  | 硅基流动 | `https://api.siliconflow.cn/v1` | `FunAudioLLM/SenseVoiceSmall` |
+  | 自定义 | （清空，便于手填 ✓） | （清空 ✓） |
+- 点芯片 = 填入 Base URL + 模型 ✓（**API Key 仍需用户自填** ✓ 不预置任何密钥 ✓）
+- 芯片选中态：与当前 Base URL + 模型完全匹配时高亮 ✓
+
+## 三、验证
+- `compileDebugKotlin` **BUILD SUCCESSFUL** ✓（FlowRow 需 `@OptIn(ExperimentalLayoutApi)` ✓）
+- 版本 **vc166 / 1.0.7** 测试版（用户先测，确认可用后再发布并回复 issue ✓）
