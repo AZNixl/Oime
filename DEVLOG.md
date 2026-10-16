@@ -3044,3 +3044,23 @@ java.lang.UnsatisfiedLinkError: dlopen failed: empty/missing DT_HASH in "librime
 ## 三、验证
 - `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · 版本 vc165 → **vc166 / 1.0.7** 测试版 ✓
 - 待真机：images/ 放 png → 设置选图 → 悬浮窗显示图片背景 + 跟随光标 + 两滑条调候选位置 ✓
+
+# 轮19.166：**回退悬浮窗「自定义图片」**（代码回到 1.0.6 状态）
+
+## 一、用户决定
+1.0.7 的悬浮窗「自定义图片」功能**不做** ✗ ⇒ 代码回退到 1.0.6 发布状态 ✓
+
+## 二、回退内容（从 v1.0.6 发布提交 `a3b59bae` 逐字节取回）
+- `app/build.gradle.kts`（vc166/1.0.7 → **vc165/1.0.6** ✓）
+- `StorageManager.kt`（移除 imagesDir / listFloatImages ✓）
+- `KeyboardManager.kt`（移除 floatImage / floatImgOffX / floatImgOffY ✓）
+- `KeyboardScreen.kt`（移除图片背景渲染与候选偏移 ✓）
+- `SettingsActivity.kt`（移除「自定义图片」模式与下拉/滑条 ✓）
+- 校验：全项目 grep `floatImage / imagesDir / listFloatImages / StrokeTable / floatImgOff` **零残留** ✓
+
+## 三、保留未动的
+- 隐私加固（`.gitignore` 补 `*.jks`/`*.keystore`/`.workbuddy/` ✓ DEVLOG 串号打码 ✓）
+- 远程删除 `.workbuddy` 记忆文件（`e2444ff0` ✓）
+
+## 四、验证
+- `compileDebugKotlin` **BUILD SUCCESSFUL** ✓（回退后无残留引用 ✓）
