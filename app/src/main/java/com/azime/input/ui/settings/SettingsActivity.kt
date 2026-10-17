@@ -306,7 +306,11 @@ fun SettingsScreen(
         )
     // 反馈轮10：设置子级页支持系统返回键（原来滑动/返回直接回桌面）
     BackHandler(enabled = subPage != "main" || showManage) {
-        if (showManage) showManage = false else subPage = "main"
+        when {
+            showManage -> showManage = false
+            subPage.startsWith("wasr:") -> subPage = "handwriting"   // 次级配置页 → 回语音页 ✓
+            else -> subPage = "main"
+        }
     }
     // 反馈轮16：「部署」提到标题文本后面（原独立卡片移除）
     var deploying by remember { mutableStateOf(false) }
@@ -321,8 +325,16 @@ fun SettingsScreen(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            if (subPage == "schemas" && showManage) "方案管理"
-                            else subTitles[subPage] ?: "○输入法",
+                            when {
+                                subPage == "schemas" && showManage -> "方案管理"
+                                subPage.startsWith("wasr:") -> {
+                                    val pid = subPage.removePrefix("wasr:")
+                                    if (pid == "new") "新增 API"
+                                    else com.azime.input.core.speech.WebAsrProviders.byId(context, pid)?.name
+                                        ?: "联网语音"
+                                }
+                                else -> subTitles[subPage] ?: "○输入法"
+                            },
                             fontWeight = FontWeight.SemiBold,
                         )
                         if (subPage == "schemas" && !showManage) {
@@ -374,8 +386,12 @@ fun SettingsScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = {
-                        if (showManage) showManage = false
-                        else if (subPage != "main") subPage = "main" else onBackClick()
+                        when {
+                            showManage -> showManage = false
+                            subPage.startsWith("wasr:") -> subPage = "handwriting"
+                            subPage != "main" -> subPage = "main"
+                            else -> onBackClick()
+                        }
                     }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
                     }
@@ -438,8 +454,19 @@ fun SettingsScreen(
             return@Scaffold
         }
         // ── 二级页：手写输入（轮19.114）──
+        // 轮19.171：联网语音 · 提供商配置页（次级页 ✓）
+        if (subPage.startsWith("wasr:")) {
+            WebAsrProviderPage(padding, subPage.removePrefix("wasr:")) {
+                hwRefreshRev++
+                subPage = "handwriting"
+            }
+        }
         if (subPage == "handwriting") {
-            HandwritingSettingsPage(padding, refreshRev = hwRefreshRev) { subPage = "main" }
+            HandwritingSettingsPage(
+                padding,
+                refreshRev = hwRefreshRev,
+                onOpenProvider = { subPage = "wasr:$it" },
+            ) { subPage = "main" }
             return@Scaffold
         }
         // ── 二级页：键盘 ──
@@ -2583,31 +2610,6 @@ private fun KsuItem(
     }
 }
 
-/**
- * 轮19.168：**联网语音 API 提供商预设** ✓（一键填 Base URL + 模型 + 调用方式 ✓ API Key 仍用户自填 ✓）
- * - 转写接口：`POST {baseUrl}/audio/transcriptions`（multipart ✓ OpenAI / 智谱 / 硅基流动 / Groq / Mistral ✓）
- * - 对话式：`POST {baseUrl}/chat/completions`（base64 input_audio ✓ 阿里云百炼 Qwen3-ASR-Flash 走这条 ✓）
- */
-private data class WebApiPreset(
-    val name: String,
-    val baseUrl: String,
-    val model: String,
-    val protocol: String = com.azime.input.core.speech.SpeechEngineManager.PROTO_TRANSCRIBE,
-)
-
-private val WebApiPresets = listOf(
-    WebApiPreset("智谱 BigModel", "https://open.bigmodel.cn/api/paas/v4", "glm-asr-2512"),
-    WebApiPreset(
-        "阿里云百炼（对话式）", "https://dashscope.aliyuncs.com/compatible-mode/v1", "qwen3-asr-flash",
-        com.azime.input.core.speech.SpeechEngineManager.PROTO_CHAT,
-    ),
-    WebApiPreset("硅基流动", "https://api.siliconflow.cn/v1", "FunAudioLLM/SenseVoiceSmall"),
-    WebApiPreset("OpenAI", "https://api.openai.com/v1", "whisper-1"),
-    WebApiPreset("Groq", "https://api.groq.com/openai/v1", "whisper-large-v3-turbo"),
-    WebApiPreset("Mistral", "https://api.mistral.ai/v1", "voxtral-mini-latest"),
-    WebApiPreset("自定义", "", "", com.azime.input.core.speech.SpeechEngineManager.PROTO_TRANSCRIBE),
-)
-
 /** 语音类模型关键词（`GET /models` 返回**全部**模型 ⇒ 需要过滤 ✓）。 */
 private val AsrModelKeywords = listOf(
     "whisper", "transcribe", "asr", "audio", "sense", "paraformer", "voxtral", "glm-asr",
@@ -2626,28 +2628,41 @@ private fun fetchWebApiModels(baseUrl: String, apiKey: String): List<String>? = 
     (0 until arr.length()).mapNotNull { i -> arr.optJSONObject(i)?.optString("id")?.takeIf { it.isNotBlank() } }
 }.getOrNull()
 
-/** 轮19.168：联网 API 配置对话框（提供商下拉 + 模型下拉 + 自动拉取 ✓）。 */
+/**
+ * 轮19.171：**联网语音 · 提供商配置页（次级页 ✓ 用户设计图）**
+ * - 内置 5 家 + 自定义（「新增 API」✓）
+ * - 每家的 Base URL / Key / 模型 / 调用方式**独立记忆** ✓（`WebAsrProviders`）
+ * - 模型可**点选切换** ✓（内置默认 + `GET /models` 拉取到的语音类模型 ✓），也能手填 ✓
+ * - 「保存并设为当前」✓（自定义可删除 ✓）
+ */
 @Composable
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
-private fun WebApiConfigDialog(onDismiss: () -> Unit) {
-    val context = LocalContext.current
-    val prefs = remember { context.getSharedPreferences("speech_prefs", android.content.Context.MODE_PRIVATE) }
-    val engine = com.azime.input.core.speech.SpeechEngineManager
-    var url by remember { mutableStateOf(prefs.getString("web_api_url", "") ?: "") }
-    var key by remember { mutableStateOf(prefs.getString("web_api_key", "") ?: "") }
-    var model by remember { mutableStateOf(prefs.getString("web_api_model", "whisper-1") ?: "whisper-1") }
+private fun WebAsrProviderPage(
+    padding: androidx.compose.foundation.layout.PaddingValues,
+    providerId: String,
+    onDone: () -> Unit,
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val wap = com.azime.input.core.speech.WebAsrProviders
+    val isNew = providerId == "new"
+    val existing = remember(providerId) { if (isNew) null else wap.byId(context, providerId) }
+    val isCustom = isNew || existing?.custom == true
+    val saved = remember(providerId) { existing?.let { wap.cfgOf(context, it) } }
+
+    var name by remember { mutableStateOf(existing?.name ?: "") }
+    var url by remember { mutableStateOf(saved?.url ?: "") }
+    var key by remember { mutableStateOf(saved?.key ?: "") }
+    var model by remember { mutableStateOf(saved?.model ?: "") }
     var protocol by remember {
-        mutableStateOf(prefs.getString("web_api_protocol", engine.PROTO_TRANSCRIBE) ?: engine.PROTO_TRANSCRIBE)
+        mutableStateOf(saved?.protocol ?: com.azime.input.core.speech.SpeechEngineManager.PROTO_TRANSCRIBE)
     }
-    var provName by remember {
-        mutableStateOf(WebApiPresets.firstOrNull { it.baseUrl.isNotBlank() && it.baseUrl == url }?.name ?: "自定义")
-    }
-    var provOpen by remember { mutableStateOf(false) }
-    var modelOpen by remember { mutableStateOf(false) }
     var models by remember { mutableStateOf<List<String>>(emptyList()) }
     var fetchState by remember { mutableStateOf("idle") }  // idle | loading | ok | empty | fail
+    val speechPrefs = remember {
+        context.getSharedPreferences("speech_prefs", android.content.Context.MODE_PRIVATE)
+    }
 
-    // 轮19.168：Base URL 与 Key 都填好后**自动拉取一次**模型列表 ✓（输入停 700ms ✓ 变化即重拉 ✓）
+    // 自动拉取（Base URL + Key 都有值 ⇒ 停 700ms 拉一次 ✓ 与旧对话框一致 ✓）
     LaunchedEffect(url, key) {
         if (url.isBlank() || key.isBlank()) {
             fetchState = "idle"; models = emptyList(); return@LaunchedEffect
@@ -2664,158 +2679,193 @@ private fun WebApiConfigDialog(onDismiss: () -> Unit) {
         }
     }
 
-    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
-        androidx.compose.material3.Surface(
-            shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
-            color = MaterialTheme.colorScheme.surface,
-        ) {
-            Column(Modifier.padding(20.dp)) {
-                Text("联网 API 配置", style = MaterialTheme.typography.titleMedium)
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "选提供商自动填地址与模型；填入 API Key 后自动拉取可用模型（失败可手填）",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(12.dp))
+    // 可点选的模型选项（预设默认 + 拉取结果 ✓ 去重 ✓）
+    val modelOptions = remember(existing, models) {
+        (listOfNotNull(existing?.model?.takeIf { it.isNotBlank() }) + models)
+            .distinct().filter { it.isNotBlank() }
+    }
 
-                // ── 提供商（下拉 ✓）──
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("提供商", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                    Box {
-                        Row(
-                            modifier = Modifier
-                                .clickable { provOpen = true }
-                                .border(0.5.dp, MaterialTheme.colorScheme.outline, androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(provName, style = MaterialTheme.typography.bodyMedium)
-                            Spacer(Modifier.width(6.dp))
-                            Text("▾", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        DropdownMenu(expanded = provOpen, onDismissRequest = { provOpen = false }) {
-                            WebApiPresets.forEach { preset ->
-                                DropdownMenuItem(
-                                    text = { Text(preset.name) },
-                                    onClick = {
-                                        provName = preset.name
-                                        url = preset.baseUrl
-                                        protocol = preset.protocol
-                                        if (preset.model.isNotBlank()) model = preset.model
-                                        provOpen = false
-                                    },
-                                )
-                            }
-                        }
-                    }
-                }
-                Spacer(Modifier.height(8.dp))
-
-                // ── 调用方式（转写接口 / 对话式 ✓ 由提供商预设自动选 ✓ 可手改 ✓）──
-                Text("调用方式", style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(Modifier.height(4.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    OimeChip(
-                        selected = protocol == engine.PROTO_TRANSCRIBE,
-                        onClick = { protocol = engine.PROTO_TRANSCRIBE },
-                        label = { Text("转写接口") },
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(padding)
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Card(colors = grayCardColors(), shape = settingsCardShape()) {
+            Column(Modifier.padding(vertical = 10.dp)) {
+                if (isCustom) {
+                    OutlinedTextField(
+                        value = name, onValueChange = { name = it },
+                        label = { Text("名称") },
+                        placeholder = { Text("例如：我的中转") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                     )
-                    OimeChip(
-                        selected = protocol == engine.PROTO_CHAT,
-                        onClick = { protocol = engine.PROTO_CHAT },
-                        label = { Text("对话式") },
+                } else {
+                    Text(
+                        existing?.name ?: "联网语音",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
                     )
                 }
-                Text(
-                    "转写接口 = POST {baseUrl}/audio/transcriptions；对话式 = /chat/completions（阿里云百炼用这条）",
-                    fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(8.dp))
-
                 OutlinedTextField(
-                    value = url, onValueChange = {
-                        url = it
-                        provName = WebApiPresets.firstOrNull { p -> p.baseUrl.isNotBlank() && p.baseUrl == it.trim() }?.name
-                            ?: "自定义"
-                    },
+                    value = url, onValueChange = { url = it },
                     label = { Text("Base URL") },
                     placeholder = { Text("https://api.openai.com/v1") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                    colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                    ),
                 )
-                Spacer(Modifier.height(8.dp))
                 OutlinedTextField(
                     value = key, onValueChange = { key = it },
                     label = { Text("API Key") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                    colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                    ),
                 )
-                Spacer(Modifier.height(8.dp))
+                Text(
+                    "调用方式", style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+                )
+                Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    OimeChip(
+                        selected = protocol == com.azime.input.core.speech.SpeechEngineManager.PROTO_TRANSCRIBE,
+                        onClick = { protocol = com.azime.input.core.speech.SpeechEngineManager.PROTO_TRANSCRIBE },
+                        label = { Text("转写接口") },
+                    )
+                    OimeChip(
+                        selected = protocol == com.azime.input.core.speech.SpeechEngineManager.PROTO_CHAT,
+                        onClick = { protocol = com.azime.input.core.speech.SpeechEngineManager.PROTO_CHAT },
+                        label = { Text("对话式") },
+                    )
+                }
+                Text(
+                    "转写接口 = /audio/transcriptions；对话式 = /chat/completions（百炼用这条）",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp),
+                )
+            }
+        }
+
+        // ── 模型：可点选切换 ✓ + 拉取 ✓ + 手填 ✓ ──
+        Card(colors = grayCardColors(), shape = settingsCardShape()) {
+            Column(Modifier.padding(vertical = 10.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 2.dp),
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                ) {
+                    Text("模型（点选切换）", style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        "⟳ 拉取模型", fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.clickable {
+                            if (url.isNotBlank() && key.isNotBlank()) {
+                                fetchState = "loading"
+                            } else {
+                                android.widget.Toast.makeText(
+                                    context, "请先填 Base URL 与 API Key", android.widget.Toast.LENGTH_SHORT,
+                                ).show()
+                            }
+                        }.padding(4.dp),
+                    )
+                }
+                modelOptions.forEach { m ->
+                    val sel = m == model
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { model = m }
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(18.dp)
+                                .border(
+                                    1.5.dp,
+                                    if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                                    androidx.compose.foundation.shape.CircleShape,
+                                ),
+                            contentAlignment = androidx.compose.ui.Alignment.Center,
+                        ) {
+                            if (sel) Box(
+                                Modifier.size(9.dp).background(
+                                    MaterialTheme.colorScheme.primary,
+                                    androidx.compose.foundation.shape.CircleShape,
+                                ),
+                            )
+                        }
+                        Spacer(Modifier.width(10.dp))
+                        Text(m, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
                 OutlinedTextField(
                     value = model, onValueChange = { model = it },
                     label = { Text("模型") },
                     placeholder = { Text("whisper-1") },
                     singleLine = true,
-                    trailingIcon = {
-                        Box {
-                            Text(
-                                "▾",
-                                color = if (models.isEmpty()) MaterialTheme.colorScheme.outline
-                                else MaterialTheme.colorScheme.primary,
-                                modifier = Modifier
-                                    .clickable(enabled = models.isNotEmpty()) { modelOpen = true }
-                                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                            )
-                            DropdownMenu(expanded = modelOpen, onDismissRequest = { modelOpen = false }) {
-                                models.forEach { id ->
-                                    DropdownMenuItem(
-                                        text = { Text(id) },
-                                        onClick = { model = id; modelOpen = false },
-                                    )
-                                }
-                            }
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                 )
-                // 拉取状态（三态 + 手填回退 ✓）
                 Text(
                     when (fetchState) {
                         "loading" -> "正在拉取模型列表…"
-                        "ok" -> "已获取 ${models.size} 个语音模型，点右侧 ▾ 选择"
-                        "empty" -> "未找到语音类模型：可直接手填模型名"
-                        "fail" -> "未能拉取模型列表（该接口可能不支持）：可直接手填模型名"
-                        else -> if (url.isBlank() || key.isBlank()) "填入 Base URL 与 API Key 后会自动拉取模型列表" else ""
+                        "ok" -> "已获取 ${models.size} 个语音类模型（点上面圆点切换）"
+                        "empty" -> "未找到语音类模型：请手填模型名"
+                        "fail" -> "未能拉取模型列表：请手填模型名"
+                        else -> if (url.isBlank() || key.isBlank()) "填入 Base URL 与 API Key 后自动拉取模型列表" else ""
                     },
-                    fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp),
                 )
-                Spacer(Modifier.height(16.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) {
-                        Text("取消")
-                    }
-                    Button(
-                        onClick = {
-                            prefs.edit()
-                                .putString("web_api_url", url.trim())
-                                .putString("web_api_key", key.trim())
-                                .putString("web_api_model", model.trim().ifEmpty { "whisper-1" })
-                                .putString("web_api_protocol", protocol)
-                                .apply()
-                            // 配置完成直接切换到联网引擎
-                            prefs.edit().putString("engine", engine.ENGINE_WEB_API).apply()
-                            onDismiss()
-                        },
-                        modifier = Modifier.weight(1f),
-                        enabled = url.isNotBlank() && key.isNotBlank(),
-                    ) {
-                        Text("保存并启用")
-                    }
-                }
             }
         }
+
+        // ── 保存 / 删除 ──
+        Button(
+            onClick = {
+                val id = if (isNew) {
+                    wap.addCustom(context, name.ifBlank { "自定义 API" }).id
+                } else providerId
+                if (isCustom && !isNew && existing != null && name.isNotBlank() && name != existing.name) {
+                    wap.renameCustom(context, id, name)
+                }
+                wap.saveCfg(context, id, url, key, model, protocol)
+                wap.setActive(context, id)
+                speechPrefs.edit()
+                    .putString("engine", com.azime.input.core.speech.SpeechEngineManager.ENGINE_WEB_API)
+                    .apply()
+                onDone()
+            },
+            enabled = url.isNotBlank() && key.isNotBlank(),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("保存并设为当前")
+        }
+        if (isCustom && !isNew) {
+            OutlinedButton(
+                onClick = {
+                    wap.removeCustom(context, providerId)
+                    onDone()
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("删除此 API", color = MaterialTheme.colorScheme.error)
+            }
+        }
+        Spacer(Modifier.height(8.dp))
     }
 }
 
@@ -3162,6 +3212,7 @@ private fun OimeChip(
 private fun HandwritingSettingsPage(
     padding: androidx.compose.foundation.layout.PaddingValues,
     refreshRev: Int,
+    onOpenProvider: (String) -> Unit = {},
     onBack: () -> Unit,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -3187,7 +3238,7 @@ private fun HandwritingSettingsPage(
     val netNow = remember(refresh) { com.azime.input.core.net.netState(context) }
     var showVoiceHelp by remember { mutableStateOf(false) }
     var showHwHelp by remember { mutableStateOf(false) }
-    var showApiDialog by remember { mutableStateOf(false) }
+
     // 轮19.145：联网下载闸门 ✓（移动网络下的待确认动作 ✓）
     var pendingDownload by remember { mutableStateOf<(() -> Unit)?>(null) }
     var busyId by remember { mutableStateOf("") }
@@ -3200,7 +3251,7 @@ private fun HandwritingSettingsPage(
     androidx.compose.runtime.LaunchedEffect(refreshRev) { refresh = refreshRev + 1 }
     val senseOk = remember(refresh) { com.azime.input.core.speech.SpeechEngineManager.hasSenseVoiceModel() }
     val zipOk = remember(refresh) { com.azime.input.core.speech.SpeechEngineManager.hasZipformerModel() }
-    val apiCfg = remember(refresh) { com.azime.input.core.speech.SpeechEngineManager.webApiConfig(context) }
+
     val hwOk = remember(refresh) { com.azime.input.core.handwriting.HandwritingEngine.isModelPresent() }
     val accent = MaterialTheme.colorScheme.primary
 
@@ -3315,10 +3366,10 @@ private fun HandwritingSettingsPage(
         Card(colors = grayCardColors(), shape = settingsCardShape()) {
             Column(Modifier.padding(vertical = 8.dp)) {
                 Text(
-                    "语音", style = MaterialTheme.typography.bodyMedium,
+                    "本地语音", style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
                 )
-                // 轮19.139：与「语音」标题左对齐 ✓（用户反馈"没对齐"✗）
+                // 轮19.139：与标题左对齐 ✓
                 Row(modifier = Modifier.padding(horizontal = 20.dp)) {
                     SettingSwitchRow("麦克风权限", micOk) {
                         if (!micOk) micLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
@@ -3358,33 +3409,6 @@ private fun HandwritingSettingsPage(
                             modifier = Modifier.weight(1f),
                         )
                     }
-                }
-                // 联网 API 行（同一「选择」区 ✓）
-                val apiSel = engine == com.azime.input.core.speech.SpeechEngineManager.ENGINE_WEB_API
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 3.dp),
-                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-                ) {
-                    OimeChip(
-                        selected = apiSel,
-                        enabled = apiCfg != null,
-                        onClick = {
-                            engine = com.azime.input.core.speech.SpeechEngineManager.ENGINE_WEB_API
-                            speechPrefs.edit().putString("engine", engine).apply()
-                        },
-                        label = { Text("联网 API") },
-                    )
-                    Spacer(Modifier.width(10.dp))
-                    Text(
-                        if (apiCfg != null) "已配置" else "未配置（需先配置）",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Text("配置", fontSize = 12.sp, color = accent,
-                        modifier = Modifier.clickable { showApiDialog = true }.padding(horizontal = 6.dp))
                 }
                 HorizontalDivider(Modifier.padding(vertical = 8.dp, horizontal = 20.dp))
                 // ── 下载模型（与选择分开 ✓）──
@@ -3439,7 +3463,110 @@ private fun HandwritingSettingsPage(
             }
         }
 
-        // ═══════ 【二、手写】（背景色分块 ✓）═══════
+        // ═══════ 【二、联网语音】（轮19.171 新 UI ✓ 本地/联网分块 ✓ 按设计图）═══════
+        Card(colors = grayCardColors(), shape = settingsCardShape()) {
+            Column(Modifier.padding(vertical = 8.dp)) {
+                Text(
+                    "联网语音", style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
+                )
+                Text(
+                    "选择提供商（点选即切换；点 › 进入配置）",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp),
+                )
+                val wap = com.azime.input.core.speech.WebAsrProviders
+                val providerList = wap.all(context)
+                val activeProvId = wap.activeId(context)
+                val webOn = engine == com.azime.input.core.speech.SpeechEngineManager.ENGINE_WEB_API
+                providerList.forEach { prov ->
+                    val cfg = wap.cfgOf(context, prov)
+                    val configured = cfg.key.isNotBlank()
+                    val inUse = webOn && activeProvId == prov.id
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                com.azime.input.core.haptic.HapticsManager.press()
+                                if (configured) {
+                                    // 点选 = 切换到该提供商 ✓（未配置 ⇒ 直接进配置页 ✓）
+                                    wap.setActive(context, prov.id)
+                                    engine = com.azime.input.core.speech.SpeechEngineManager.ENGINE_WEB_API
+                                    speechPrefs.edit().putString("engine", engine).apply()
+                                    refresh++
+                                } else {
+                                    onOpenProvider(prov.id)
+                                }
+                            }
+                            .padding(horizontal = 16.dp, vertical = 9.dp),
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                    ) {
+                        // 单选圆点（选中 = 主色实心 ✓）
+                        Box(
+                            modifier = Modifier
+                                .size(18.dp)
+                                .border(
+                                    1.5.dp,
+                                    if (inUse) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.outline,
+                                    androidx.compose.foundation.shape.CircleShape,
+                                ),
+                            contentAlignment = androidx.compose.ui.Alignment.Center,
+                        ) {
+                            if (inUse) Box(
+                                Modifier
+                                    .size(9.dp)
+                                    .background(
+                                        MaterialTheme.colorScheme.primary,
+                                        androidx.compose.foundation.shape.CircleShape,
+                                    ),
+                            )
+                        }
+                        Spacer(Modifier.width(10.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(prov.name, style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                if (configured) "${cfg.model} · 已配置" else "未配置",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (configured) MaterialTheme.colorScheme.onSurfaceVariant
+                                else MaterialTheme.colorScheme.error,
+                            )
+                        }
+                        if (inUse) {
+                            Text("使用中", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
+                        }
+                        Text(
+                            "›", fontSize = 18.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier
+                                .clickable { onOpenProvider(prov.id) }
+                                .padding(horizontal = 8.dp),
+                        )
+                    }
+                }
+                HorizontalDivider(Modifier.padding(vertical = 4.dp, horizontal = 20.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onOpenProvider("new") }
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "＋ 新增 API", style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        "自定义 Base URL / 模型", style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+
+        // ═══════ 【三、手写】（背景色分块 ✓）═══════
         Card(colors = grayCardColors(), shape = settingsCardShape()) {
             Column(Modifier.padding(vertical = 8.dp)) {
                 Text(
@@ -3552,9 +3679,7 @@ private fun HandwritingSettingsPage(
                 confirmButton = { TextButton(onClick = { showHwHelp = false }) { Text("知道了") } },
             )
         }
-        if (showApiDialog) {
-            WebApiConfigDialog(onDismiss = { showApiDialog = false; refresh++ })
-        }
+
         // 轮19.145：**移动网络下下载前问一句** ✓（模型 200~240MB ✗ 别在用户不知情时跑流量 ✗）
         pendingDownload?.let { go ->
             androidx.compose.material3.AlertDialog(

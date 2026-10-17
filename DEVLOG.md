@@ -3164,3 +3164,30 @@ java.lang.UnsatisfiedLinkError: dlopen failed: empty/missing DT_HASH in "librime
 
 ## 三、验证
 - `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · 版本 vc169 / 1.0.7 测试版 ✓
+
+# 轮19.171：语音设置页改版 —— 本地/联网分块 + 提供商列表 + 次级配置页（按用户设计图）
+
+## 一、需求（用户）
+1. UI 按设计图：语音拆 **本地语音 / 联网语音** 两块 ✓
+2. 流式调研 → **走方案 A 保持现状** ✗（不做 SSE 增量 / WS 实时 ✓）
+3. 默认提供商**去掉 Groq、Mistral** ✗ ⇒ 仅留 智谱 / 阿里云百炼 / 硅基流动 / 阶跃星辰 / OpenAI ✓
+
+## 二、数据层（新增 `core/speech/WebAsrProviders.kt`）
+- 内置 5 家（顺序=界面顺序 ✓）；「新增 API」= 自定义（可改名/删除 ✓）
+- **每家独立记忆配置** ✓：`wasr_<id>_url / _key / _model / _protocol`（旧版只有一份全局配置 ✗）
+- 当前生效：`wasr_active` ✓；`activeConfig()` 供引擎读取 ✓
+- **旧配置迁移** ✓：`wasr_active` 为空且有旧 `web_api_*` ⇒ 按 URL 匹配内置家、否则建成「我的 API」并设为当前 ✓（不丢已填的 Key ✓）
+- `SpeechEngineManager.webApiConfig()` 改为委托 `WebAsrProviders.activeConfig()` ✓
+
+## 三、UI
+- 语音页：卡标题「语音」→ **「本地语音」** ✓（麦克风 / 本地模型点选 / 下载模型 不变 ✓）
+- 新增 **「联网语音」卡** ✓：5 家列表（单选圆点 + 使用中 + 「型号 · 已配置/未配置」+「›」进配置 ✓）
+  - **点行 = 切换**（已配置时 ✓ 未配置则直接进配置页 ✓）
+  - 底部 **＋ 新增 API**（自定义 ✓）
+- 新增 **次級配置页** `WebAsrProviderPage` ✓（`subPage = "wasr:<id>"` / `"wasr:new"`）：
+  名称（自定义/新建 ✓）· Base URL · API Key · 调用方式双芯片 · **模型点选切换**（预设默认 + `/models` 拉取的语音类模型 ✓ 去重 ✓）· 模型手填 ✓ · 自动拉取（Key 填好停 700ms ✓ 三态提示 ✓）· **保存并设为当前** ✓ · 自定义可删除 ✓
+- 顶栏标题动态显示提供商名 ✓；返回键/箭头：配置页 → 回语音页 ✓（不是回主菜单 ✓）
+
+## 四、验证
+- `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · 版本 **vc170 / 1.0.7** 测试版 ✓
+- ⚠️ 首次进入需重填其他提供商的 Key（旧版只存一份配置 ✗ 迁移只保当前那家 ✓）

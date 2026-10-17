@@ -336,16 +336,12 @@ object SpeechEngineManager {
     const val PROTO_TRANSCRIBE = "transcribe"
     const val PROTO_CHAT = "chat"
 
-    fun webApiConfig(context: Context): WebApiConfig? {
-        val prefs = context.getSharedPreferences("speech_prefs", Context.MODE_PRIVATE)
-        val url = prefs.getString("web_api_url", "") ?: ""
-        val key = prefs.getString("web_api_key", "") ?: ""
-        val model = prefs.getString("web_api_model", "whisper-1") ?: "whisper-1"
-        val proto = prefs.getString("web_api_protocol", PROTO_TRANSCRIBE) ?: PROTO_TRANSCRIBE
-        return if (url.isNotBlank() && key.isNotBlank()) {
-            WebApiConfig(url.trimEnd('/'), key, model, if (proto == PROTO_CHAT) PROTO_CHAT else PROTO_TRANSCRIBE)
-        } else null
-    }
+    /**
+     * 轮19.171：配置来源改为**当前选中的联网提供商** ✓（每家独立记忆 ✓）
+     * 新页面把配置写在 `wasr_<id>_*` ✓；旧键 `web_api_*` 由迁移逻辑兼容 ✓
+     */
+    fun webApiConfig(context: Context): WebApiConfig? =
+        com.azime.input.core.speech.WebAsrProviders.activeConfig(context)
 
     /** PCM16 mono 16k → wav → 按配置的调用方式上传。结果回调 IO 线程。 */
     private fun webApiTranscribe(pcm: ShortArray, onDone: (Boolean, String) -> Unit) {
