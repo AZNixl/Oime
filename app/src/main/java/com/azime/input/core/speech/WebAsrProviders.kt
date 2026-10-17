@@ -178,7 +178,17 @@ object WebAsrProviders {
 
     private fun migrateLegacy(c: Context) {
         val sp = prefs(c)
-        if (!activeId(c).isNullOrEmpty()) return
+        // 轮19.174：**已迁移过但旧键还在** ⇒ 一次性清掉 ✓
+        // （否则同一把 Key 在 prefs 里有两份明文副本 ✗ 用户升级路径也会残留 ✗）
+        if (!activeId(c).isNullOrEmpty()) {
+            if (sp.contains("web_api_key") || sp.contains("web_api_url")) {
+                sp.edit()
+                    .remove("web_api_url").remove("web_api_key")
+                    .remove("web_api_model").remove("web_api_protocol")
+                    .apply()
+            }
+            return
+        }
         val oldUrl = sp.getString("web_api_url", "") ?: ""
         val oldKey = sp.getString("web_api_key", "") ?: ""
         if (oldUrl.isBlank() || oldKey.isBlank()) return
@@ -197,6 +207,9 @@ object WebAsrProviders {
             .putString("${PREFIX}${id}_model", oldModel.ifBlank { matched?.model ?: "" })
             .putString("${PREFIX}${id}_protocol", oldProto)
             .putString(K_ACTIVE, id)
+            // 轮19.174：迁移完成 ⇒ **清掉旧键** ✓（否则同一把 Key 有两份明文副本 ✗）
+            .remove("web_api_url").remove("web_api_key")
+            .remove("web_api_model").remove("web_api_protocol")
             .apply()
     }
 }

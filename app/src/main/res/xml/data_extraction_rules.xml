@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  轮19.174：**数据提取规则**（Android 12+）
+
+  云备份（cloud-backup）与换机迁移（device-transfer）都**排除** `speech_prefs.xml` ✓
+  —— 里面是各联网语音提供商的 **API Key 明文** ✗ 不应离开设备 ✓
+  其余设置（键盘 / 字体 / 震动 / 主题 / 向导）照旧 ✓
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="speech_prefs.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="speech_prefs.xml" />
+    </device-transfer>
+</data-extraction-rules>

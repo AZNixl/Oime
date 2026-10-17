@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  轮19.174：**自动备份排除规则**（Android 11 及以下）
+
+  为什么：`speech_prefs` 里存着各联网语音提供商的 **API Key 明文** ✗
+  （SharedPreferences 是应用私有的 ✓，但 `allowBackup=true` 时会被纳入
+   Google Drive 自动备份 / 换机迁移 ✗ ⇒ Key 离开设备 ✗）
+
+  这里只排除语音配置 ✓；键盘 / 字体 / 震动 / 主题 / 向导等设置**照旧备份** ✓
+-->
+<full-backup-content>
+    <exclude domain="sharedpref" path="speech_prefs.xml" />
+</full-backup-content>

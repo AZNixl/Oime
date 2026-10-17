@@ -3234,3 +3234,23 @@ if (subPage == "handwriting") { HandwritingSettingsPage(...); return@Scaffold }
 ## 三、验证
 - `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · 版本 **vc172 / 1.0.7** ✓
 - ⚠️ 踩坑：Kotlin 字符串里写 `\n` 时，经 Python heredoc 会被转成**真换行** ✗ ⇒ 必须写 `\\n` ✓
+
+# 轮19.174：发布版隐私加固 —— 语音 API Key 不进备份 + 清理旧键
+
+## 一、背景（用户要求：只管发布版的问题 ✓）
+审计结论：Key 存 `speech_prefs.xml`（应用私有 ✓ 其他 App 读不到 ✓）；
+自带「导出全部偏好」**不含** speech_prefs ✓（已实测新备份干净 ✓）；日志无 Key ✓。
+⇒ **唯一发布级风险**：`allowBackup=true` 且无排除规则 ✗ ⇒ 用户的 Key 会随
+**Google Drive 自动备份 / 换机迁移**离开设备 ✗
+
+## 二、改动
+1. 新增 `res/xml/backup_rules.xml`（Android 11-）与 `res/xml/data_extraction_rules.xml`（Android 12+）✓
+   均**排除** `sharedpref/speech_prefs.xml` ✓（云备份 + 换机迁移两路都排除 ✓）
+2. `AndroidManifest.xml`：`android:fullBackupContent="@xml/backup_rules"` +
+   `android:dataExtractionRules="@xml/data_extraction_rules"` ✓（`allowBackup` 保持 true ✓ 其它设置照旧备份 ✓）
+3. `WebAsrProviders.migrateLegacy`：迁移完成**清掉旧 `web_api_*`** ✓
+   + 已迁移过的用户**一次性清理**残留旧键 ✓（避免同一 Key 两份明文 ✗）
+
+## 三、验证
+- `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · 版本 **vc173 / 1.0.7** ✓
+- 待装机后核对 APK manifest 里的两个 backup 属性 ✓ + prefs 里旧键是否消失 ✓
