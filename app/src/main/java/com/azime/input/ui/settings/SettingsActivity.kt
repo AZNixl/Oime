@@ -2661,6 +2661,8 @@ private fun WebAsrProviderPage(
     }
     var models by remember { mutableStateOf<List<String>>(emptyList()) }
     var fetchState by remember { mutableStateOf("idle") }  // idle | loading | ok | empty | fail
+    // 轮19.173：**API Key 默认隐藏** ✓ 右侧「显示/隐藏」切换 ✓
+    var keyVisible by remember { mutableStateOf(false) }
     val speechPrefs = remember {
         context.getSharedPreferences("speech_prefs", android.content.Context.MODE_PRIVATE)
     }
@@ -2728,6 +2730,19 @@ private fun WebAsrProviderPage(
                     value = key, onValueChange = { key = it },
                     label = { Text("API Key") },
                     singleLine = true,
+                    visualTransformation = if (keyVisible)
+                        androidx.compose.ui.text.input.VisualTransformation.None
+                    else androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                    trailingIcon = {
+                        Text(
+                            if (keyVisible) "隐藏" else "显示",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier
+                                .clickable { keyVisible = !keyVisible }
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                        )
+                    },
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                     colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = MaterialTheme.colorScheme.primary,

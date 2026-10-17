@@ -46,7 +46,7 @@ object WebAsrProviders {
         Provider("siliconflow", "硅基流动", "https://api.siliconflow.cn/v1",
             "FunAudioLLM/SenseVoiceSmall", SpeechEngineManager.PROTO_TRANSCRIBE),
         Provider("stepfun", "阶跃星辰", "https://api.stepfun.com/v1",
-            "step-audio-2.5-asr", SpeechEngineManager.PROTO_TRANSCRIBE),
+            "stepaudio-2.5-asr", SpeechEngineManager.PROTO_TRANSCRIBE),
         Provider("openai", "OpenAI", "https://api.openai.com/v1",
             "whisper-1", SpeechEngineManager.PROTO_TRANSCRIBE),
     )

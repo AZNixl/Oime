@@ -2172,6 +2172,88 @@ private fun MenuPanel(
                     }
                 }
             }
+            "voice" -> {
+                // 轮19.173：○ 菜单「语音模型」——**本地 + 联网所有已配置的模型**，点选即切换 ✓
+                val appCtx = com.azime.input.AZimeApplication.instance
+                val sem = com.azime.input.core.speech.SpeechEngineManager
+                val wap = com.azime.input.core.speech.WebAsrProviders
+                val speechPrefs = remember {
+                    appCtx.getSharedPreferences("speech_prefs", android.content.Context.MODE_PRIVATE)
+                }
+                var curEngine by remember {
+                    mutableStateOf(speechPrefs.getString("engine", sem.ENGINE_SENSE_VOICE) ?: sem.ENGINE_SENSE_VOICE)
+                }
+                var rev by remember { mutableStateOf(0) }
+                data class VoiceItem(val engineKey: String, val title: String, val sub: String, val local: Boolean)
+                val items: List<VoiceItem> = remember(rev) {
+                    val out = mutableListOf<VoiceItem>()
+                    if (sem.hasSenseVoiceModel()) {
+                        out += VoiceItem(sem.ENGINE_SENSE_VOICE, "本地 · SenseVoice", "离线识别", true)
+                    }
+                    if (sem.hasZipformerModel()) {
+                        out += VoiceItem(sem.ENGINE_ZIPFORMER, "本地 · 流式 Zipformer", "离线识别", true)
+                    }
+                    wap.all(appCtx).forEach { prov ->
+                        val cfg = wap.cfgOf(appCtx, prov)
+                        if (cfg.key.isNotBlank()) {
+                            out += VoiceItem("web:" + prov.id, prov.name, cfg.model, false)
+                        }
+                    }
+                    out
+                }
+                val activeProv = wap.activeId(appCtx)
+                MenuSubPanel(
+                    c = c, title = "语音模型", totalHeight = totalHeight,
+                    onBack = { subPage = null }, onClose = { close() },
+                ) {
+                    if (items.isEmpty()) {
+                        Text(
+                            // 两行合成一句（Kotlin 里用 \n 转义 ✓）
+                            "还没有可用模型\n先到「设置 → 语音手写管理」里下载本地模型或配置联网 API",
+                            fontSize = 12.sp, color = c.subText,
+                            modifier = Modifier.padding(vertical = 10.dp),
+                        )
+                    }
+                    items.forEach { item ->
+                        val active = if (item.local) {
+                            curEngine == item.engineKey
+                        } else {
+                            curEngine == sem.ENGINE_WEB_API && activeProv == item.engineKey.removePrefix("web:")
+                        }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(if (active) c.accentKeyBg else c.keyBg, RoundedCornerShape(10.dp))
+                                .clickable {
+                                    com.azime.input.core.haptic.HapticsManager.press()
+                                    if (item.local) {
+                                        curEngine = item.engineKey
+                                        speechPrefs.edit().putString("engine", item.engineKey).apply()
+                                    } else {
+                                        wap.setActive(appCtx, item.engineKey.removePrefix("web:"))
+                                        curEngine = sem.ENGINE_WEB_API
+                                        speechPrefs.edit().putString("engine", sem.ENGINE_WEB_API).apply()
+                                    }
+                                    rev++
+                                }
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(item.title, fontSize = 13.sp, color = if (active) c.accentKeyText else c.text)
+                                Text(
+                                    item.sub, fontSize = 11.sp,
+                                    color = if (active) c.accentKeyText.copy(alpha = 0.8f) else c.subText,
+                                )
+                            }
+                            if (active) {
+                                Text("使用中", fontSize = 11.sp, color = c.accentKeyText)
+                            }
+                        }
+                        Spacer(Modifier.height(6.dp))
+                    }
+                }
+            }
             "mainkb" -> {
                 // 轮19.159：○ 菜单「主键盘」——**双排显示 + 无注释** ✓（用户要求 ✓）
                 // 切换即写为默认值 ✓（setActiveMain 持久化 ✓）
@@ -2244,6 +2326,8 @@ private fun MenuPanel(
                             Triple(oi.tune, "方案开关") { subPage = "switches" },
                             // 轮19.157：主键盘三选一（26键 / 九宫格 / 十四键），**切换即写为默认值** ✓
                             Triple(oi.keyboard, "主键盘") { subPage = "mainkb" },
+                            // 轮19.173：**语音模型**（本地 + 联网已配置，一点切换 ✓ 用户要求）
+                            Triple(oi.tune, "语音模型") { subPage = "voice" },
                             Triple(oi.refresh, "部署") { close(); onAction(KeyAction.Deploy) },
                             // 反馈轮16：键盘编辑 —— 布局编辑器直达入口
                             Triple(oi.keyboard, "键盘编辑") { close(); onAction(KeyAction.OpenKeyboardEditor) },

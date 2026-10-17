@@ -3210,3 +3210,27 @@ if (subPage == "handwriting") { HandwritingSettingsPage(...); return@Scaffold }
 
 ## 四、验证
 - `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · 版本 **vc171 / 1.0.7** ✓
+
+# 轮19.173：阶跃默认模型纠正 + Key 隐藏 + ○ 菜单「语音模型」切换
+
+## 一、用户要求（4 点）
+1. 阶跃星辰默认模型应为 **`stepaudio-2.5-asr`**（之前写成 `step-audio-2.5-asr` ✗）
+2. 配置页 **API Key 默认隐藏** + 右侧「显示/隐藏」按钮 ✓
+3. 「新增 API」每保存一个 ⇒ 在 OpenAI 下面**多一行**（可同时保存多个，方便调用 ✓）
+4. ○ 菜单新增 **「语音模型」**：次级菜单显示**所有已配置模型（本地 + 联网）**，点选切换 ✓
+
+## 二、实现
+1. `WebAsrProviders.PRESETS`：stepfun 默认模型改 `stepaudio-2.5-asr` ✓
+2. `WebAsrProviderPage`：`keyVisible` 状态 ✓ + `PasswordVisualTransformation` ✓ + 尾部「显示/隐藏」✓
+3. 自定义提供商本来就是「内置 5 家 + 自定义列表」✓（每次「新增 API」保存 ⇒ 新 id ⇒ 列表末尾多一行 ✓ 已有逻辑 ✓ 本轮复核 ✓）
+4. `KeyboardScreen` ○ 菜单：
+   - 菜单项新增 `Triple(oi.tune, "语音模型") { subPage = "voice" }` ✓
+   - 新子页 `"voice"` ✓：列出
+     · 本地（**已安装**才列）：SenseVoice / 流式 Zipformer ✓
+     · 联网（**已填 Key** 才列）：5 家 + 自定义，副标题显示各自模型名 ✓
+     · 点选 = 写 `speech_prefs.engine`（联网还要 `wasr_active` ✓）⇒ 即切换 ✓
+     · 当前项高亮 + 「使用中」✓
+
+## 三、验证
+- `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · 版本 **vc172 / 1.0.7** ✓
+- ⚠️ 踩坑：Kotlin 字符串里写 `\n` 时，经 Python heredoc 会被转成**真换行** ✗ ⇒ 必须写 `\\n` ✓
