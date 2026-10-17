@@ -455,11 +455,14 @@ fun SettingsScreen(
         }
         // ── 二级页：手写输入（轮19.114）──
         // 轮19.171：联网语音 · 提供商配置页（次级页 ✓）
+        // ⚠️ 必须 `return@Scaffold` ✓ —— 本页所有二级页都是"提前返回"模式：
+        //   漏掉它会继续往下渲染主页面 ⇒ 配置页与主页**叠加** ✗（用户实测截图 ✓）
         if (subPage.startsWith("wasr:")) {
             WebAsrProviderPage(padding, subPage.removePrefix("wasr:")) {
                 hwRefreshRev++
                 subPage = "handwriting"
             }
+            return@Scaffold
         }
         if (subPage == "handwriting") {
             HandwritingSettingsPage(

@@ -3191,3 +3191,22 @@ java.lang.UnsatisfiedLinkError: dlopen failed: empty/missing DT_HASH in "librime
 ## 四、验证
 - `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · 版本 **vc170 / 1.0.7** 测试版 ✓
 - ⚠️ 首次进入需重填其他提供商的 Key（旧版只存一份配置 ✗ 迁移只保当前那家 ✓）
+
+# 轮19.172：修复「提供商配置页与设置主页叠加」
+
+## 一、现象（用户截图）
+点「› / 未配置的提供商」进配置页后，**配置页内容与设置主页面同时渲染** ✗
+（"调用方式""completions（百炼用这条）""glm-asr-2512" 夹在「输入方案/键盘/…」之间 ✗）
+
+## 二、根因
+`SettingsScreen` 的所有二级页都是**提前返回**模式：
+```kotlin
+if (subPage == "handwriting") { HandwritingSettingsPage(...); return@Scaffold }
+```
+我新加的 `wasr:*` 分支**漏了 `return@Scaffold`** ✗ ⇒ 跳过它继续往下执行 ⇒ 主页面也被渲染 ✓ 两页叠在一起 ✗
+
+## 三、修复
+`wasr:*` 分支补 `return@Scaffold` ✓（并加注释提醒这是本页的固定模式 ✓）
+
+## 四、验证
+- `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · 版本 **vc171 / 1.0.7** ✓
