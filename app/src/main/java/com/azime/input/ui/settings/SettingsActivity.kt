@@ -2785,11 +2785,12 @@ private fun WebAsrProviderPage(
         // ── 模型：可点选切换 ✓ + 拉取 ✓ + 手填 ✓ ──
         Card(colors = grayCardColors(), shape = settingsCardShape()) {
             Column(Modifier.padding(vertical = 10.dp)) {
+                // 轮19.177：豆包语音 ⇒ 这一栏是 Resource ID ✓（本卡片内多处用到 ⇒ 提到 Column 级 ✓）
+                val isVolc = protocol == com.azime.input.core.speech.SpeechEngineManager.PROTO_VOLC
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 2.dp),
                     verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
                 ) {
-                    val isVolc = protocol == com.azime.input.core.speech.SpeechEngineManager.PROTO_VOLC
                     Text(
                         if (isVolc) "Resource ID" else "模型（点选切换）",
                         style = MaterialTheme.typography.bodySmall,
@@ -2845,13 +2846,15 @@ private fun WebAsrProviderPage(
                 }
                 OutlinedTextField(
                     value = model, onValueChange = { model = it },
-                    label = { Text("模型") },
-                    placeholder = { Text("whisper-1") },
+                    // 轮19.177：豆包语音这一栏是 **Resource ID** ✓（对应 X-Api-Resource-Id 头 ✗ 不是模型名）
+                    label = { Text(if (isVolc) "Resource ID" else "模型") },
+                    placeholder = { Text(if (isVolc) "volc.bigasr.auc_turbo" else "whisper-1") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                 )
                 Text(
-                    when (fetchState) {
+                    if (isVolc) "Resource ID 在控制台「录音文件识别极速版」页面查看；开通极速版时默认 volc.bigasr.auc_turbo（部分账号显示 volc.seedasr.auc_turbo）"
+                    else when (fetchState) {
                         "loading" -> "正在拉取模型列表…"
                         "ok" -> "已获取 ${models.size} 个语音类模型（点上面圆点切换）"
                         "empty" -> "未找到语音类模型：请手填模型名"

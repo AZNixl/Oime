@@ -3288,3 +3288,20 @@ if (subPage == "handwriting") { HandwritingSettingsPage(...); return@Scaffold }
 - `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · 版本 **vc175 / 1.0.8** 测试版 ✓
 - ⚠️ 待真机实测（用户需在火山语音控制台开通「录音文件识别极速版」并领试用 ✓）
 - 方舟（Ark）预设按用户要求**后置** ✓（等豆包语音做好再加 ✓）
+
+# 轮19.177：豆包语音配置页 —— 字段标签改「Resource ID」
+
+## 一、用户疑问
+"X-Api-Key + X-Api-Resource-Id，设置界面只有一条 API Key，是不是没写对？"
+→ 两个头 = **两个字段** ✓（Key 填 API Key ✓；Resource ID 就是模型那一栏 ✓），但**输入框标签还写着「模型」** ✗
+   ⇒ 看起来像"只有一个字段" ✗
+
+## 二、改动
+1. 模型输入框：`label` / `placeholder` 按协议自适应 ✓
+   - 豆包语音：`Resource ID` / `volc.bigasr.auc_turbo` ✓
+   - 其它：`模型` / `whisper-1` ✓
+2. 状态提示：豆包语音下改为 Resource ID 的说明（在哪看、默认值、部分账号是 `volc.seedasr.auc_turbo` ✓）
+3. 修正 `isVolc` 的作用域（原声明在 Row 内 ✗ ⇒ 提到模型卡片 Column 级 ✓）
+
+## 三、验证
+- `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · 版本 **vc176 / 1.0.8** ✓
