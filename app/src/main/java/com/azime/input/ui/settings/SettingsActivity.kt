@@ -2765,9 +2765,16 @@ private fun WebAsrProviderPage(
                         onClick = { protocol = com.azime.input.core.speech.SpeechEngineManager.PROTO_CHAT },
                         label = { Text("对话式") },
                     )
+                    // 轮19.176：**豆包语音（火山语音）** —— 私有头 + base64 JSON ✓ 同步返回 ✓
+                    OimeChip(
+                        selected = protocol == com.azime.input.core.speech.SpeechEngineManager.PROTO_VOLC,
+                        onClick = { protocol = com.azime.input.core.speech.SpeechEngineManager.PROTO_VOLC },
+                        label = { Text("豆包语音") },
+                    )
                 }
                 Text(
-                    "转写接口 = /audio/transcriptions；对话式 = /chat/completions（百炼用这条）",
+                    "转写接口 = /audio/transcriptions；对话式 = /chat/completions（百炼用这条）；" +
+                        "豆包语音 = 火山「录音文件识别极速版」（Key 填控制台 API Key，模型填 Resource ID）",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp),
@@ -2782,22 +2789,29 @@ private fun WebAsrProviderPage(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 2.dp),
                     verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
                 ) {
-                    Text("模型（点选切换）", style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.weight(1f))
+                    val isVolc = protocol == com.azime.input.core.speech.SpeechEngineManager.PROTO_VOLC
                     Text(
-                        "⟳ 拉取模型", fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.clickable {
-                            if (url.isNotBlank() && key.isNotBlank()) {
-                                fetchState = "loading"
-                            } else {
-                                android.widget.Toast.makeText(
-                                    context, "请先填 Base URL 与 API Key", android.widget.Toast.LENGTH_SHORT,
-                                ).show()
-                            }
-                        }.padding(4.dp),
+                        if (isVolc) "Resource ID" else "模型（点选切换）",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    Spacer(Modifier.weight(1f))
+                    // 火山没有 /models 接口 ⇒ 不显示「拉取」✓
+                    if (!isVolc) {
+                        Text(
+                            "⟳ 拉取模型", fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.clickable {
+                                if (url.isNotBlank() && key.isNotBlank()) {
+                                    fetchState = "loading"
+                                } else {
+                                    android.widget.Toast.makeText(
+                                        context, "请先填 Base URL 与 API Key", android.widget.Toast.LENGTH_SHORT,
+                                    ).show()
+                                }
+                            }.padding(4.dp),
+                        )
+                    }
                 }
                 modelOptions.forEach { m ->
                     val sel = m == model

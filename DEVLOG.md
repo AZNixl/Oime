@@ -3266,3 +3266,25 @@ if (subPage == "handwriting") { HandwritingSettingsPage(...); return@Scaffold }
 
 ## 二、发布后
 - 回复 issue #1 并**关闭**（用户定：发布后关闭 ✓）
+
+# 轮19.176：接入「豆包语音（火山语音）」极速版（第三种协议）
+
+## 一、调研结论
+- **有试用** ✓：「录音文件识别（含极速版）」**标准版和极速版各 20 小时**，有效期半年（控制台点【试用】领取 ✓）
+- 极速版是**同步单次请求** ✓（`POST /api/v3/auc/bigmodel/recognize/flash`，无轮询 ✓）⇒ 适合输入法短语音 ✓
+- 鉴权：`X-Api-Key`（控制台 API Key ✓ 新版）/ `X-Api-Resource-Id: volc.bigasr.auc_turbo` ✓
+- **成功判定看响应头 `X-Api-Status-Code == 20000000`** ✗ 不是 HTTP 200 ✓；文本在 `result.text` ✓
+- 音频：base64 + `format=wav, rate=16000, bits=16, channel=1` ✓ 与我们现有录音完全一致 ✓
+
+## 二、实现
+1. `SpeechEngineManager`：新增 **`PROTO_VOLC = "volc"`** ✓ + 分派 `when` ✓
+   + `webApiTranscribeVolc()` ✓（JSON body / X-Api-* 头 / 状态码判定 / 多形态取文本 / 日志记 status+msg+resp ✓）
+2. `WebAsrProviders.PRESETS`：新增 **「豆包语音（火山）」** ✓
+   （url = flash 完整地址 ✓ model 字段存 **Resource ID** `volc.bigasr.auc_turbo` ✓ protocol = volc ✓）
+3. 配置页：调用方式加第三芯片 **「豆包语音」** ✓；该协议下模型标题变 **Resource ID** ✓、
+   **隐藏「⟳ 拉取模型」**（火山无 /models ✓）、提示行说明 Key/Resource 怎么填 ✓
+
+## 三、验证
+- `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · 版本 **vc175 / 1.0.8** 测试版 ✓
+- ⚠️ 待真机实测（用户需在火山语音控制台开通「录音文件识别极速版」并领试用 ✓）
+- 方舟（Ark）预设按用户要求**后置** ✓（等豆包语音做好再加 ✓）

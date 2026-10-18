@@ -335,6 +335,8 @@ object SpeechEngineManager {
 
     const val PROTO_TRANSCRIBE = "transcribe"
     const val PROTO_CHAT = "chat"
+    /** 轮19.176：豆包语音（火山语音）极速版 —— 私有鉴权头 + base64 JSON ✓ 同步返回 ✓ */
+    const val PROTO_VOLC = "volc"
 
     /**
      * 轮19.171：配置来源改为**当前选中的联网提供商** ✓（每家独立记忆 ✓）
@@ -351,8 +353,11 @@ object SpeechEngineManager {
                 onDone(false, "未配置联网 API（设置 → 语音输入）")
                 return@launch
             }
-            if (cfg.protocol == PROTO_CHAT) webApiTranscribeChat(pcm, cfg, onDone)
-            else webApiTranscribeMultipart(pcm, cfg, onDone)
+            when (cfg.protocol) {
+                PROTO_CHAT -> webApiTranscribeChat(pcm, cfg, onDone)
+                PROTO_VOLC -> webApiTranscribeVolc(pcm, cfg, onDone)
+                else -> webApiTranscribeMultipart(pcm, cfg, onDone)
+            }
         }
     }
 
@@ -471,6 +476,72 @@ object SpeechEngineManager {
         o.optString("text", "").takeIf { it.isNotBlank() }?.let { return it }
         o.optJSONObject("output")?.optString("text", "")?.takeIf { it.isNotBlank() }?.let { return it }
         return ""
+    }
+
+    /**
+     * 轮19.176：**豆包语音（火山语音）· 录音文件识别极速版** ✓
+     * `POST /api/v3/auc/bigmodel/recognize/flash` —— **同步返回**（无轮询 ✓）
+     * 鉴权：`X-Api-Key`（控制台 API Key ✓）/ `X-Api-Resource-Id`（`volc.bigasr.auc_turbo` ✓）
+     * 成功判定：**响应头 `X-Api-Status-Code == 20000000`** ✓（HTTP 200 ≠ 业务成功 ✗）
+     * 文本位置：`result.text` ✓（兼容 `body.result.text` ✓）
+     */
+    private fun webApiTranscribeVolc(
+        pcm: ShortArray, cfg: WebApiConfig, onDone: (Boolean, String) -> Unit,
+    ) {
+        runCatching {
+            val b64 = android.util.Base64.encodeToString(pcmToWav(pcm), android.util.Base64.NO_WRAP)
+            val payload = JSONObject().apply {
+                put("user", JSONObject().put("uid", "oime"))
+                put("audio", JSONObject().apply {
+                    put("data", b64)
+                    put("format", "wav")
+                    put("rate", 16000)
+                    put("bits", 16)
+                    put("channel", 1)
+                })
+                put("request", JSONObject().apply {
+                    put("model_name", "bigmodel")
+                    put("enable_itn", true)
+                    put("enable_punc", true)
+                })
+            }
+            val url = if (cfg.baseUrl.contains("/auc/bigmodel/")) cfg.baseUrl
+            else cfg.baseUrl.trimEnd('/') + "/auc/bigmodel/recognize/flash"
+            val conn = (URL(url).openConnection() as HttpURLConnection)
+            conn.requestMethod = "POST"
+            conn.doOutput = true
+            conn.connectTimeout = 15_000
+            conn.readTimeout = 60_000
+            conn.setRequestProperty("Content-Type", "application/json")
+            conn.setRequestProperty("X-Api-Key", cfg.apiKey)
+            conn.setRequestProperty("X-Api-Resource-Id", cfg.model.ifBlank { "volc.bigasr.auc_turbo" })
+            conn.setRequestProperty("X-Api-Request-Id", java.util.UUID.randomUUID().toString())
+            conn.setRequestProperty("X-Api-Sequence", "-1")
+            conn.outputStream.use { it.write(payload.toString().toByteArray()) }
+            val code = conn.responseCode
+            val status = conn.getHeaderField("X-Api-Status-Code") ?: ""
+            val apiMsg = conn.getHeaderField("X-Api-Message") ?: ""
+            val body = if (code in 200..299) conn.inputStream.bufferedReader().readText()
+            else conn.errorStream?.bufferedReader()?.readText().orEmpty()
+            com.azime.input.core.diag.Diag.warn(
+                "Speech", "volc http=$code status=$status msg=$apiMsg resp=${body.take(300)}",
+            )
+            if (status != "20000000") {
+                onDone(false, "豆包语音失败（$status $apiMsg）${body.take(100)}")
+                return
+            }
+            val text = runCatching {
+                val o = JSONObject(body)
+                val direct = o.optJSONObject("result")?.optString("text", "").orEmpty()
+                if (direct.isNotBlank()) direct
+                else o.optJSONObject("body")?.optJSONObject("result")?.optString("text", "").orEmpty()
+                    .ifBlank { o.optString("text", "") }
+            }.getOrDefault("")
+            onDone(true, text.trim())
+        }.onFailure {
+            com.azime.input.core.diag.Diag.warn("Speech", "volc 请求异常：${it.message}")
+            onDone(false, "网络请求失败：${it.message ?: "未知错误"}")
+        }
     }
 
     /** 转写接口（multipart `/audio/transcriptions` ✓）。 */

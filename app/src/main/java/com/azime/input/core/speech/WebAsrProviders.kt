@@ -47,6 +47,13 @@ object WebAsrProviders {
             "FunAudioLLM/SenseVoiceSmall", SpeechEngineManager.PROTO_TRANSCRIBE),
         Provider("stepfun", "阶跃星辰", "https://api.stepfun.com/v1",
             "stepaudio-2.5-asr", SpeechEngineManager.PROTO_TRANSCRIBE),
+        // 轮19.176：**豆包语音（火山语音）** ✓ 走「录音文件识别极速版」：同步返回、base64 直传 ✓
+        // 鉴权 = 控制台 API Key（X-Api-Key）✓「模型」字段在这家存 **Resource ID** ✓
+        Provider(
+            "doubao", "豆包语音（火山）",
+            "https://openspeech.bytedance.com/api/v3/auc/bigmodel/recognize/flash",
+            "volc.bigasr.auc_turbo", SpeechEngineManager.PROTO_VOLC,
+        ),
         Provider("openai", "OpenAI", "https://api.openai.com/v1",
             "whisper-1", SpeechEngineManager.PROTO_TRANSCRIBE),
     )
