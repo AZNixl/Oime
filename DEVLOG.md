@@ -3254,3 +3254,15 @@ if (subPage == "handwriting") { HandwritingSettingsPage(...); return@Scaffold }
 ## 三、验证
 - `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · 版本 **vc173 / 1.0.7** ✓
 - 待装机后核对 APK manifest 里的两个 backup 属性 ✓ + prefs 里旧键是否消失 ✓
+
+# 轮19.175：发布 1.0.7（联网语音多提供商）
+
+## 一、发版内容（用户审核通过 ✓）
+- 版本 **vc174 / versionName 1.0.7** ✓（vc174 > 测试版 vc173 ✓ 可覆盖升级 ✓）
+- `release.yml` body 换成 1.0.7 的 **8 条** ✓（用户要求删掉与第一条重复的「支持阿里云百炼」✗
+  并把「修复百炼」也去掉 —— 该问题只在开发包出现 ✗ 正式版用户没遇到过 ✓）
+- 说明段补：**API Key 只存本机 / 不进备份 ⇒ 升级后需重填、换机后需重填** ✓（用户要求 ✓）
+- 不含 App 关于页「本次更新」文案（用户 1.0.6 时明确不要 ✗）
+
+## 二、发布后
+- 回复 issue #1 并**关闭**（用户定：发布后关闭 ✓）
