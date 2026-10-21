@@ -300,6 +300,7 @@ fun SettingsScreen(
         "theme" to "主题与配色",
         "float" to "悬浮窗及嵌入式",
         "handwriting" to "语音手写管理",
+        "ai" to "AI",
         "oring" to "O 圆环",
         "about" to "关于",
                 "candkeys" to "自定义候选键",
@@ -454,6 +455,11 @@ fun SettingsScreen(
             return@Scaffold
         }
         // ── 二级页：手写输入（轮19.114）──
+        // 轮19.182：AI 设置页（AI 提供商 / 功能开关 ✓）
+        if (subPage == "ai") {
+            AiSettingsPage(padding) { subPage = "main" }
+            return@Scaffold
+        }
         // 轮19.171：联网语音 · 提供商配置页（次级页 ✓）
         // ⚠️ 必须 `return@Scaffold` ✓ —— 本页所有二级页都是"提前返回"模式：
         //   漏掉它会继续往下渲染主页面 ⇒ 配置页与主页**叠加** ✗（用户实测截图 ✓）
@@ -1025,6 +1031,17 @@ fun SettingsScreen(
                         title = "语音手写管理",
                         subtitle = "语音识别 · 离线手写（含模型下载）",
                         onClick = { subPage = "handwriting" },
+                    )
+                }
+            }
+            // 轮19.182：**AI** 方块（AI 提供商 / 各功能开关 ✓ 用户要求独立入口 ✓）
+            item {
+                Card(colors = plainCardColors) {
+                    KsuItem(
+                        icon = OimeIcons.tune,
+                        title = "AI",
+                        subtitle = "AI 提供商 · 剪贴板整理 · 翻译 · 改写 · 解释",
+                        onClick = { subPage = "ai" },
                     )
                 }
             }
@@ -2573,6 +2590,141 @@ private fun SectionLabel(text: String) {    Text(
 }
 
 /** KSU 风格卡片条目：图标 + 标题/副标题 + 右箭头。 */
+/**
+ * 轮19.182：**AI 设置页**（用户要求独立「AI 方块」✓）
+ * · 提供商与 Key **复用**「语音手写管理 → 联网语音」里的配置 ✓（只配一次 ✓）
+ * · 这里只管：选哪家、用哪个对话模型、各功能开关 ✓
+ */
+@Composable
+private fun AiSettingsPage(
+    padding: androidx.compose.foundation.layout.PaddingValues,
+    onBack: () -> Unit,
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val ai = com.azime.input.core.ai.AiManager
+    var rev by remember { mutableStateOf(0) }
+    val providers = remember(rev) { ai.providers(context) }
+    val current = remember(rev) { ai.provider(context) }
+    var model by remember(rev) { mutableStateOf(ai.model(context)) }
+    var provOpen by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(padding)
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        // ── 提供商 ──
+        Card(colors = grayCardColors(), shape = settingsCardShape()) {
+            Column(Modifier.padding(vertical = 10.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                ) {
+                    Text("AI 提供商", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                    Box {
+                        Row(
+                            modifier = Modifier
+                                .clickable { provOpen = true }
+                                .border(0.5.dp, MaterialTheme.colorScheme.outline, androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                        ) {
+                            Text(current?.name ?: "未选择", style = MaterialTheme.typography.bodyMedium)
+                            Spacer(Modifier.width(6.dp))
+                            Text("▾", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        DropdownMenu(expanded = provOpen, onDismissRequest = { provOpen = false }) {
+                            providers.forEach { p ->
+                                DropdownMenuItem(
+                                    text = { Text(p.name) },
+                                    onClick = {
+                                        ai.setProvider(context, p.id)
+                                        ai.setModel(context, "")     // 换家 ⇒ 用默认对话模型 ✓
+                                        rev++
+                                        provOpen = false
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
+                OutlinedTextField(
+                    value = model,
+                    onValueChange = { model = it; ai.setModel(context, it) },
+                    label = { Text("对话模型") },
+                    placeholder = {
+                        Text(current?.let { ai.DEFAULT_CHAT_MODEL[it.id] } ?: "gpt-4o-mini")
+                    },
+                    singleLine = true,
+                    supportingText = {
+                        Text(
+                            if (ai.isReady(context)) "API Key 已就绪 ✓（与语音共用同一份配置）"
+                            else "还没填 Key：设置 → 语音手写管理 → 联网语音 → 选同一家填 Key",
+                            fontSize = 11.sp,
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                )
+                Text(
+                    "说明：AI 与语音**共用**同一家提供商的 Key，只需配置一次 ✓",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp),
+                )
+            }
+        }
+
+        // ── 功能开关 ──
+        Card(colors = grayCardColors(), shape = settingsCardShape()) {
+            Column(Modifier.padding(vertical = 8.dp)) {
+                Text(
+                    "AI 功能", style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
+                )
+                data class Feat(val key: String, val name: String, val desc: String)
+                val feats = listOf(
+                    Feat(ai.F_CLIPBOARD, "剪贴板智能整理", "提取地址/电话/时间/单号"),
+                    Feat(ai.F_TRANSLATE, "翻译输入", "中文 ⇄ 外语，选中文本或整句"),
+                    Feat(ai.F_REWRITE, "风格改写", "正式 / 简短 / 口语化"),
+                    Feat(ai.F_EXPLAIN, "划词解释 / 搜索 / 总结", "选中文本后出结果"),
+                    Feat(ai.F_CONTINUE, "智能续写", "根据已输入内容续一句"),
+                    Feat(ai.F_COMMAND, "口头指令", "说「帮我写…」直接生成"),
+                    Feat(ai.F_HW_FALLBACK, "手写 AI 兜底", "本地认不出时上传笔迹图识别"),
+                )
+                feats.forEach { f ->
+                    var on by remember(rev, f.key) { mutableStateOf(ai.isEnabled(context, f.key)) }
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp),
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(f.name, style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                f.desc, style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Switch(checked = on, onCheckedChange = { v ->
+                            on = v
+                            ai.setEnabled(context, f.key, v)
+                        })
+                    }
+                }
+                Text(
+                    "⚠️ 开启后，相关文本会发送到所选提供商的云端；涉及隐私内容请自行判断。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
+                )
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+    }
+}
+
 @Composable
 private fun KsuItem(
     icon: ImageVector,

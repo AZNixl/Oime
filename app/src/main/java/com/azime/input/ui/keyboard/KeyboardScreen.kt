@@ -2172,6 +2172,127 @@ private fun MenuPanel(
                     }
                 }
             }
+            "aitools" -> {
+                // 轮19.182：**AI 工具**（v1 以**剪贴板**为输入源 ✓；选中文本的入口下一轮加 ✓）
+                val appCtx = com.azime.input.AZimeApplication.instance
+                val ai = com.azime.input.core.ai.AiManager
+                val cm = appCtx.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
+                    as android.content.ClipboardManager
+                val scope = rememberCoroutineScope()
+                var busy by remember { mutableStateOf(false) }
+                var result by remember { mutableStateOf("") }
+                var err by remember { mutableStateOf("") }
+                var lastFeature by remember { mutableStateOf("") }
+
+                fun run(feature: String, system: String, input: String) {
+                    if (busy) return
+                    if (!ai.isReady(appCtx)) {
+                        err = "AI 未就绪：设置 → AI → 选提供商并填 Key"
+                        return
+                    }
+                    lastFeature = feature
+                    busy = true; result = ""; err = ""
+                    scope.launch {
+                        val r = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            ai.chat(appCtx, system, input)
+                        }
+                        busy = false
+                        if (r.ok) result = r.text else err = r.error
+                    }
+                }
+
+                val clip = runCatching { cm.primaryClip?.getItemAt(0)?.text?.toString().orEmpty() }
+                    .getOrDefault("")
+
+                MenuSubPanel(
+                    c = c, title = "AI 工具", totalHeight = totalHeight,
+                    onBack = { subPage = null }, onClose = { close() },
+                ) {
+                    Text(
+                        if (clip.isBlank()) "剪贴板为空：先复制一段文字再点功能"
+                        else "输入：${clip.take(40)}${if (clip.length > 40) "…" else ""}",
+                        fontSize = 11.sp, color = c.subText,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    data class Tool(val name: String, val sys: String)
+                    val tools = listOf(
+                        Tool("翻译→英", ai.SYS_TRANSLATE.format("英文")),
+                        Tool("翻译→中", ai.SYS_TRANSLATE.format("简体中文")),
+                        Tool("改写·正式", ai.SYS_REWRITE.format("正式书面语")),
+                        Tool("改写·简短", ai.SYS_REWRITE.format("尽量简短的一句话")),
+                        Tool("解释", ai.SYS_EXPLAIN),
+                        Tool("总结", ai.SYS_SUMMARIZE),
+                        Tool("续写", ai.SYS_CONTINUE),
+                        Tool("整理剪贴板", ai.SYS_CLIPBOARD),
+                    )
+                    tools.chunked(4).forEach { row ->
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            row.forEach { tl ->
+                                Column(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .background(
+                                            if (lastFeature == tl.name) c.accentKeyBg else c.keyBg,
+                                            RoundedCornerShape(10.dp),
+                                        )
+                                        .clickable {
+                                            com.azime.input.core.haptic.HapticsManager.press()
+                                            run(tl.name, tl.sys, clip)
+                                        }
+                                        .padding(vertical = 8.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                ) {
+                                    Text(
+                                        tl.name, fontSize = 11.sp,
+                                        color = if (lastFeature == tl.name) c.accentKeyText else c.text,
+                                        maxLines = 1,
+                                    )
+                                }
+                            }
+                            repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                    }
+                    if (busy) {
+                        Text("思考中…", fontSize = 12.sp, color = c.subText)
+                    }
+                    if (err.isNotBlank()) {
+                        Text(err, fontSize = 11.sp, color = androidx.compose.ui.graphics.Color(0xFFA32D2D))
+                    }
+                    if (result.isNotBlank()) {
+                        Text(
+                            result.take(300), fontSize = 12.sp, color = c.text,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(c.keyBg, RoundedCornerShape(8.dp))
+                                .padding(8.dp),
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(
+                                "插入", fontSize = 13.sp, color = c.accentKeyText,
+                                modifier = Modifier
+                                    .background(c.accentKeyBg, RoundedCornerShape(8.dp))
+                                    .clickable { close(); onAction(KeyAction.CommitText(result)) }
+                                    .padding(horizontal = 14.dp, vertical = 6.dp),
+                            )
+                            Text(
+                                "复制", fontSize = 13.sp, color = c.text,
+                                modifier = Modifier
+                                    .background(c.keyBg, RoundedCornerShape(8.dp))
+                                    .clickable {
+                                        runCatching {
+                                            cm.setPrimaryClip(
+                                                android.content.ClipData.newPlainText("AI", result),
+                                            )
+                                        }
+                                    }
+                                    .padding(horizontal = 14.dp, vertical = 6.dp),
+                            )
+                        }
+                    }
+                }
+            }
             "voice" -> {
                 // 轮19.173：○ 菜单「语音模型」——**本地 + 联网所有已配置的模型**，点选即切换 ✓
                 val appCtx = com.azime.input.AZimeApplication.instance
@@ -2328,6 +2449,8 @@ private fun MenuPanel(
                             Triple(oi.keyboard, "主键盘") { subPage = "mainkb" },
                             // 轮19.173：**语音模型**（本地 + 联网已配置，一点切换 ✓ 用户要求）
                             Triple(oi.tune, "语音模型") { subPage = "voice" },
+                            // 轮19.182：**AI 工具**（翻译 / 改写 / 解释 / 总结 / 续写 / 整理剪贴板）
+                            Triple(oi.tune, "AI 工具") { subPage = "aitools" },
                             Triple(oi.refresh, "部署") { close(); onAction(KeyAction.Deploy) },
                             // 反馈轮16：键盘编辑 —— 布局编辑器直达入口
                             Triple(oi.keyboard, "键盘编辑") { close(); onAction(KeyAction.OpenKeyboardEditor) },
