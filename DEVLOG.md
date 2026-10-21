@@ -3414,3 +3414,15 @@ OkHttp 的 `send()` 是异步排队，但**录音线程的 feed 可能先于 onO
 
 ## 四、验证
 - `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · 版本 **vc180 / 1.0.8** ✓
+
+# 轮19.182：豆包模式芯片「点了即时保存」
+
+## 一、现象
+用户以为切到「一句话识别（准）」后测了一次，结果两次都"边说边出字" ✗
+## 二、排查
+读设备 prefs：`wasr_doubao_url` 仍是 `bigmodel_async` ✗（没有 nostream）⇒ **模式根本没切过去** ✓
+原因：芯片只改了页面内状态，仍需按底部「保存并设为当前」✗ 用户没按 ⇒ 仍是上一个模式 ✓
+## 三、修复
+`一句话识别 / 双向流式` 芯片点击时**立即写 prefs**（`saveCfg` ✓ 仅已存在的提供商 ✓）⇒ 点了就生效 ✓
+## 四、验证
+- `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · **vc181 / 1.0.8** ✓

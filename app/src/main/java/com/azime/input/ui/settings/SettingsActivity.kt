@@ -2772,18 +2772,22 @@ private fun WebAsrProviderPage(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
                         val isAsync = url.contains("_async")
+                        // 轮19.182：**模式芯片点了立即保存** ✓（用户踩过：选了但没按底部保存 ⇒ 以为没生效 ✗）
+                        fun applyMode(endpoint: String) {
+                            url = endpoint
+                            if (!isNew) {
+                                wap.saveCfg(context, providerId, endpoint, key, model, protocol, appId)
+                                com.azime.input.core.diag.Diag.log("Speech", "volc 模式已即时保存：$endpoint")
+                            }
+                        }
                         OimeChip(
                             selected = !isAsync,
-                            onClick = {
-                                url = "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_nostream"
-                            },
+                            onClick = { applyMode("wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_nostream") },
                             label = { Text("一句话识别（准）") },
                         )
                         OimeChip(
                             selected = isAsync,
-                            onClick = {
-                                url = "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async"
-                            },
+                            onClick = { applyMode("wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async") },
                             label = { Text("双向流式（快）") },
                         )
                     }
