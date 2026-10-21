@@ -2663,6 +2663,8 @@ private fun WebAsrProviderPage(
     var fetchState by remember { mutableStateOf("idle") }  // idle | loading | ok | empty | fail
     // 轮19.173：**API Key 默认隐藏** ✓ 右侧「显示/隐藏」切换 ✓
     var keyVisible by remember { mutableStateOf(false) }
+    // 轮19.178：火山**旧版控制台**的 AppID（新版留空 ✓）
+    var appId by remember { mutableStateOf(saved?.appId ?: "") }
     val speechPrefs = remember {
         context.getSharedPreferences("speech_prefs", android.content.Context.MODE_PRIVATE)
     }
@@ -2749,6 +2751,15 @@ private fun WebAsrProviderPage(
                         unfocusedBorderColor = MaterialTheme.colorScheme.outline,
                     ),
                 )
+                if (protocol == com.azime.input.core.speech.SpeechEngineManager.PROTO_VOLC) {
+                    OutlinedTextField(
+                        value = appId, onValueChange = { appId = it },
+                        label = { Text("AppID（旧版控制台才需要，新版留空）") },
+                        placeholder = { Text("留空 = 用 API Key 鉴权") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                    )
+                }
                 Text(
                     "调用方式", style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -2877,7 +2888,7 @@ private fun WebAsrProviderPage(
                 if (isCustom && !isNew && existing != null && name.isNotBlank() && name != existing.name) {
                     wap.renameCustom(context, id, name)
                 }
-                wap.saveCfg(context, id, url, key, model, protocol)
+                wap.saveCfg(context, id, url, key, model, protocol, appId)
                 wap.setActive(context, id)
                 speechPrefs.edit()
                     .putString("engine", com.azime.input.core.speech.SpeechEngineManager.ENGINE_WEB_API)

@@ -3305,3 +3305,29 @@ if (subPage == "handwriting") { HandwritingSettingsPage(...); return@Scaffold }
 
 ## 三、验证
 - `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · 版本 **vc176 / 1.0.8** ✓
+
+# 轮19.178：豆包语音实测 403 —— 根因「资源未开通」+ 补旧版 AppID 鉴权
+
+## 一、真机日志（2026-10-21 08:29~08:45）
+```
+volc http=403 status=45000030
+msg=[resource_id=volc.bigasr.auc_turbo] requested resource not granted
+```
+```
+volc http=401 status=45000010 msg=Invalid X-Api-Key
+```
+## 二、结论
+1. **主因 = 资源没开通** ✗：用户开的是「**录音文件识别**」（标准版 `volc.bigasr.auc`），
+   而 App 走的是「**录音文件识别极速版**」（`volc.bigasr.auc_turbo`）⇒ 403 明确说该 resource 未授权 ✗
+   ⇒ 解法：控制台开通**极速版**（并领试用 ✓），或把 Resource ID 改成账号实际开通的那个（如 `volc.seedasr.auc_turbo` ✓）
+2. 另有一次 401 `Invalid X-Api-Key` ⇒ Key 填错/填成了别的值 ✓
+3. 「流式语音识别」**App 未实现** ✗（火山 WS 二进制协议 ✗ 与已定"不做流式"一致 ✓）
+
+## 三、本轮改动（vc177）
+- `WebApiConfig` 加 `appId` ✓；火山请求：**有 AppID ⇒ `X-Api-App-Key` + `X-Api-Access-Key`**，
+  否则 `X-Api-Key` ✓（兼容新老控制台 ✓）
+- `WebAsrProviders.Cfg` / `saveCfg` / `activeConfig` / 删除清理 全部带 `appId` ✓
+- 配置页：豆包语音协议下**多一个可选 AppID 输入框** ✓（"旧版控制台才需要，新版留空" ✓）
+
+## 四、验证
+- `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · 版本 **vc177 / 1.0.8** ✓

@@ -35,6 +35,8 @@ object WebAsrProviders {
         val key: String,
         val model: String,
         val protocol: String,
+        /** 火山旧版控制台的 AppID（可选 ✓ 新版留空 ✓） */
+        val appId: String = "",
     )
 
     /** 内置预设（顺序即界面顺序 ✓ 已按用户要求去掉 Groq / Mistral ✗）。 */
@@ -108,6 +110,7 @@ object WebAsrProviders {
             apiKey = cfg.key,
             model = cfg.model.ifBlank { p.model },
             protocol = cfg.protocol,
+            appId = cfg.appId,
         )
     }
 
@@ -120,15 +123,20 @@ object WebAsrProviders {
             key = sp.getString("${PREFIX}${p.id}_key", "") ?: "",
             model = sp.getString("${PREFIX}${p.id}_model", "")?.ifBlank { p.model } ?: p.model,
             protocol = sp.getString("${PREFIX}${p.id}_protocol", "")?.ifBlank { p.protocol } ?: p.protocol,
+            appId = sp.getString("${PREFIX}${p.id}_appid", "") ?: "",
         )
     }
 
-    fun saveCfg(c: Context, id: String, url: String, key: String, model: String, protocol: String) {
+    fun saveCfg(
+        c: Context, id: String, url: String, key: String, model: String, protocol: String,
+        appId: String = "",
+    ) {
         prefs(c).edit()
             .putString("${PREFIX}${id}_url", url.trim())
             .putString("${PREFIX}${id}_key", key.trim())
             .putString("${PREFIX}${id}_model", model.trim())
             .putString("${PREFIX}${id}_protocol", protocol)
+            .putString("${PREFIX}${id}_appid", appId.trim())
             .apply()
         // 自定义提供商：同步更新列表里的名称/默认值（列表页展示要用 ✓）
         val customs = customProviders(c).toMutableList()
@@ -166,6 +174,7 @@ object WebAsrProviders {
         prefs(c).edit()
             .remove("${PREFIX}${id}_url").remove("${PREFIX}${id}_key")
             .remove("${PREFIX}${id}_model").remove("${PREFIX}${id}_protocol")
+            .remove("${PREFIX}${id}_appid")
             .apply()
         if (activeId(c) == id) prefs(c).edit().putString(K_ACTIVE, "").apply()
     }

@@ -331,6 +331,8 @@ object SpeechEngineManager {
          * - [PROTO_CHAT] `POST {baseUrl}/chat/completions`（base64 input_audio ✓ 阿里云百炼 qwen3-asr-flash ✓）
          */
         val protocol: String,
+        /** 轮19.178：火山**旧版控制台**的 AppID（走 `X-Api-App-Key` + `X-Api-Access-Key` ✓）；新版留空 ⇒ 走 `X-Api-Key` ✓ */
+        val appId: String = "",
     )
 
     const val PROTO_TRANSCRIBE = "transcribe"
@@ -513,7 +515,14 @@ object SpeechEngineManager {
             conn.connectTimeout = 15_000
             conn.readTimeout = 60_000
             conn.setRequestProperty("Content-Type", "application/json")
-            conn.setRequestProperty("X-Api-Key", cfg.apiKey)
+            if (cfg.appId.isNotBlank()) {
+                // 旧版控制台：AppID + Access Token ✓
+                conn.setRequestProperty("X-Api-App-Key", cfg.appId.trim())
+                conn.setRequestProperty("X-Api-Access-Key", cfg.apiKey.trim())
+            } else {
+                // 新版控制台：单个 API Key ✓
+                conn.setRequestProperty("X-Api-Key", cfg.apiKey.trim())
+            }
             conn.setRequestProperty("X-Api-Resource-Id", cfg.model.ifBlank { "volc.bigasr.auc_turbo" })
             conn.setRequestProperty("X-Api-Request-Id", java.util.UUID.randomUUID().toString())
             conn.setRequestProperty("X-Api-Sequence", "-1")
