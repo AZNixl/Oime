@@ -309,7 +309,8 @@ fun SettingsScreen(
     BackHandler(enabled = subPage != "main" || showManage) {
         when {
             showManage -> showManage = false
-            subPage.startsWith("wasr:") -> subPage = "handwriting"   // 次级配置页 → 回语音页 ✓
+            subPage == "wasr:__ai__" -> subPage = "ai"               // AI 配置页 → 回 AI ✓
+            subPage.startsWith("wasr:") -> subPage = "handwriting"   // 语音配置页 → 回语音页 ✓
             else -> subPage = "main"
         }
     }
@@ -330,9 +331,12 @@ fun SettingsScreen(
                                 subPage == "schemas" && showManage -> "方案管理"
                                 subPage.startsWith("wasr:") -> {
                                     val pid = subPage.removePrefix("wasr:")
-                                    if (pid == "new") "新增 API"
-                                    else com.azime.input.core.speech.WebAsrProviders.byId(context, pid)?.name
-                                        ?: "联网语音"
+                                    when {
+                                        pid == "__ai__" -> "配置模型"
+                                        pid == "new" -> "新增 API"
+                                        else -> com.azime.input.core.speech.WebAsrProviders.byId(context, pid)?.name
+                                            ?: "联网语音"
+                                    }
                                 }
                                 else -> subTitles[subPage] ?: "○输入法"
                             },
@@ -389,6 +393,7 @@ fun SettingsScreen(
                     IconButton(onClick = {
                         when {
                             showManage -> showManage = false
+                            subPage == "wasr:__ai__" -> subPage = "ai"
                             subPage.startsWith("wasr:") -> subPage = "handwriting"
                             subPage != "main" -> subPage = "main"
                             else -> onBackClick()
@@ -462,7 +467,7 @@ fun SettingsScreen(
         }
         // 轮19.184：**AI 模型配置页**（提供商列表 + Key + 对话模型 ✓ 不出现语音调用方式 ✓）
         if (subPage == "wasr:__ai__") {
-            AiModelConfigPage(padding) {
+            AiModelConfigPage(padding, onOpenProvider = { subPage = "wasr:$it" }) {
                 subPage = "ai"
             }
             return@Scaffold
@@ -2680,29 +2685,27 @@ private fun AiSettingsPage(
                 )
                 HorizontalDivider(Modifier.padding(vertical = 6.dp, horizontal = 20.dp))
                 // 轮19.184：**「配置模型」入口** —— 提供商列表移到次级页 ✓（用户要求 ✓）
+                // 显眼整行（带边框 + 箭头 ✓ 用户反馈"不显眼"✗）
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
                         .clickable { onOpenProvider("__ai__") }
-                        .padding(horizontal = 20.dp, vertical = 10.dp),
+                        .border(0.5.dp, MaterialTheme.colorScheme.outline, androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
                     verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
                 ) {
                     Column(Modifier.weight(1f)) {
-                        Text("配置模型", style = MaterialTheme.typography.bodyMedium)
+                        Text("配置模型", style = MaterialTheme.typography.bodyLarge)
                         Text(
-                            "为 AI 功能选择提供商与对话模型（与语音共用 Key）",
+                            "选择提供商与对话模型",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    Text("›", fontSize = 18.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("›", fontSize = 20.sp, color = MaterialTheme.colorScheme.primary)
                 }
-                Text(
-                    "说明：AI 与语音**共用**同一家提供商的 Key，只需配置一次 ✓",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp),
-                )
+
             }
         }
 
@@ -2763,6 +2766,7 @@ private fun AiSettingsPage(
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 private fun AiModelConfigPage(
     padding: androidx.compose.foundation.layout.PaddingValues,
+    onOpenProvider: (String) -> Unit,
     onBack: () -> Unit,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -2776,6 +2780,9 @@ private fun AiModelConfigPage(
     var models by remember { mutableStateOf<List<String>>(emptyList()) }
     var fetchState by remember { mutableStateOf("idle") }
     var modelOpen by remember { mutableStateOf(false) }
+    // 轮19.186：Key 显示/隐藏 ✓ + 未配置折叠 ✓ + 新增 API ✓
+    var keyVisible by remember { mutableStateOf(false) }
+    var showUnconfigured by remember { mutableStateOf(false) }
     fun isChatModel(id: String): Boolean {
         val s = id.lowercase()
         val bad = listOf("whisper", "asr", "transcribe", "tts", "embed", "rerank", "audio", "speech", "voice", "moderation")
@@ -2798,7 +2805,9 @@ private fun AiModelConfigPage(
                     "AI 提供商", style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
                 )
-                providers.forEach { pv ->
+                val configuredList = providers.filter { wap.cfgOf(context, it).key.isNotBlank() }
+                val unconfiguredList = providers.filter { wap.cfgOf(context, it).key.isBlank() }
+                (if (showUnconfigured) providers else configuredList).forEach { pv ->
                     val cfg = remember(rev, pv.id) { wap.cfgOf(context, pv) }
                     val sel = current?.id == pv.id
                     Row(
@@ -2841,6 +2850,43 @@ private fun AiModelConfigPage(
                         }
                     }
                 }
+                // 「＋ 新增 API」✓（自定义提供商）
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            val p0 = wap.addCustom(context, "自定义 API")
+                            rev++
+                            onOpenProvider(p0.id)
+                        }
+                        .padding(horizontal = 20.dp, vertical = 10.dp),
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "＋ 新增 API", style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                if (unconfiguredList.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showUnconfigured = !showUnconfigured }
+                            .padding(horizontal = 20.dp, vertical = 8.dp),
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            if (showUnconfigured) "收起未配置的提供商" else "其他提供商（${unconfiguredList.size} 个未配置）",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.weight(1f))
+                        Text(
+                            if (showUnconfigured) "▴" else "▾",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
             }
         }
 
@@ -2858,7 +2904,19 @@ private fun AiModelConfigPage(
                     onValueChange = { key = it },
                     label = { Text("API Key") },
                     singleLine = true,
-                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                    visualTransformation = if (keyVisible)
+                        androidx.compose.ui.text.input.VisualTransformation.None
+                    else androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                    trailingIcon = {
+                        Text(
+                            if (keyVisible) "隐藏" else "显示",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier
+                                .clickable { keyVisible = !keyVisible }
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                        )
+                    },
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                 )
                 Row(
@@ -3974,7 +4032,8 @@ private fun HandwritingSettingsPage(
                 val wap = com.azime.input.core.speech.WebAsrProviders
                 val sem = com.azime.input.core.speech.SpeechEngineManager
                 // ① 已配置（有 Key）的提供商 ✓
-                val configured = wap.all(context).filter { wap.cfgOf(context, it).key.isNotBlank() }
+                val configured = wap.asrProviders(context)
+                    .filter { wap.cfgOf(context, it).key.isNotBlank() }
                 val activeProv = configured.firstOrNull { it.id == wap.activeId(context) } ?: configured.firstOrNull()
                 val aCfg = activeProv?.let { wap.cfgOf(context, it) }
                 val webOn = engine == sem.ENGINE_WEB_API

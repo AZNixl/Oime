@@ -3549,3 +3549,26 @@ OkHttp 的 `send()` 是异步排队，但**录音线程的 feed 可能先于 onO
 ## 四、验证
 - `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · **vc185 / 1.0.8** ✓
 - 百炼如需修正：看日志 `oa-rt evt=…`（会列出服务端返回的事件/错误 ✓）
+
+# 轮19.186：修 vc184 反馈 + Kimi/DeepSeek + 语音侧过滤
+
+## 一、用户反馈（4 条 + 1 补充）
+1. 从 AI → 配置模型 进入后标题显示「联网语音」✗；退出后回「语音手写管理」✗；页内没有「新增 API」✗；API Key 隐藏但没有显示按钮 ✗
+2. 「配置模型」入口不显眼 ✗；下面说明要去掉 ✗
+3. AI 提供商应**只显示已配置**（OpenAI 未配置却也显示 ✗）
+4. AI 提供商**增加 Kimi、DeepSeek** ✓
+5. **没有语音模型的提供商不要出现在联网语音** ✗
+
+## 二、修复/改动（vc186）
+1. **标题/返回** ✓：`wasr:__ai__` → 标题「配置模型」✓；返回键与箭头都回 **AI 页** ✓（原来按 wasr 规则回语音页 ✗）
+2. **AI 配置页补全** ✓：`＋ 新增 API`（建自定义提供商并直接进其配置 ✓）；Key **显示/隐藏** 按钮 ✓
+3. **只显示已配置** ✓：列表默认只列**有 Key** 的 ✓；未配置的折叠为「其他提供商（N 个未配置）」可展开 ✓
+4. **入口显眼** ✓：改带边框的整行 + 主色箭头；删除下方说明文字 ✗
+5. **Kimi / DeepSeek** ✓：`Provider.asr` 标记（false ✓）+ 预设（Kimi `api.moonshot.cn/v1` + `moonshot-v1-8k`；DeepSeek `api.deepseek.com/v1` + `deepseek-chat`）✓
+   + `AiManager.DEFAULT_CHAT_MODEL` 补齐 ✓
+6. **联网语音只列支持语音的** ✓：新 `WebAsrProviders.asrProviders()` ✓（排除 Kimi/DeepSeek 等纯 AI ✗）
+
+## 三、验证
+- `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · **vc186 / 1.0.8** ✓
+- ⚠️ 踩坑：同名 `isChatModel(...)` 在 AiSettingsPage / AiModelConfigPage 各有一处 ✗ ⇒ 替换锚点要用更长上下文 ✓；
+  以及 `AiModelConfigPage` 缺 `onOpenProvider` 参数 ✗ ⇒ 已补 ✓

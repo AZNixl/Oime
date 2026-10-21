@@ -27,6 +27,8 @@ object WebAsrProviders {
         val model: String,
         val protocol: String,
         val custom: Boolean = false,
+        /** 轮19.186：**是否支持语音识别**（Kimi/DeepSeek 只做 AI ✗ 不进语音列表 ✓） */
+        val asr: Boolean = true,
     )
 
     /** 某家的**已保存配置**（未保存时 url/model 用预设默认 ✓ key 为空 ✓）。 */
@@ -60,6 +62,11 @@ object WebAsrProviders {
         ),
         Provider("openai", "OpenAI", "https://api.openai.com/v1",
             "whisper-1", SpeechEngineManager.PROTO_TRANSCRIBE),
+        // 轮19.186：**仅 AI** 的提供商（无语音识别 ✗ ⇒ 不进「联网语音」✓）
+        Provider("kimi", "Kimi（月之暗面）", "https://api.moonshot.cn/v1",
+            "moonshot-v1-8k", SpeechEngineManager.PROTO_TRANSCRIBE, asr = false),
+        Provider("deepseek", "DeepSeek", "https://api.deepseek.com/v1",
+            "deepseek-chat", SpeechEngineManager.PROTO_TRANSCRIBE, asr = false),
     )
 
     private fun prefs(c: Context): SharedPreferences = c.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -92,6 +99,9 @@ object WebAsrProviders {
     fun all(c: Context): List<Provider> = PRESETS + customProviders(c)
 
     fun byId(c: Context, id: String): Provider? = all(c).firstOrNull { it.id == id }
+
+    /** 只支持**语音识别**的提供商（联网语音页用 ✓ 排除 Kimi/DeepSeek 等纯 AI ✗）。 */
+    fun asrProviders(c: Context): List<Provider> = all(c).filter { it.asr }
 
     // ── 当前生效 ───────────────────────────────────────────────
 

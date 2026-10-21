@@ -42,6 +42,8 @@ object AiManager {
         "siliconflow" to "Qwen/Qwen2.5-7B-Instruct",
         "stepfun" to "step-1-flash",
         "openai" to "gpt-4o-mini",
+        "kimi" to "moonshot-v1-8k",
+        "deepseek" to "deepseek-chat",
     )
 
     private fun prefs(c: Context): SharedPreferences = c.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
