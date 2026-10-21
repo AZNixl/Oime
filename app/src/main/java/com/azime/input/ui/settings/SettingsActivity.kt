@@ -500,6 +500,29 @@ fun SettingsScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 contentPadding = PaddingValues(vertical = 8.dp),
             ) {
+                // 轮19.190：**默认符号键盘**（两张键盘图，点选 ✓ 用户要求）
+                item {
+                    Card(colors = grayCardColors(), shape = settingsCardShape()) {
+                        Column(Modifier.padding(vertical = 10.dp)) {
+                            Text(
+                                "默认符号键盘",
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp),
+                            )
+                            Text(
+                                "长按符号键后进入哪个页面（点图选择）",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp),
+                            )
+                            SymbolKeyboardPicker(
+                                onPick = { page ->
+                                    com.azime.input.core.keyboard.KeyboardManager.setPreferredPage(page)
+                                },
+                            )
+                        }
+                    }
+                }
                 item {
                     Card(colors = grayCardColors(), shape = settingsCardShape()) {
                         Column(Modifier.padding(vertical = 4.dp)) {
@@ -1122,11 +1145,7 @@ private fun StatusCard(fillWidth: Boolean = false) {
         ),
         shape = RoundedCornerShape(16.dp),
         modifier = (
-            if (notEnabled) Modifier.clickable {
-                runCatching {
-                    context.startActivity(Intent(android.provider.Settings.ACTION_INPUT_METHOD_SETTINGS))
-                }
-            } else Modifier
+            if (notEnabled) Modifier else Modifier
         ).let { if (fillWidth) it.fillMaxHeight() else it },
     ) {
         Box(Modifier.fillMaxWidth()) {
@@ -1169,7 +1188,7 @@ private fun StatusCard(fillWidth: Boolean = false) {
                     // 轮19.15：第二行只放**运行状态**（方案挪到第三行）
                     Text(
                         text = when {
-                            notEnabled -> "未启用 · 点击去启用"
+                            notEnabled -> "未启用 · 去启用 / 切换输入法"
                             ready -> "运行正常"
                             else -> "引擎未就绪 / 首次部署中…"
                         },
@@ -1180,6 +1199,40 @@ private fun StatusCard(fillWidth: Boolean = false) {
                         overflow = TextOverflow.Ellipsis,
                         color = if (notEnabled) Color(0xFF3C4043) else Color.White,
                     )
+                }
+                // 轮19.190：未启用时给两个动作 —— **去启用** + **切换输入法**（用户要求 ✓）
+                if (notEnabled) {
+                    Spacer(Modifier.height(10.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            "去启用",
+                            fontSize = 13.sp, color = Color(0xFF1A1C1E),
+                            modifier = Modifier
+                                .background(Color(0xFFE8EAED), RoundedCornerShape(8.dp))
+                                .clickable {
+                                    runCatching {
+                                        context.startActivity(
+                                            Intent(android.provider.Settings.ACTION_INPUT_METHOD_SETTINGS),
+                                        )
+                                    }
+                                }
+                                .padding(horizontal = 12.dp, vertical = 6.dp),
+                        )
+                        Text(
+                            "切换输入法",
+                            fontSize = 13.sp, color = Color(0xFF1A1C1E),
+                            modifier = Modifier
+                                .background(Color(0xFFE8EAED), RoundedCornerShape(8.dp))
+                                .clickable {
+                                    runCatching {
+                                        val imm = context.getSystemService(android.content.Context.INPUT_METHOD_SERVICE)
+                                            as android.view.inputmethod.InputMethodManager
+                                        imm.showInputMethodPicker()
+                                    }
+                                }
+                                .padding(horizontal = 12.dp, vertical = 6.dp),
+                        )
+                    }
                 }
                 // 轮19.15：第三行 = 当前方案
                 if (ready && schema.isNotBlank()) {
@@ -3008,6 +3061,96 @@ private fun AiModelConfigPage(
             }
         }
         Spacer(Modifier.height(8.dp))
+    }
+}
+
+/**
+ * 轮19.190：**默认符号键盘选择器** —— 两张键盘示意图，点选即设 ✓
+ * 左：26 键符号（3 行 × 10 键）· 右：九宫格数字（3×3）
+ */
+@Composable
+private fun SymbolKeyboardPicker(onPick: (String) -> Unit) {
+    var cur by remember { mutableStateOf(com.azime.input.core.keyboard.KeyboardManager.preferredPage()) }
+    val symBg = MaterialTheme.colorScheme.surfaceVariant
+    val symFg = MaterialTheme.colorScheme.onSurfaceVariant
+
+@Composable
+    fun previewSymbols(selected: Boolean) {
+        // 26 键符号：3 行 × 10
+        val rows = listOf(
+            listOf("~", "!", "@", "#", "$", "%", "^", "&", "*", "("),
+            listOf("-", "_", "=", "+", "[", "]", "{", "}", "%", "|"),
+            listOf(";", ":", "'", "\"", ",", ".", "/", "?", "<", ">"),
+        )
+        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            rows.forEach { row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                    row.forEach { ch ->
+                        Box(
+                            modifier = Modifier
+                                .width(20.dp).height(22.dp)
+                                .background(symBg, androidx.compose.foundation.shape.RoundedCornerShape(3.dp)),
+                            contentAlignment = androidx.compose.ui.Alignment.Center,
+                        ) {
+                            Text(ch, fontSize = 9.sp, color = symFg, maxLines = 1)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+@Composable
+    fun previewNumpad(selected: Boolean) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            listOf(listOf("1", "2", "3"), listOf("4", "5", "6"), listOf("7", "8", "9")).forEach { row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    row.forEach { n ->
+                        Box(
+                            modifier = Modifier
+                                .width(28.dp).height(26.dp)
+                                .background(symBg, androidx.compose.foundation.shape.RoundedCornerShape(4.dp)),
+                            contentAlignment = androidx.compose.ui.Alignment.Center,
+                        ) {
+                            Text(n, fontSize = 13.sp, color = symFg, fontWeight = FontWeight.Medium)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        listOf("symbols" to "26 键符号", "numpad" to "九宫格数字").forEach { (page, label) ->
+            val sel = cur == page
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .border(
+                        if (sel) 1.5.dp else 0.5.dp,
+                        if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                        androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+                    )
+                    .clickable {
+                        cur = page
+                        onPick(page)
+                        com.azime.input.core.haptic.HapticsManager.press()
+                    }
+                    .padding(vertical = 8.dp),
+                horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
+            ) {
+                if (page == "symbols") previewSymbols(sel) else previewNumpad(sel)
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    label,
+                    fontSize = 12.sp,
+                    color = if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
     }
 }
 

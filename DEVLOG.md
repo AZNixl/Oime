@@ -3647,3 +3647,27 @@ https://www.alibabacloud.com/help/zh/model-studio/qwen-asr-realtime-interaction-
 
 ## 三、验证
 - `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · **vc189 / 1.0.8** ✓
+
+# 轮19.190：未启用卡片加切换 · 默认符号键盘设置 · 符号键长按改 AI 弹窗
+
+## 一、用户需求（3 条）
+1. 输入法未启用时的灰色方块：能管理、但**没有切换输入法** ✗ ⇒ 加「切换输入法」
+2. 「默认符号键盘」从**长按弹窗**移到 **设置 → 键盘**，用**两张键盘图**点选 ✓
+3. 符号键**长按**改为呼出 **AI 功能弹窗** ✓
+
+## 二、实现（vc190）
+1. 未启用卡片：文案改「未启用 · 去启用 / 切换输入法」✓；卡片内新增两个按钮 ✓
+   · **去启用** → `ACTION_INPUT_METHOD_SETTINGS` ✓
+   · **切换输入法** → `InputMethodManager.showInputMethodPicker()` ✓
+   （原卡片整体点击跳启用页的行为改为按钮 ✓ 避免歧义）
+2. 键盘页新增 **「默认符号键盘」** 卡片 ✓
+   · 新增 `SymbolKeyboardPicker`：**两张键盘示意图** ✓（26 键符号 3×10 网格 / 九宫格数字 3×3）
+   · 点选高亮边框 + 立即写入 `KeyboardManager.setPreferredPage()` ✓
+3. 符号键长按 → **AI 弹窗** ✓（`showPageBubble` 内容整体替换）
+   · 六个动作：翻译（英）/ 改写（更简洁）/ 解释 / 总结 / 续写 / 整理剪贴板 ✓
+   · 输入源：**选中文本优先**，否则剪贴板 ✓
+   · 翻译/改写/续写 ⇒ 直接上屏（`KeyAction.CommitText` ✓）；解释/总结/整理 ⇒ 复制到剪贴板 + Toast ✓
+   · 未就绪 / 无输入 ⇒ Toast 提示 ✓
+
+## 三、验证
+- `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · **vc190 / 1.0.8** ✓

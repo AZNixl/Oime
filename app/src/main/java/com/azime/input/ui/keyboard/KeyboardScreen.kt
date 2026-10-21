@@ -3844,48 +3844,78 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
                 offset = bubbleOffset,
                 onDismissRequest = { showPageBubble = false },
             ) {
-                // 轮19.2：只保留「26键符号键盘 / 九宫格数字键盘」两项，横向排布、图标代替文字
+                // 轮19.190：符号键**长按 = AI 功能弹窗** ✓（默认符号键盘改到「设置 → 键盘」里选 ✓）
+                val ctx = androidx.compose.ui.platform.LocalContext.current
+                val ai = com.azime.input.core.ai.AiManager
+                val cm = ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
+                    as android.content.ClipboardManager
+                val aiScope = androidx.compose.runtime.rememberCoroutineScope()
+                var busy by androidx.compose.runtime.remember {
+                    androidx.compose.runtime.mutableStateOf(false)
+                }
+
+                fun runAi(label: String, sys: String, insert: Boolean) {
+                    if (busy) return
+                    showPageBubble = false
+                    if (!ai.isReady(ctx)) {
+                        android.widget.Toast.makeText(ctx, "AI 未就绪：设置 → AI → 配置模型", android.widget.Toast.LENGTH_SHORT).show()
+                        return
+                    }
+                    val selected = runCatching {
+                        com.azime.input.ime.AZimeService.instance
+                            ?.currentInputConnection?.getSelectedText(0)?.toString().orEmpty()
+                    }.getOrDefault("")
+                    val clip = runCatching { cm.primaryClip?.getItemAt(0)?.text?.toString().orEmpty() }
+                        .getOrDefault("")
+                    val input = selected.ifBlank { clip }
+                    if (input.isBlank()) {
+                        android.widget.Toast.makeText(ctx, "先选中文字或复制一段", android.widget.Toast.LENGTH_SHORT).show()
+                        return
+                    }
+                    busy = true
+                    aiScope.launch {
+                        val r = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            ai.chat(ctx, sys, input)
+                        }
+                        busy = false
+                        if (!r.ok) {
+                            android.widget.Toast.makeText(ctx, r.error, android.widget.Toast.LENGTH_LONG).show()
+                            return@launch
+                        }
+                        if (insert) {
+                            onAction(KeyAction.CommitText(r.text))
+                        } else {
+                            runCatching {
+                                cm.setPrimaryClip(android.content.ClipData.newPlainText("AI", r.text))
+                            }
+                            android.widget.Toast.makeText(ctx, "$label 完成，已复制", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+
                 Row(
                     modifier = Modifier
                         .background(c.barBg, RoundedCornerShape(10.dp))
-                        .padding(horizontal = 6.dp, vertical = 4.dp),
+                        .padding(horizontal = 4.dp, vertical = 4.dp),
                     horizontalArrangement = Arrangement.spacedBy(2.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    // 轮19.67（修正 19.66 的左右写反）：**左 = 符号（图标）**，**右 = 九宫格（文字 123）**
                     listOf(
-                        "symbols" to com.azime.input.ui.icons.OimeIcons.symbols,  // 左：26 键符号键盘
-                        "numpad" to null,                                          // 右：九宫格数字键盘（文字 123）
-                    ).forEach { (page, icon) ->
-                        val on = page == KeyboardManager.preferredPage()
-                        val bg = if (on) c.accentKeyBg else Color.Transparent
-                        val tint = if (on) c.accentKeyText else c.text
-                        val click = Modifier.clickable {
-                            showPageBubble = false
-                            KeyboardManager.setPreferredPage(page)
-                            onAction(KeyAction.SwitchPage(page))
-                        }
-                        if (icon != null) {
-                            Icon(
-                                icon,
-                                contentDescription = page,
-                                tint = tint,
-                                modifier = click
-                                    .background(bg, RoundedCornerShape(7.dp))
-                                    .padding(horizontal = 12.dp, vertical = 8.dp)
-                                    .size(22.dp),
-                            )
-                        } else {
-                            Text(
-                                text = "123",
-                                fontSize = 15.sp,
-                                fontWeight = if (on) FontWeight.Bold else FontWeight.Normal,
-                                color = tint,
-                                modifier = click
-                                    .background(bg, RoundedCornerShape(7.dp))
-                                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                            )
-                        }
+                        Triple("翻译", ai.SYS_TRANSLATE.format("英文"), true),
+                        Triple("改写", ai.SYS_REWRITE.format("更简洁"), true),
+                        Triple("解释", ai.SYS_EXPLAIN, false),
+                        Triple("总结", ai.SYS_SUMMARIZE, false),
+                        Triple("续写", ai.SYS_CONTINUE, true),
+                        Triple("整理", ai.SYS_CLIPBOARD, false),
+                    ).forEach { (label, sys, insert) ->
+                        Text(
+                            label,
+                            fontSize = 12.sp,
+                            color = c.text,
+                            modifier = Modifier
+                                .clickable { runAi(label, sys, insert) }
+                                .padding(horizontal = 9.dp, vertical = 7.dp),
+                        )
                     }
                 }
             }
