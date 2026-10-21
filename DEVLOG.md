@@ -3695,3 +3695,24 @@ https://www.alibabacloud.com/help/zh/model-studio/qwen-asr-realtime-interaction-
 ## 四、验证
 - `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · **vc191 / 1.0.8** ✓
 - 待实测：若仍失败，日志会给出 `volc live 连接中…` 之后是否有 `open` / `failure`（可判断网络还是协议）
+
+# 轮19.192：切换「输出方式」自动对齐模型
+
+## 一、需求
+切到「边说边出（实时）」⇒ 模型自动换成**实时模型**；切回「整段」⇒ 自动换回**整段模型**；
+若同一模型两者通用（豆包）⇒ 不切换 ✓
+
+## 二、映射（据官方文档 ✓ 写进 `WebAsrProviders.modelsFor`）
+| 提供商 | 实时 | 整段 |
+|---|---|---|
+| 豆包语音 | `volc.seedasr.sauc.duration` | 同左（同一资源 ✓）|
+| 阶跃星辰 | `stepaudio-2.5-asr-stream` | `stepaudio-2.5-asr` |
+| 阿里云百炼 | `qwen3-asr-flash-realtime` | `qwen3-asr-flash` |
+| OpenAI | `gpt-4o-transcribe` | `whisper-1` |
+
+## 三、实现
+- `WebAsrProviders.modelsFor(id): Pair<实时, 整段>?` ✓
+- 语音页「输出方式」`onPick`：按映射写入模型 ✓（豆包同时切 URL ✓；其它家同时写 `_live` 标记 ✓）
+
+## 四、验证
+- `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · **vc192 / 1.0.8** ✓

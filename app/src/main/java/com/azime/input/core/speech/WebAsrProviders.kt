@@ -166,6 +166,18 @@ object WebAsrProviders {
     fun setLiveEnabled(c: Context, id: String, on: Boolean) =
         prefs(c).edit().putBoolean("${PREFIX}${id}_live", on).apply()
 
+    /**
+     * 轮19.192：**输出方式 ⇄ 模型 映射**（用户要求：切实时/整段时模型自动跟着切 ✓）
+     * 返回 (实时模型, 整段模型)；豆包两者相同（同一资源 ✓）⇒ 不用切 ✓
+     */
+    fun modelsFor(id: String): Pair<String, String>? = when (id) {
+        "doubao" -> "volc.seedasr.sauc.duration" to "volc.seedasr.sauc.duration"
+        "stepfun" -> "stepaudio-2.5-asr-stream" to "stepaudio-2.5-asr"
+        "bailian" -> "qwen3-asr-flash-realtime" to "qwen3-asr-flash"
+        "openai" -> "gpt-4o-transcribe" to "whisper-1"
+        else -> null
+    }
+
     /** 这家是否支持实时（豆包 = SAUC ✓ 阶跃/百炼/OpenAI = Realtime ✓）。 */
     fun supportsLive(id: String): Boolean =
         id == "doubao" || com.azime.input.core.speech.RealtimeAsrClient.supports(id)

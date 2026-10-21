@@ -4257,15 +4257,26 @@ private fun HandwritingSettingsPage(
                             options = listOf("边说边出（实时）", "整段一次出"),
                             onPick = { idx ->
                                 val on = idx == 0
+                                // 轮19.192：**切输出方式 ⇒ 模型自动对齐**（用户要求 ✓）
+                                val mapping = wap.modelsFor(activeProv.id)
+                                val targetModel = if (mapping != null) {
+                                    if (on) mapping.first else mapping.second
+                                } else (aCfg?.model ?: "")
                                 if (activeProv.id == "doubao") {
                                     save(
                                         activeProv,
                                         if (on) "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async"
                                         else "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_nostream",
-                                        aCfg?.model ?: "", aCfg?.protocol ?: sem.PROTO_VOLC,
+                                        targetModel,
+                                        aCfg?.protocol ?: sem.PROTO_VOLC,
                                     )
                                 } else {
                                     wap.setLiveEnabled(context, activeProv.id, on)
+                                    wap.saveCfg(
+                                        context, activeProv.id,
+                                        aCfg?.url ?: "", aCfg?.key ?: "", targetModel,
+                                        aCfg?.protocol ?: sem.PROTO_TRANSCRIBE, aCfg?.appId ?: "",
+                                    )
                                     refresh++
                                 }
                             },
