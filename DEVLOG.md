@@ -3483,3 +3483,39 @@ OkHttp 的 `send()` 是异步排队，但**录音线程的 feed 可能先于 onO
 
 ## 四、验证
 - `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · **vc183 / 1.0.8** ✓
+
+# 轮19.184：语音/AI 设置重构（三联动下拉 + AI 配置模型页 + 翻译语言）
+
+## 一、用户要求（5 条）
+1. 联网语音 → **三联动下拉**（提供商 → 调用方式 → 模型），**不再提供 API 编辑**，调用方式用**大众名称**
+2. AI 页：**「配置模型」入口**，提供商列表进次级页；本处模型 = AI 功能用；**不显示语音的调用方式**
+3. 手写 AI **优先于本地**，本地兜底
+4. 翻译输入加**语言下拉**
+5. WS 实时扩阶跃/百炼/OpenAI
+
+## 二、本轮完成（vc184）
+1. **联网语音卡重写** ✓
+   · 下拉1「提供商」：**只列已配置（有 Key）** ✓
+   · 下拉2「调用方式」：**OpenAI 语音转写 / OpenAI 对话式语音**（豆包 = **火山流式识别**）✓ 弃用自创名 ✗
+   · 下拉3「模型」：`GET /models` 过滤**语音类** ✓（豆包给资源 ID 选项 ✓）
+   · 任一项选中**立即保存并切换** ✓；**移除** 改 Key / 新增 API ✗
+   · 底部提示：Key/地址到「设置 → AI → 配置模型」管理 ✓
+   · 新增通用 `DropdownRow` 组件 ✓
+2. **AI 页改版** ✓
+   · 「对话模型」区 → **「配置模型」入口** ✓（`wasr:__ai__` 次级页 ✓）
+   · 新页 `AiModelConfigPage`：**提供商列表（点选=设为 AI 提供商）** + Key（与语音共用 ✓）+ 对话模型（拉取/下拉/手填 ✓）
+   · **不含**任何语音调用方式 ✓（用户要求 ✓）
+3. **AI 工具：翻译语言下拉** ✓（英/简中/繁中/日/韩/法/德/俄/西 ✓ 标题「翻译为」）
+4. 顺带：AI 工具面板截断/来源标注保持 ✓
+
+## 三、仍未完成（明确 + 计划）
+- **WS 实时 × 阶跃 / 百炼 / OpenAI** ✗
+  计划：三家都是 **OpenAI Realtime 风格 JSON 事件**（`session.update` + `input_audio_buffer.append` + `…transcription.delta/completed`）
+  ⇒ 写**一个**通用 Realtime 客户端 + 三家端点映射（阶跃 `wss://api.stepfun.com/v1/realtime/asr/stream`、
+  百炼 `wss://dashscope.aliyuncs.com/api-ws/v1/realtime`、OpenAI `wss://api.openai.com/v1/realtime?intent=transcription`）
+  ⚠️ 需先像豆包那样用 PC 探针验证帧/事件名（避免又出现"配置帧/音频帧顺序"类竞态 ✗）
+- **手写 AI 优先** ✗：手写板目前只存笔画数据 ✗ 需先渲染成位图（Canvas → PNG）再传 vision 模型 ✓
+  计划：pad 增加 `exportBitmap()` ✓ → 先调 AI → 失败/未开则走本地 DeepHCCR ✓
+
+## 四、验证
+- `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · **vc184 / 1.0.8** ✓

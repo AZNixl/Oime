@@ -2222,9 +2222,43 @@ private fun MenuPanel(
                     )
                     Spacer(Modifier.height(6.dp))
                     data class Tool(val name: String, val sys: String)
+                    // 轮19.184：**翻译语言下拉** ✓（用户要求 ✓）
+                    val langs = listOf("英文", "简体中文", "繁体中文", "日语", "韩语", "法语", "德语", "俄语", "西班牙语")
+                    var langOpen by remember { mutableStateOf(false) }
+                    var lang by remember { mutableStateOf("英文") }
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("翻译为", fontSize = 11.sp, color = c.subText)
+                        Spacer(Modifier.width(8.dp))
+                        Box {
+                            Row(
+                                modifier = Modifier
+                                    .clickable { langOpen = true }
+                                    .background(c.keyBg, RoundedCornerShape(8.dp))
+                                    .padding(horizontal = 10.dp, vertical = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(lang, fontSize = 12.sp, color = c.text)
+                                Spacer(Modifier.width(4.dp))
+                                Text("▾", fontSize = 11.sp, color = c.subText)
+                            }
+                            androidx.compose.material3.DropdownMenu(
+                                expanded = langOpen,
+                                onDismissRequest = { langOpen = false },
+                            ) {
+                                langs.forEach { lg ->
+                                    androidx.compose.material3.DropdownMenuItem(
+                                        text = { Text(lg) },
+                                        onClick = { lang = lg; langOpen = false },
+                                    )
+                                }
+                            }
+                        }
+                    }
                     val tools = listOf(
-                        Tool("翻译→英", ai.SYS_TRANSLATE.format("英文")),
-                        Tool("翻译→中", ai.SYS_TRANSLATE.format("简体中文")),
+                        Tool("翻译", ai.SYS_TRANSLATE.format(lang)),
                         Tool("改写·正式", ai.SYS_REWRITE.format("正式书面语")),
                         Tool("改写·简短", ai.SYS_REWRITE.format("尽量简短的一句话")),
                         Tool("解释", ai.SYS_EXPLAIN),

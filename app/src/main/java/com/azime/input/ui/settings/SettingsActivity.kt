@@ -460,6 +460,13 @@ fun SettingsScreen(
             AiSettingsPage(padding, onOpenProvider = { subPage = "wasr:$it" }) { subPage = "main" }
             return@Scaffold
         }
+        // 轮19.184：**AI 模型配置页**（提供商列表 + Key + 对话模型 ✓ 不出现语音调用方式 ✓）
+        if (subPage == "wasr:__ai__") {
+            AiModelConfigPage(padding) {
+                subPage = "ai"
+            }
+            return@Scaffold
+        }
         // 轮19.171：联网语音 · 提供商配置页（次级页 ✓）
         // ⚠️ 必须 `return@Scaffold` ✓ —— 本页所有二级页都是"提前返回"模式：
         //   漏掉它会继续往下渲染主页面 ⇒ 配置页与主页**叠加** ✗（用户实测截图 ✓）
@@ -2665,115 +2672,30 @@ private fun AiSettingsPage(
                         }
                     }
                 }
+                Text(
+                    "当前模型：${model.ifBlank { current?.let { ai.DEFAULT_CHAT_MODEL[it.id] } ?: "未设置" }}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+                )
+                HorizontalDivider(Modifier.padding(vertical = 6.dp, horizontal = 20.dp))
+                // 轮19.184：**「配置模型」入口** —— 提供商列表移到次级页 ✓（用户要求 ✓）
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 2.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onOpenProvider("__ai__") }
+                        .padding(horizontal = 20.dp, vertical = 10.dp),
                     verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
                 ) {
-                    Text(
-                        "对话模型", style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Spacer(Modifier.weight(1f))
-                    Text(
-                        "⟳ 拉取模型", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.clickable {
-                            val c0 = cfgForModel
-                            if (c0 == null || c0.key.isBlank()) {
-                                Toast.makeText(context, "先在下面配置该提供商的 API Key", Toast.LENGTH_SHORT).show()
-                            } else {
-                                fetchState = "loading"
-                            }
-                        }.padding(4.dp),
-                    )
-                }
-                OutlinedTextField(
-                    value = model,
-                    onValueChange = { model = it; ai.setModel(context, it) },
-                    label = { Text("对话模型") },
-                    placeholder = {
-                        Text(current?.let { ai.DEFAULT_CHAT_MODEL[it.id] } ?: "gpt-4o-mini")
-                    },
-                    singleLine = true,
-                    trailingIcon = {
-                        Box {
-                            Text(
-                                "▾",
-                                color = if (models.isEmpty()) MaterialTheme.colorScheme.outline
-                                else MaterialTheme.colorScheme.primary,
-                                modifier = Modifier
-                                    .clickable(enabled = models.isNotEmpty()) { modelOpen = true }
-                                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                            )
-                            DropdownMenu(expanded = modelOpen, onDismissRequest = { modelOpen = false }) {
-                                models.forEach { m ->
-                                    DropdownMenuItem(
-                                        text = { Text(m) },
-                                        onClick = {
-                                            model = m
-                                            ai.setModel(context, m)
-                                            modelOpen = false
-                                        },
-                                    )
-                                }
-                            }
-                        }
-                    },
-                    supportingText = {
+                    Column(Modifier.weight(1f)) {
+                        Text("配置模型", style = MaterialTheme.typography.bodyMedium)
                         Text(
-                            when (fetchState) {
-                                "loading" -> "正在拉取模型列表…"
-                                "ok" -> "已获取 ${models.size} 个对话模型，点右侧 ▾ 选择（也可手填）"
-                                "fail" -> "拉取失败：可手填模型名"
-                                else -> if (ai.isReady(context)) "API Key 已就绪 ✓；点「⟳ 拉取模型」获取列表"
-                                else "还没填 Key：在下面「提供商配置」里填"
-                            },
-                            fontSize = 11.sp,
+                            "为 AI 功能选择提供商与对话模型（与语音共用 Key）",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                    },
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-                )
-                // 拉取动作（LaunchedEffect 触发一次 ✓）
-                androidx.compose.runtime.LaunchedEffect(fetchState, cfgForModel?.key) {
-                    if (fetchState == "loading") {
-                        val c0 = cfgForModel
-                        if (c0 == null || c0.key.isBlank()) {
-                            fetchState = "fail"
-                        } else {
-                            val all = withContext(Dispatchers.IO) {
-                                fetchWebApiModels(c0.url, c0.key)
-                            }
-                            if (all == null) {
-                                fetchState = "fail"
-                            } else {
-                                models = all.filter { isChatModel(it) }.sorted().distinct()
-                                fetchState = if (models.isEmpty()) "fail" else "ok"
-                            }
-                        }
                     }
-                }
-                HorizontalDivider(Modifier.padding(vertical = 6.dp, horizontal = 20.dp))
-                // 轮19.183：提供商 **Key/地址/Resource** 统一在 AI 页配置 ✓（语音页只选谁 ✓）
-                val provList = remember(rev) { com.azime.input.core.speech.WebAsrProviders.all(context) }
-                provList.filter { it.id != "doubao" }.forEach { pv ->
-                    val cfg = remember(rev, pv.id) { com.azime.input.core.speech.WebAsrProviders.cfgOf(context, pv) }
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onOpenProvider(pv.id) }
-                            .padding(horizontal = 20.dp, vertical = 8.dp),
-                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(pv.name, style = MaterialTheme.typography.bodyMedium)
-                            Text(
-                                if (cfg.key.isBlank()) "未配置 Key" else "已配置 · ${cfg.model}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = if (cfg.key.isBlank()) MaterialTheme.colorScheme.error
-                                else MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        Text("›", fontSize = 18.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
+                    Text("›", fontSize = 18.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Text(
                     "说明：AI 与语音**共用**同一家提供商的 Key，只需配置一次 ✓",
@@ -2829,6 +2751,254 @@ private fun AiSettingsPage(
             }
         }
         Spacer(Modifier.height(8.dp))
+    }
+}
+
+/**
+ * 轮19.184：**AI 模型配置页**（次级页 ✓）
+ * · 上半：提供商列表（点选 = 设为 AI 提供商 ✓）
+ * · 下半：当前提供商的 Key（与语音共用 ✓）+ 对话模型（拉取 / 下拉 / 手填 ✓）
+ * · **不出现**「转写接口 / 对话式 / 豆包语音」等**语音**调用方式 ✗（用户要求 ✓）
+ */
+@Composable
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+private fun AiModelConfigPage(
+    padding: androidx.compose.foundation.layout.PaddingValues,
+    onBack: () -> Unit,
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val ai = com.azime.input.core.ai.AiManager
+    val wap = com.azime.input.core.speech.WebAsrProviders
+    var rev by remember { mutableStateOf(0) }
+    val providers = remember(rev) { wap.all(context).filter { it.id != "doubao" } }
+    val current = remember(rev) { ai.provider(context) }
+    var model by remember(rev) { mutableStateOf(ai.model(context)) }
+    var key by remember(rev) { mutableStateOf(current?.let { wap.cfgOf(context, it).key } ?: "") }
+    var models by remember { mutableStateOf<List<String>>(emptyList()) }
+    var fetchState by remember { mutableStateOf("idle") }
+    var modelOpen by remember { mutableStateOf(false) }
+    fun isChatModel(id: String): Boolean {
+        val s = id.lowercase()
+        val bad = listOf("whisper", "asr", "transcribe", "tts", "embed", "rerank", "audio", "speech", "voice", "moderation")
+        return bad.none { s.contains(it) }
+    }
+    val cfgOfCur = current?.let { wap.cfgOf(context, it) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(padding)
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        // ── 提供商列表 ──
+        Card(colors = grayCardColors(), shape = settingsCardShape()) {
+            Column(Modifier.padding(vertical = 8.dp)) {
+                Text(
+                    "AI 提供商", style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
+                )
+                providers.forEach { pv ->
+                    val cfg = remember(rev, pv.id) { wap.cfgOf(context, pv) }
+                    val sel = current?.id == pv.id
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                ai.setProvider(context, pv.id)
+                                ai.setModel(context, "")
+                                rev++
+                            }
+                            .padding(horizontal = 20.dp, vertical = 9.dp),
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(18.dp)
+                                .border(
+                                    1.5.dp,
+                                    if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                                    androidx.compose.foundation.shape.CircleShape,
+                                ),
+                            contentAlignment = androidx.compose.ui.Alignment.Center,
+                        ) {
+                            if (sel) Box(
+                                Modifier.size(9.dp).background(
+                                    MaterialTheme.colorScheme.primary,
+                                    androidx.compose.foundation.shape.CircleShape,
+                                ),
+                            )
+                        }
+                        Spacer(Modifier.width(10.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(pv.name, style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                if (cfg.key.isBlank()) "未配置 Key" else "已配置 · ${cfg.model}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (cfg.key.isBlank()) MaterialTheme.colorScheme.error
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── 当前提供商的 Key + 对话模型 ──
+        Card(colors = grayCardColors(), shape = settingsCardShape()) {
+            Column(Modifier.padding(vertical = 10.dp)) {
+                Text(
+                    "Key（与语音共用，改这里两边都生效）",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+                )
+                OutlinedTextField(
+                    value = key,
+                    onValueChange = { key = it },
+                    label = { Text("API Key") },
+                    singleLine = true,
+                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Button(
+                        onClick = {
+                            val p0 = current ?: return@Button
+                            val c0 = wap.cfgOf(context, p0)
+                            wap.saveCfg(context, p0.id, c0.url, key, c0.model, c0.protocol, c0.appId)
+                            rev++
+                            android.widget.Toast.makeText(context, "已保存", android.widget.Toast.LENGTH_SHORT).show()
+                        },
+                        modifier = Modifier.weight(1f),
+                    ) { Text("保存 Key") }
+                    OutlinedButton(
+                        onClick = { fetchState = "loading" },
+                        modifier = Modifier.weight(1f),
+                    ) { Text("⟳ 拉取模型") }
+                }
+                Text(
+                    "对话模型（AI 功能使用）", style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+                )
+                OutlinedTextField(
+                    value = model,
+                    onValueChange = { model = it; ai.setModel(context, it) },
+                    label = { Text("模型") },
+                    placeholder = { Text(current?.let { ai.DEFAULT_CHAT_MODEL[it.id] } ?: "gpt-4o-mini") },
+                    singleLine = true,
+                    trailingIcon = {
+                        Box {
+                            Text(
+                                "▾",
+                                color = if (models.isEmpty()) MaterialTheme.colorScheme.outline
+                                else MaterialTheme.colorScheme.primary,
+                                modifier = Modifier
+                                    .clickable(enabled = models.isNotEmpty()) { modelOpen = true }
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                            )
+                            DropdownMenu(expanded = modelOpen, onDismissRequest = { modelOpen = false }) {
+                                models.forEach { m ->
+                                    DropdownMenuItem(
+                                        text = { Text(m) },
+                                        onClick = { model = m; ai.setModel(context, m); modelOpen = false },
+                                    )
+                                }
+                            }
+                        }
+                    },
+                    supportingText = {
+                        Text(
+                            when (fetchState) {
+                                "loading" -> "正在拉取模型列表…"
+                                "ok" -> "已获取 ${models.size} 个对话模型（点 ▾ 选择，也可手填）"
+                                "fail" -> "拉取失败：先保存 Key，或手填模型名"
+                                else -> "点「⟳ 拉取模型」获取该提供商的对话模型"
+                            },
+                            fontSize = 11.sp,
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                )
+                androidx.compose.runtime.LaunchedEffect(fetchState, cfgOfCur?.key) {
+                    if (fetchState == "loading") {
+                        val c0 = cfgOfCur
+                        if (c0 == null) {
+                            fetchState = "fail"
+                        } else {
+                            // 用**当前输入框里的 key**（可能刚改还没保存 ✓）
+                            val k = key.ifBlank { c0.key }
+                            if (k.isBlank()) {
+                                fetchState = "fail"
+                            } else {
+                                val all = withContext(Dispatchers.IO) { fetchWebApiModels(c0.url, k) }
+                                if (all == null) {
+                                    fetchState = "fail"
+                                } else {
+                                    models = all.filter { isChatModel(it) }.sorted().distinct()
+                                    fetchState = if (models.isEmpty()) "fail" else "ok"
+                                }
+                            }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+    }
+}
+
+/** 轮19.184：设置页统一**下拉行**（点开选 ✓ 立即生效 ✓）。 */
+@Composable
+private fun DropdownRow(
+    label: String,
+    value: String,
+    options: List<String>,
+    onPick: (Int) -> Unit,
+) {
+    var open by remember { mutableStateOf(false) }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 6.dp),
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+    ) {
+        Text(
+            label, style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.width(72.dp),
+        )
+        Box(Modifier.weight(1f)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(enabled = options.isNotEmpty()) { open = true }
+                    .border(0.5.dp, MaterialTheme.colorScheme.outline, androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                    .padding(horizontal = 12.dp, vertical = 9.dp),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            ) {
+                Text(
+                    value, style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 1,
+                    modifier = Modifier.weight(1f),
+                )
+                Text("▾", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+                options.forEachIndexed { idx, opt ->
+                    DropdownMenuItem(
+                        text = { Text(opt) },
+                        onClick = { open = false; onPick(idx) },
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -3795,155 +3965,110 @@ private fun HandwritingSettingsPage(
             }
         }
 
-        // ═══════ 【二、联网语音】（轮19.171 新 UI ✓ 本地/联网分块 ✓ 按设计图）═══════
+        // ═══════ 【二、联网语音】（轮19.184：**三联动下拉** ✓ 不再提供 API 编辑 ✗）═══════
         Card(colors = grayCardColors(), shape = settingsCardShape()) {
             Column(Modifier.padding(vertical = 8.dp)) {
                 Text(
                     "联网语音", style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
                 )
-                Text(
-                    "选择提供商（点选即切换；点 › 进入配置）",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp),
-                )
                 val wap = com.azime.input.core.speech.WebAsrProviders
-                val providerList = wap.all(context)
-                val activeProvId = wap.activeId(context)
-                val webOn = engine == com.azime.input.core.speech.SpeechEngineManager.ENGINE_WEB_API
-                providerList.forEach { prov ->
-                    val cfg = wap.cfgOf(context, prov)
-                    val configured = cfg.key.isNotBlank()
-                    val inUse = webOn && activeProvId == prov.id
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                com.azime.input.core.haptic.HapticsManager.press()
-                                if (configured) {
-                                    // 点选 = 切换到该提供商 ✓（未配置 ⇒ 直接进配置页 ✓）
-                                    wap.setActive(context, prov.id)
-                                    engine = com.azime.input.core.speech.SpeechEngineManager.ENGINE_WEB_API
-                                    speechPrefs.edit().putString("engine", engine).apply()
-                                    refresh++
-                                } else {
-                                    onOpenProvider(prov.id)
-                                }
-                            }
-                            .padding(horizontal = 16.dp, vertical = 9.dp),
-                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-                    ) {
-                        // 单选圆点（选中 = 主色实心 ✓）
-                        Box(
-                            modifier = Modifier
-                                .size(18.dp)
-                                .border(
-                                    1.5.dp,
-                                    if (inUse) MaterialTheme.colorScheme.primary
-                                    else MaterialTheme.colorScheme.outline,
-                                    androidx.compose.foundation.shape.CircleShape,
-                                ),
-                            contentAlignment = androidx.compose.ui.Alignment.Center,
-                        ) {
-                            if (inUse) Box(
-                                Modifier
-                                    .size(9.dp)
-                                    .background(
-                                        MaterialTheme.colorScheme.primary,
-                                        androidx.compose.foundation.shape.CircleShape,
-                                    ),
-                            )
-                        }
-                        Spacer(Modifier.width(10.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(prov.name, style = MaterialTheme.typography.bodyMedium)
-                            Text(
-                                if (configured) "${cfg.model} · 已配置" else "未配置",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = if (configured) MaterialTheme.colorScheme.onSurfaceVariant
-                                else MaterialTheme.colorScheme.error,
-                            )
-                        }
-                        if (inUse) {
-                            Text("使用中", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
-                        }
-                        Text(
-                            "›", fontSize = 18.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier
-                                .clickable { onOpenProvider(prov.id) }
-                                .padding(horizontal = 8.dp),
+                val sem = com.azime.input.core.speech.SpeechEngineManager
+                // ① 已配置（有 Key）的提供商 ✓
+                val configured = wap.all(context).filter { wap.cfgOf(context, it).key.isNotBlank() }
+                val activeProv = configured.firstOrNull { it.id == wap.activeId(context) } ?: configured.firstOrNull()
+                val aCfg = activeProv?.let { wap.cfgOf(context, it) }
+                val webOn = engine == sem.ENGINE_WEB_API
+
+                fun save(pv: com.azime.input.core.speech.WebAsrProviders.Provider,
+                         url: String, model: String, protocol: String) {
+                    wap.saveCfg(context, pv.id, url, wap.cfgOf(context, pv).key, model, protocol,
+                        wap.cfgOf(context, pv).appId)
+                    wap.setActive(context, pv.id)
+                    engine = sem.ENGINE_WEB_API
+                    speechPrefs.edit().putString("engine", engine).apply()
+                    refresh++
+                }
+
+                // ── 下拉 1：提供商 ──
+                DropdownRow(
+                    label = "提供商",
+                    value = activeProv?.name ?: "（未配置，请到 AI 页配置）",
+                    options = configured.map { it.name },
+                    onPick = { idx ->
+                        val pv = configured.getOrNull(idx) ?: return@DropdownRow
+                        save(pv, wap.cfgOf(context, pv).url, wap.cfgOf(context, pv).model,
+                            wap.cfgOf(context, pv).protocol)
+                    },
+                )
+                // ── 下拉 2：调用方式（大众名称 ✓ 不出现自创词 ✓）──
+                if (activeProv != null) {
+                    data class Mode(val name: String, val protocol: String, val url: String?)
+                    val modes = if (activeProv.id == "doubao") {
+                        listOf(Mode("火山流式识别", sem.PROTO_VOLC, null))
+                    } else {
+                        listOf(
+                            Mode("OpenAI 语音转写", sem.PROTO_TRANSCRIBE, null),
+                            Mode("OpenAI 对话式语音", sem.PROTO_CHAT, null),
                         )
                     }
-                }
-                // 轮19.183：**语音输出方式**（边说边出 / 整段一次出 ✓）
-                if (webOn) {
-                    val doubao = com.azime.input.core.speech.WebAsrProviders.byId(context, "doubao")
-                    if (activeProvId == "doubao" && doubao != null) {
-                        val dcfg = wap.cfgOf(context, doubao)
-                        val isAsync = dcfg.url.contains("_async")
-                        Text(
-                            "输出方式", style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
-                        )
-                        Row(
-                            Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        ) {
-                            OimeChip(
-                                selected = isAsync,
-                                onClick = {
-                                    wap.saveCfg(
-                                        context, "doubao",
-                                        "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async",
-                                        dcfg.key, dcfg.model, dcfg.protocol, dcfg.appId,
-                                    )
-                                    refresh++
-                                },
-                                label = { Text("边说边出（实时）") },
-                            )
-                            OimeChip(
-                                selected = !isAsync,
-                                onClick = {
-                                    wap.saveCfg(
-                                        context, "doubao",
-                                        "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_nostream",
-                                        dcfg.key, dcfg.model, dcfg.protocol, dcfg.appId,
-                                    )
-                                    refresh++
-                                },
-                                label = { Text("整段一次出") },
-                            )
+                    val curMode = modes.firstOrNull { it.protocol == aCfg?.protocol } ?: modes.first()
+                    DropdownRow(
+                        label = "调用方式",
+                        value = curMode.name,
+                        options = modes.map { it.name },
+                        onPick = { idx ->
+                            val m = modes.getOrNull(idx) ?: return@DropdownRow
+                            save(activeProv, aCfg?.url ?: "", aCfg?.model ?: "", m.protocol)
+                        },
+                    )
+                    // ── 下拉 3：模型（只列该提供商支持的**语音**模型 ✓）──
+                    var asrModels by remember(refresh, activeProv.id, aCfg?.protocol) {
+                        mutableStateOf<List<String>>(emptyList())
+                    }
+                    var fetching by remember { mutableStateOf(false) }
+                    androidx.compose.runtime.LaunchedEffect(refresh, activeProv.id, aCfg?.protocol) {
+                        if (activeProv.id == "doubao") {
+                            // 火山：没有 /models ⇒ 直接给资源 ID 选项 ✓
+                            asrModels = listOf("volc.seedasr.sauc.duration", "volc.seedasr.sauc.concurrent")
+                        } else if ((aCfg?.key ?: "").isNotBlank()) {
+                            fetching = true
+                            val all = withContext(Dispatchers.IO) {
+                                fetchWebApiModels(aCfg!!.url, aCfg.key)
+                            }
+                            val asr = all?.filter { id -> AsrModelKeywords.any { k -> id.contains(k, true) } }
+                                ?.sorted()?.distinct() ?: emptyList()
+                            val def = activeProv.model
+                            asrModels = (listOf(def).filter { it.isNotBlank() } + asr).distinct()
+                            fetching = false
                         }
-                    } else {
+                    }
+                    DropdownRow(
+                        label = if (activeProv.id == "doubao") "模型（资源）" else "模型",
+                        value = (aCfg?.model ?: "").ifBlank {
+                            if (fetching) "拉取中…" else "请选择"
+                        },
+                        options = asrModels,
+                        onPick = { idx ->
+                            val m = asrModels.getOrNull(idx) ?: return@DropdownRow
+                            save(activeProv, aCfg?.url ?: "", m, aCfg?.protocol ?: sem.PROTO_TRANSCRIBE)
+                        },
+                    )
+                    if (!webOn) {
                         Text(
-                            "输出方式：整段一次出（该提供商暂未接入实时流式）",
+                            "当前使用本地语音；点上方任一项即切换到联网语音",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp),
                         )
                     }
                 }
-                HorizontalDivider(Modifier.padding(vertical = 4.dp, horizontal = 20.dp))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onOpenProvider("new") }
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
-                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-                ) {
-                    Text(
-                        "＋ 新增 API", style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                    Spacer(Modifier.weight(1f))
-                    Text(
-                        "自定义 Base URL / 模型", style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                Text(
+                    "Key / 地址在「设置 → AI → 配置模型」里管理",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+                )
             }
         }
 
