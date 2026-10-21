@@ -106,6 +106,7 @@ class AZimeService : InputMethodService() {
     }
 
     override fun onCreate() {
+        instance = this
         super.onCreate()
         lifecycleOwner.onCreate()
         com.azime.input.core.diag.Diag.info("IME", "onCreate (service started)")
@@ -411,6 +412,7 @@ class AZimeService : InputMethodService() {
     }
 
     override fun onDestroy() {
+        instance = null
         com.azime.input.core.diag.Diag.info("IME", "onDestroy (service stopped)")
         runCatching { clipboardManager.removePrimaryClipChangedListener(clipboardListener) }
         SpeechEngineManager.cancel()
@@ -499,6 +501,34 @@ class AZimeService : InputMethodService() {
                     voiceRmsState.value = 0f
                     uiState.update { it.copy(voiceState = "idle") }
                     val ic = currentInputConnection
+                    // 轮19.183：**口头指令** —— 说「帮我写…/翻译…/改写…」时交给 AI 生成 ✓
+                    if (ic != null && text.isNotBlank() &&
+                        com.azime.input.core.ai.AiManager.isEnabled(this@AZimeService, com.azime.input.core.ai.AiManager.F_COMMAND)
+                    ) {
+                        val isCmd = listOf("帮我写", "写一段", "写一篇", "生成一段", "生成一篇",
+                            "翻译成", "翻译为", "改写为", "改写一下", "解释一下", "总结一下")
+                            .any { text.startsWith(it) }
+                        if (isCmd) {
+                            toast("AI 生成中…")
+                            scope.launch {
+                                val r = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                    com.azime.input.core.ai.AiManager.chat(
+                                        this@AZimeService,
+                                        com.azime.input.core.ai.AiManager.SYS_COMMAND,
+                                        text,
+                                    )
+                                }
+                                if (r.ok) {
+                                    runCatching { ic.finishComposingText() }
+                                    ic.commitText(r.text, 1)
+                                    pushUndo(r.text)
+                                } else {
+                                    toast(r.error)
+                                }
+                            }
+                            return
+                        }
+                    }
                     if (ic != null && text.isNotBlank()) {
                         if (voiceStreamed) {
                             // 轮19.109：**流式过的场景** —— 预览已经在输入区里了 ⇒ 只**定稿** ✓
@@ -1730,6 +1760,10 @@ class AZimeService : InputMethodService() {
     }
 
     companion object {
+        /** 轮19.183：当前 IME 实例（供 AI 工具面板读取**选中文本** ✓ 面板没有 IC ✗）。onDestroy 置空 ✓ */
+        @Volatile
+        var instance: AZimeService? = null
+
         private const val MAX_TEXT = 100000
 
         /**

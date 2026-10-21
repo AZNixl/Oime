@@ -457,7 +457,7 @@ fun SettingsScreen(
         // ── 二级页：手写输入（轮19.114）──
         // 轮19.182：AI 设置页（AI 提供商 / 功能开关 ✓）
         if (subPage == "ai") {
-            AiSettingsPage(padding) { subPage = "main" }
+            AiSettingsPage(padding, onOpenProvider = { subPage = "wasr:$it" }) { subPage = "main" }
             return@Scaffold
         }
         // 轮19.171：联网语音 · 提供商配置页（次级页 ✓）
@@ -2598,6 +2598,7 @@ private fun SectionLabel(text: String) {    Text(
 @Composable
 private fun AiSettingsPage(
     padding: androidx.compose.foundation.layout.PaddingValues,
+    onOpenProvider: (String) -> Unit,
     onBack: () -> Unit,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -2607,6 +2608,19 @@ private fun AiSettingsPage(
     val current = remember(rev) { ai.provider(context) }
     var model by remember(rev) { mutableStateOf(ai.model(context)) }
     var provOpen by remember { mutableStateOf(false) }
+    // 轮19.183：**模型从云端拉取再选**（保留手填 ✓ 用户要求）
+    var models by remember { mutableStateOf<List<String>>(emptyList()) }
+    var fetchState by remember { mutableStateOf("idle") }   // idle | loading | ok | fail
+    var modelOpen by remember { mutableStateOf(false) }
+    val cfgForModel = remember(rev, current?.id) {
+        current?.let { com.azime.input.core.speech.WebAsrProviders.cfgOf(context, it) }
+    }
+    // 拉到模型后过滤出「对话类」（排除语音/向量/重排等 ✗）
+    fun isChatModel(id: String): Boolean {
+        val s = id.lowercase()
+        val bad = listOf("whisper", "asr", "transcribe", "tts", "embed", "rerank", "audio", "speech", "voice", "moderation")
+        return bad.none { s.contains(it) }
+    }
 
     Column(
         modifier = Modifier
@@ -2651,6 +2665,27 @@ private fun AiSettingsPage(
                         }
                     }
                 }
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 2.dp),
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "对话模型", style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        "⟳ 拉取模型", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.clickable {
+                            val c0 = cfgForModel
+                            if (c0 == null || c0.key.isBlank()) {
+                                Toast.makeText(context, "先在下面配置该提供商的 API Key", Toast.LENGTH_SHORT).show()
+                            } else {
+                                fetchState = "loading"
+                            }
+                        }.padding(4.dp),
+                    )
+                }
                 OutlinedTextField(
                     value = model,
                     onValueChange = { model = it; ai.setModel(context, it) },
@@ -2659,15 +2694,87 @@ private fun AiSettingsPage(
                         Text(current?.let { ai.DEFAULT_CHAT_MODEL[it.id] } ?: "gpt-4o-mini")
                     },
                     singleLine = true,
+                    trailingIcon = {
+                        Box {
+                            Text(
+                                "▾",
+                                color = if (models.isEmpty()) MaterialTheme.colorScheme.outline
+                                else MaterialTheme.colorScheme.primary,
+                                modifier = Modifier
+                                    .clickable(enabled = models.isNotEmpty()) { modelOpen = true }
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                            )
+                            DropdownMenu(expanded = modelOpen, onDismissRequest = { modelOpen = false }) {
+                                models.forEach { m ->
+                                    DropdownMenuItem(
+                                        text = { Text(m) },
+                                        onClick = {
+                                            model = m
+                                            ai.setModel(context, m)
+                                            modelOpen = false
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                    },
                     supportingText = {
                         Text(
-                            if (ai.isReady(context)) "API Key 已就绪 ✓（与语音共用同一份配置）"
-                            else "还没填 Key：设置 → 语音手写管理 → 联网语音 → 选同一家填 Key",
+                            when (fetchState) {
+                                "loading" -> "正在拉取模型列表…"
+                                "ok" -> "已获取 ${models.size} 个对话模型，点右侧 ▾ 选择（也可手填）"
+                                "fail" -> "拉取失败：可手填模型名"
+                                else -> if (ai.isReady(context)) "API Key 已就绪 ✓；点「⟳ 拉取模型」获取列表"
+                                else "还没填 Key：在下面「提供商配置」里填"
+                            },
                             fontSize = 11.sp,
                         )
                     },
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                 )
+                // 拉取动作（LaunchedEffect 触发一次 ✓）
+                androidx.compose.runtime.LaunchedEffect(fetchState, cfgForModel?.key) {
+                    if (fetchState == "loading") {
+                        val c0 = cfgForModel
+                        if (c0 == null || c0.key.isBlank()) {
+                            fetchState = "fail"
+                        } else {
+                            val all = withContext(Dispatchers.IO) {
+                                fetchWebApiModels(c0.url, c0.key)
+                            }
+                            if (all == null) {
+                                fetchState = "fail"
+                            } else {
+                                models = all.filter { isChatModel(it) }.sorted().distinct()
+                                fetchState = if (models.isEmpty()) "fail" else "ok"
+                            }
+                        }
+                    }
+                }
+                HorizontalDivider(Modifier.padding(vertical = 6.dp, horizontal = 20.dp))
+                // 轮19.183：提供商 **Key/地址/Resource** 统一在 AI 页配置 ✓（语音页只选谁 ✓）
+                val provList = remember(rev) { com.azime.input.core.speech.WebAsrProviders.all(context) }
+                provList.filter { it.id != "doubao" }.forEach { pv ->
+                    val cfg = remember(rev, pv.id) { com.azime.input.core.speech.WebAsrProviders.cfgOf(context, pv) }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onOpenProvider(pv.id) }
+                            .padding(horizontal = 20.dp, vertical = 8.dp),
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(pv.name, style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                if (cfg.key.isBlank()) "未配置 Key" else "已配置 · ${cfg.model}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (cfg.key.isBlank()) MaterialTheme.colorScheme.error
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Text("›", fontSize = 18.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
                 Text(
                     "说明：AI 与语音**共用**同一家提供商的 Key，只需配置一次 ✓",
                     style = MaterialTheme.typography.bodySmall,
@@ -3767,6 +3874,55 @@ private fun HandwritingSettingsPage(
                             modifier = Modifier
                                 .clickable { onOpenProvider(prov.id) }
                                 .padding(horizontal = 8.dp),
+                        )
+                    }
+                }
+                // 轮19.183：**语音输出方式**（边说边出 / 整段一次出 ✓）
+                if (webOn) {
+                    val doubao = com.azime.input.core.speech.WebAsrProviders.byId(context, "doubao")
+                    if (activeProvId == "doubao" && doubao != null) {
+                        val dcfg = wap.cfgOf(context, doubao)
+                        val isAsync = dcfg.url.contains("_async")
+                        Text(
+                            "输出方式", style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+                        )
+                        Row(
+                            Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            OimeChip(
+                                selected = isAsync,
+                                onClick = {
+                                    wap.saveCfg(
+                                        context, "doubao",
+                                        "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async",
+                                        dcfg.key, dcfg.model, dcfg.protocol, dcfg.appId,
+                                    )
+                                    refresh++
+                                },
+                                label = { Text("边说边出（实时）") },
+                            )
+                            OimeChip(
+                                selected = !isAsync,
+                                onClick = {
+                                    wap.saveCfg(
+                                        context, "doubao",
+                                        "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_nostream",
+                                        dcfg.key, dcfg.model, dcfg.protocol, dcfg.appId,
+                                    )
+                                    refresh++
+                                },
+                                label = { Text("整段一次出") },
+                            )
+                        }
+                    } else {
+                        Text(
+                            "输出方式：整段一次出（该提供商暂未接入实时流式）",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
                         )
                     }
                 }

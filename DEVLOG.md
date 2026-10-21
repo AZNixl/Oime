@@ -3457,3 +3457,29 @@ OkHttp 的 `send()` 是异步排队，但**录音线程的 feed 可能先于 onO
 
 ## 四、验证
 - `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · **vc182 / 1.0.8** ✓
+
+# 轮19.183：AI 第二轮 —— 模型云端拉取 / 选中文本优先 / 口头指令 / 输出方式
+
+## 一、用户意见
+1. **AI 设置里的模型改为从云端拉取再选**（保留手填 ✓）
+2. 其余「全部做完」
+
+## 二、本轮完成（vc183）
+1. **AI 设置：对话模型支持拉取** ✓
+   · 「⟳ 拉取模型」→ `GET {baseUrl}/models` ✓ 过滤出对话类（排除 whisper/asr/tts/embed/rerank/audio/speech/voice/moderation ✓）
+   · 右侧 **▾ 下拉选择** ✓ + 输入框仍可**手填** ✓ + 三态提示 ✓
+2. **AI 设置：新增「提供商配置」入口** ✓（每家一行：已配置/未配置 · 型号 + ›）
+   ⇒ 点进复用现有 `WebAsrProviderPage` ✓（Key/地址/Resource 统一在这里配 ✓）
+3. **AI 工具：输入源改为「选中文本优先」** ✓（没有选中才用剪贴板 ✓ 面板顶部标注来源 ✓）
+   · 为此服务暴露 `AZimeService.instance`（onCreate 赋值 / onDestroy 置空 ✓）
+4. **口头指令接入语音流程** ✓：语音结果以「帮我写/写一段/翻译成/改写为/解释一下/总结一下…」开头且开关开启
+   ⇒ 走 `AiManager.chat(SYS_COMMAND)` ✓ 生成结果直接上屏 ✓（`AI 生成中…` toast ✓）
+5. **语音页新增「输出方式」** ✓：豆包语音下可在 **边说边出（实时）/ 整段一次出** 之间切换 ✓
+   · 其它提供商显示"暂未接入实时流式" ✓
+
+## 三、仍未完成（明确告知 ✓）
+- **手写 AI 兜底**：开关已有 ✓ **调用未接** ✗ —— 需把手写板的笔迹**渲染成位图**（当前只有笔画数据 ✗）再上传 ✓ 属独立改造 ✓
+- **WS 实时扩到阶跃 / 百炼 realtime / OpenAI Realtime**：三家协议互不相同 ✗（阶跃 JSON 事件 / 百炼 WS / OpenAI Realtime 事件流）⇒ 每家 1 个 WS 客户端 ✗
+
+## 四、验证
+- `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · **vc183 / 1.0.8** ✓

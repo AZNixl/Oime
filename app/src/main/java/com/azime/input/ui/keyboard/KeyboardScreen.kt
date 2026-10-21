@@ -2201,16 +2201,23 @@ private fun MenuPanel(
                     }
                 }
 
+                // 轮19.183：**选中文本优先** ✓（没有选中再用剪贴板 ✓）
+                val selected = runCatching {
+                    com.azime.input.ime.AZimeService.instance
+                        ?.currentInputConnection?.getSelectedText(0)?.toString().orEmpty()
+                }.getOrDefault("")
                 val clip = runCatching { cm.primaryClip?.getItemAt(0)?.text?.toString().orEmpty() }
                     .getOrDefault("")
+                val input = selected.ifBlank { clip }
+                val sourceLabel = if (selected.isNotBlank()) "选中文本" else "剪贴板"
 
                 MenuSubPanel(
                     c = c, title = "AI 工具", totalHeight = totalHeight,
                     onBack = { subPage = null }, onClose = { close() },
                 ) {
                     Text(
-                        if (clip.isBlank()) "剪贴板为空：先复制一段文字再点功能"
-                        else "输入：${clip.take(40)}${if (clip.length > 40) "…" else ""}",
+                        if (input.isBlank()) "没有输入：先选中文字或复制一段再点功能"
+                        else "$sourceLabel：${input.take(40)}${if (input.length > 40) "…" else ""}",
                         fontSize = 11.sp, color = c.subText,
                     )
                     Spacer(Modifier.height(6.dp))
@@ -2237,7 +2244,7 @@ private fun MenuPanel(
                                         )
                                         .clickable {
                                             com.azime.input.core.haptic.HapticsManager.press()
-                                            run(tl.name, tl.sys, clip)
+                                            run(tl.name, tl.sys, input)
                                         }
                                         .padding(vertical = 8.dp),
                                     horizontalAlignment = Alignment.CenterHorizontally,
