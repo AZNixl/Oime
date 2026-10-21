@@ -3599,3 +3599,31 @@ live 回退批量：连接失败：Connection reset
 ## 四、验证
 - `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · **vc187 / 1.0.8** ✓
 - 待真机：百炼 → 输出方式「边说边出」→ 说话应逐步出字 ✓
+
+# 轮19.188：百炼实时 —— 按官方文档补齐 `session.finish`（真正的根因）
+
+## 一、官方文档（阿里云百炼《WebSocket 接入指南》）
+https://www.alibabacloud.com/help/zh/model-studio/qwen-asr-realtime-interaction-process
+
+关键原文：
+- URL **必须**用 query 指定模型：`wss://…/api-ws/v1/realtime?model=<model_name>` ✓
+- **Manual 模式**（`turn_detection: null`）流程：
+  `input_audio_buffer.append` → `input_audio_buffer.commit` → **`session.finish`** →
+  服务端 `input_audio_buffer.committed` → `conversation.item.input_audio_transcription.text`（实时 ✓）
+  → `conversation.item.input_audio_transcription.completed`（最终 ✓ 字段 `transcript`）→ `session.finished`
+- ⚠️ **警告原文**：VAD 模式下推完音频**必须先发 `session.finish` 再关闭连接**，
+  否则服务端**丢弃当前 in_progress item**，`…completed` 不会到达 ✗
+- session 字段：`modalities:["text"]` ✓ `input_audio_format:"pcm"`（**不是 `pcm16`** ✗ 实测报 `Audio format is not valid` ✗）
+  `sample_rate:16000` ✓ `input_audio_transcription:{language:"zh"}`（**不放 model** ✓）✓
+- 建议头：`Authorization: Bearer <key>` + `OpenAI-Beta: realtime=v1` ✓
+
+## 二、修复（vc188）
+1. 百炼 `sendFinish = true` ✓：`finish()` 里 **commit → session.finish** 顺序发送 ✓（并记日志 `已发 session.finish ✓`）
+2. 百炼 `sessionJson` 改为官方 Manual 示例 ✓（`modalities`/`pcm`/`language` ✓ 不含 model ✓）
+3. 补 `OpenAI-Beta: realtime=v1` 头 ✓
+4. 事件解析新增 `…input_audio_transcription.text`（实时 ✓）与 `session.finished`（结束 ✓）
+5. 等结果 10s → **12s** ✓（要等 `session.finished` ✓）
+
+## 三、验证
+- `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · **vc188 / 1.0.8** ✓
+- 待真机：百炼 → 输出方式「边说边出」→ 说话 ✓（日志应依次出现 `input_audio_buffer.committed` → `…transcription.text` → `…completed` → `session.finished`）

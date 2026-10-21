@@ -50,6 +50,8 @@ object RealtimeAsrClient {
         val sendCommit: Boolean = true,
         /** 轮19.187：模型必须放在 **URL query** 里（百炼 ✓ 否则会退回默认 omni 模型 ✗） */
         val needsModelQuery: Boolean = false,
+        /** 轮19.188：结束时要发 `session.finish`（百炼 ✓ 官方明确：不发会丢结果 ✗） */
+        val sendFinish: Boolean = false,
         val sessionJson: (String) -> String,
     )
 
@@ -67,10 +69,13 @@ object RealtimeAsrClient {
         "bailian" -> Profile(
             url = "wss://dashscope.aliyuncs.com/api-ws/v1/realtime",
             model = "qwen3-asr-flash-realtime",
-            needsModelQuery = true,   // ★ 不带 ?model= 会退回 qwen-omni-turbo-realtime ✗
-            sessionJson = { m ->
-                // ★ 实测：input_audio_format 必须是 "pcm" ✗ 不是 "pcm16"（会报 Audio format is not valid ✗）
-                """{"event_id":"evt-1","type":"session.update","session":{"model":"$m","input_audio_format":"pcm","sample_rate":16000,"input_audio_transcription":{"model":"$m"},"turn_detection":null}}"""
+            needsModelQuery = true,                       // ★ 不带 ?model= 会退回 qwen-omni-turbo-realtime ✗
+            sendFinish = true,                            // ★ 官方：不发 session.finish 会丢结果 ✗
+            extraHeaders = mapOf("OpenAI-Beta" to "realtime=v1"),
+            sessionJson = { _ ->
+                // 官方 Manual 模式示例：input_audio_format 必须是 "pcm" ✗（"pcm16" 会报 Audio format is not valid ✗）
+                // 模型由 URL 的 ?model= 指定 ⇒ 这里 **不再** 带 model ✓；input_audio_transcription 只放 language ✓
+                """{"event_id":"evt-1","type":"session.update","session":{"modalities":["text"],"input_audio_format":"pcm","sample_rate":16000,"input_audio_transcription":{"language":"zh"},"turn_detection":null}}"""
             },
         )
         // OpenAI：Realtime transcription session ✓
@@ -197,6 +202,14 @@ object RealtimeAsrClient {
                 com.azime.input.core.diag.Diag.log("Speech", "oa-rt evt=$type")
             }
             when {
+                // 百炼：conversation.item.input_audio_transcription.text（实时结果 ✓ 字段 text）
+                type.endsWith("input_audio_transcription.text") -> {
+                    val cur = o.optString("text", "").ifBlank { o.optString("transcript", "") }
+                    if (cur.isNotBlank() && cur != partialText) {
+                        partialText = cur
+                        onPartial(cur)
+                    }
+                }
                 type.endsWith("transcription.delta") || type.endsWith("transcript.text.delta") -> {
                     val d = o.optString("delta", "")
                     if (d.isNotEmpty()) {
@@ -211,6 +224,10 @@ object RealtimeAsrClient {
                         finalText = t
                         onPartial(t)
                     }
+                    finished = true
+                    doneLatch.countDown()
+                }
+                type == "session.finished" -> {
                     finished = true
                     doneLatch.countDown()
                 }
@@ -255,9 +272,14 @@ object RealtimeAsrClient {
                     if (prof.sendCommit) {
                         runCatching { ws.send("""{"type":"input_audio_buffer.commit"}""") }
                     }
+                    // ★ 官方要求：关闭连接前必须发 session.finish，否则服务端丢弃 in_progress item ✗
+                    if (prof.sendFinish) {
+                        runCatching { ws.send("""{"type":"session.finish"}""") }
+                        com.azime.input.core.diag.Diag.log("Speech", "oa-rt 已发 session.finish ✓")
+                    }
                 }
             }
-            runCatching { doneLatch.await(10_000, TimeUnit.MILLISECONDS) }
+            runCatching { doneLatch.await(12_000, TimeUnit.MILLISECONDS) }
             runCatching { ws.close(1000, null) }
             return when {
                 finalText.isNotBlank() -> LiveResult(true, finalText.trim())
