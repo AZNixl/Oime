@@ -3627,3 +3627,23 @@ https://www.alibabacloud.com/help/zh/model-studio/qwen-asr-realtime-interaction-
 ## 三、验证
 - `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · **vc188 / 1.0.8** ✓
 - 待真机：百炼 → 输出方式「边说边出」→ 说话 ✓（日志应依次出现 `input_audio_buffer.committed` → `…transcription.text` → `…completed` → `session.finished`）
+
+# 轮19.189：百炼实时 ✅ 通过 + 语音入口埋点
+
+## 一、结果
+用户实测：**百炼实时语音已可用** ✅
+⇒ 印证轮 19.188 的三个修复缺一不可：
+1. URL 必须带 `?model=qwen3-asr-flash-realtime` ✓
+2. `input_audio_format` 必须 `"pcm"`（`pcm16` 会被拒 ✗）
+3. 关闭前必须发 **`session.finish`**（否则 in_progress item 被丢弃 ✗）
+
+## 二、本轮补：语音入口埋点（排查教训）
+现象：用户"测了"，但日志里**一条 `[Speech]` 都没有** ✗ —— 因为：
+- `adb install -r` **不重启运行中的 IME** ⇒ 跑的是旧代码 ✗
+- 语音按钮在"引擎未就绪"时**只写状态栏、不打日志** ✗ ⇒ 完全无法定位 ✗
+修复：`onKeyAction(ToggleVoiceInput)` 入口记 `engine / provider / cfg(proto,model,url)` ✓；
+未就绪分支记 `语音未就绪（engine=…）：hint` ✓
+⚠️ 流程教训：**装机后必须 `am force-stop com.oime.input` + 重新拉起**（已写进记忆 ✓）
+
+## 三、验证
+- `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · **vc189 / 1.0.8** ✓

@@ -471,9 +471,16 @@ class AZimeService : InputMethodService() {
             return
         }
         val engine = currentSpeechEngine()
+        // 轮19.189：入口埋点 ✓（之前"点了没反应"完全无日志 ✗ 无法定位 ✓）
+        val cfgNow = if (engine == SpeechEngineManager.ENGINE_WEB_API) SpeechEngineManager.webApiConfig(this) else null
+        com.azime.input.core.diag.Diag.log(
+            "Speech",
+            "语音按钮 engine=$engine provider=${com.azime.input.core.speech.WebAsrProviders.activeId(this)} " +
+                "cfg=${cfgNow?.let { "proto=${it.protocol} model=${it.model} url=${it.baseUrl.take(60)}" } ?: "null"}",
+        )
         // 引擎就绪检查（web_api 只查配置完整，网络可达性由请求时反馈）
         val ready = if (engine == SpeechEngineManager.ENGINE_WEB_API) {
-            SpeechEngineManager.webApiConfig(this) != null
+            cfgNow != null
         } else {
             SpeechEngineManager.isEngineReady(engine)
         }
@@ -485,6 +492,7 @@ class AZimeService : InputMethodService() {
                     "zipformer 模型未就绪：将模型文件放入 Documents/Oime/models/zipformer/"
                 else -> "联网 API 未配置：设置 → 语音输入 → 联网 API"
             }
+            com.azime.input.core.diag.Diag.warn("Speech", "语音未就绪（engine=$engine）：$hint")
             uiState.update { it.copy(statusMessage = hint) }
             return
         }
