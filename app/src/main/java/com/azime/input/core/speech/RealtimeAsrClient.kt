@@ -48,6 +48,8 @@ object RealtimeAsrClient {
         val model: String,
         val extraHeaders: Map<String, String> = emptyMap(),
         val sendCommit: Boolean = true,
+        /** 轮19.187：模型必须放在 **URL query** 里（百炼 ✓ 否则会退回默认 omni 模型 ✗） */
+        val needsModelQuery: Boolean = false,
         val sessionJson: (String) -> String,
     )
 
@@ -65,8 +67,10 @@ object RealtimeAsrClient {
         "bailian" -> Profile(
             url = "wss://dashscope.aliyuncs.com/api-ws/v1/realtime",
             model = "qwen3-asr-flash-realtime",
+            needsModelQuery = true,   // ★ 不带 ?model= 会退回 qwen-omni-turbo-realtime ✗
             sessionJson = { m ->
-                """{"event_id":"evt-1","type":"session.update","session":{"model":"$m","input_audio_format":"pcm16","sample_rate":16000,"input_audio_transcription":{"model":"$m"},"turn_detection":null}}"""
+                // ★ 实测：input_audio_format 必须是 "pcm" ✗ 不是 "pcm16"（会报 Audio format is not valid ✗）
+                """{"event_id":"evt-1","type":"session.update","session":{"model":"$m","input_audio_format":"pcm","sample_rate":16000,"input_audio_transcription":{"model":"$m"},"turn_detection":null}}"""
             },
         )
         // OpenAI：Realtime transcription session ✓
@@ -96,8 +100,12 @@ object RealtimeAsrClient {
     ): Session? {
         val prof = profileFor(providerId) ?: return null
         val model = modelOverride.trim().ifBlank { prof.model }
+        val fullUrl = if (prof.needsModelQuery && !prof.url.contains("model=")) {
+            prof.url + (if (prof.url.contains("?")) "&" else "?") + "model=" + model
+        } else prof.url
+        com.azime.input.core.diag.Diag.log("Speech", "oa-rt connect $providerId url=${fullUrl.take(80)}")
         val req = Request.Builder()
-            .url(prof.url)
+            .url(fullUrl)
             .header("Authorization", "Bearer ${apiKey.trim()}")
             .apply { prof.extraHeaders.forEach { (k, v) -> header(k, v) } }
             .build()

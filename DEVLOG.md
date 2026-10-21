@@ -3572,3 +3572,30 @@ OkHttp 的 `send()` 是异步排队，但**录音线程的 feed 可能先于 onO
 - `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · **vc186 / 1.0.8** ✓
 - ⚠️ 踩坑：同名 `isChatModel(...)` 在 AiSettingsPage / AiModelConfigPage 各有一处 ✗ ⇒ 替换锚点要用更长上下文 ✓；
   以及 `AiModelConfigPage` 缺 `onOpenProvider` 参数 ✗ ⇒ 已补 ✓
+
+# 轮19.187：修复百炼实时（pcm16 ✗ → pcm ✓ + URL 必须带 ?model=）
+
+## 一、日志
+```
+oa-rt failure: Connection reset
+live 回退批量：连接失败：Connection reset
+```
+（阶跃同一套代码 ✅ 通过 ⇒ 问题只在百炼的会话配置 ✗）
+
+## 二、PC 探针逐项实测（关键发现）
+| 写法 | 结果 |
+|---|---|
+| `input_audio_format: "pcm16"` | ❌ `Internal service error: Audio format is not valid 'pcm16'!` |
+| **`input_audio_format: "pcm"`** | ✅ `session.created` → **`session.updated`** |
+| `"pcm_16000"` | ❌ `invalid input_audio_format` |
+| 嵌套 `audio.input.format{type:audio/pcm}` | ✅ 也接受 |
+| **URL 不带 `?model=`** | ❌ 服务端默认用 `qwen-omni-turbo-realtime-2025-03-26`（不是语音识别模型 ✗）|
+
+## 三、修复（vc187）
+1. 百炼 `sessionJson`：`input_audio_format` 改 **`"pcm"`** ✓（注释标明实测结果 ✓）
+2. 新增 `Profile.needsModelQuery` ✓：建连时自动拼 **`?model=<model>`** ✓（百炼 = true ✓）
+3. 建连日志加一行 `oa-rt connect <provider> url=…` ✓（便于核对实际 URL ✓）
+
+## 四、验证
+- `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · **vc187 / 1.0.8** ✓
+- 待真机：百炼 → 输出方式「边说边出」→ 说话应逐步出字 ✓
