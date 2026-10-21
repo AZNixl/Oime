@@ -69,6 +69,9 @@ object SpeechEngineManager {
         fun onError(message: String)
         /** 流式引擎的增量文本（zipformer 边说边出）；离线引擎不调用。 */
         fun onPartial(text: String) {}
+
+        /** 轮19.191：**录音已停止**（麦克风已释放）—— UI 应立刻退出"录音中"状态 ✓。 */
+        fun onRecordingStopped() {}
     }
 
     // ── 模型探测 ──────────────────────────────────────────────
@@ -288,6 +291,9 @@ object SpeechEngineManager {
             } finally {
                 runCatching { audioSrc.stop() }
                 runCatching { audioSrc.release() }
+                // 轮19.191：**麦克风已释放 ⇒ 立即告知 UI 结束录音** ✓
+                // （原来要等网络结果才改状态 ⇒ 实时超时期间一直显示"录音中" ✗ 用户以为卡死 ✓）
+                withMain { callbacks.onRecordingStopped() }
             }
 
             // 停止后处理

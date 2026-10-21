@@ -269,7 +269,7 @@ object VolcSaucClient {
             }
             // 实时模式：说完后等最终结果，**8 秒**足够（原来等 25s 会干等 ✗）；
             // 若期间已有非空文本，即使没收到"结束标记"也认它 ✓（服务端常常直接关连接 ✗）
-            runCatching { doneLatch.await(8_000, TimeUnit.MILLISECONDS) }
+            runCatching { doneLatch.await(6_000, TimeUnit.MILLISECONDS) }
             runCatching { ws.close(1000, null) }
             return when {
                 text.isNotBlank() -> Result(true, text.trim(), "")
@@ -362,6 +362,7 @@ object VolcSaucClient {
             }
         }
 
+        com.azime.input.core.diag.Diag.log("Speech", "volc live 连接中… ${url.take(70)}")
         session = LiveSession(http.newWebSocket(req, listener), onPartial, onFailure)
         return session
     }

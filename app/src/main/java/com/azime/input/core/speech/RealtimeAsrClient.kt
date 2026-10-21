@@ -279,7 +279,8 @@ object RealtimeAsrClient {
                     }
                 }
             }
-            runCatching { doneLatch.await(12_000, TimeUnit.MILLISECONDS) }
+            com.azime.input.core.diag.Diag.log("Speech", "oa-rt finish 等待结果…")
+            runCatching { doneLatch.await(7_000, TimeUnit.MILLISECONDS) }
             runCatching { ws.close(1000, null) }
             return when {
                 finalText.isNotBlank() -> LiveResult(true, finalText.trim())

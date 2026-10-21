@@ -566,6 +566,12 @@ class AZimeService : InputMethodService() {
                     toast(message)
                 }
 
+                override fun onRecordingStopped() {
+                    // 轮19.191：录音结束即离开 listening ✓（后续可能在等网络结果）
+                    voiceRmsState.value = 0f
+                    uiState.update { it.copy(voiceState = "idle") }
+                }
+
                 override fun onPartial(text: String) {
                     // 轮19.105：★ **真正的"边说边出"** —— 增量直接写进**输入区**（composing 预览 ✓），
                     // 不再写那个看不见的 statusMessage ✗

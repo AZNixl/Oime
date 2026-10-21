@@ -3671,3 +3671,27 @@ https://www.alibabacloud.com/help/zh/model-studio/qwen-asr-realtime-interaction-
 
 ## 三、验证
 - `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · **vc190 / 1.0.8** ✓
+
+# 轮19.191：实时语音"卡住/一直在录音"—— 阶段日志 + 压短超时 + 录音一停即置 idle
+
+## 一、现象（用户 22:35~22:39 实测）
+- 阶跃实时没出字 ✗
+- 切豆包后"一直卡在录音" ✗（切到 glm 才输出一次 ✓）
+- 日志：`live 回退批量：未收到识别结果（超时或服务端无返回）` ×4 ✗
+- 日志里**没有** `volc live open` / `oa-rt connect` ⇒ **WS 连接根本没建立** ✗
+
+## 二、诊断
+1. 连接没建立 ⇒ live 等超时（豆包 8s ✗）→ 回退批量再等（12~25s ✗）⇒ 累计几十秒 ✗
+2. 期间 `voiceState` 仍是 **listening** ✗（要等最终回调才改 ✗）⇒ 用户看到"一直在录音" ✓
+
+## 三、修复（vc191）
+1. **阶段日志**：`volc live 连接中…<url>` ✓ / `oa-rt finish 等待结果…` ✓（下次能区分"没连上"还是"连上没结果"）
+2. **压短超时**：豆包 8s → **6s** ✓；Realtime 12s → **7s** ✓（回退批量仍走 12s ✓）
+3. **UI 立即退出录音态** ✓：新增 `Callbacks.onRecordingStopped()` ✓
+   · 在 `finally` 里（麦克风 stop/release 之后）回调 ✓
+   · 服务端实现：`voiceRmsState=0` + `voiceState=idle` ✓
+   ⇒ 麦克风一释放就显示结束，网络等待不再看起来像卡死 ✓
+
+## 四、验证
+- `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · **vc191 / 1.0.8** ✓
+- 待实测：若仍失败，日志会给出 `volc live 连接中…` 之后是否有 `open` / `failure`（可判断网络还是协议）
