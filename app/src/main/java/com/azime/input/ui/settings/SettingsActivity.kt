@@ -2721,7 +2721,6 @@ private fun AiSettingsPage(
                     Feat(ai.F_EXPLAIN, "划词解释 / 搜索 / 总结", "选中文本后出结果"),
                     Feat(ai.F_CONTINUE, "智能续写", "根据已输入内容续一句"),
                     Feat(ai.F_COMMAND, "口头指令", "说「帮我写…」直接生成"),
-                    Feat(ai.F_HW_FALLBACK, "手写 AI 兜底", "本地认不出时上传笔迹图识别"),
                 )
                 feats.forEach { f ->
                     var on by remember(rev, f.key) { mutableStateOf(ai.isEnabled(context, f.key)) }
@@ -4042,6 +4041,40 @@ private fun HandwritingSettingsPage(
                             asrModels = (listOf(def).filter { it.isNotBlank() } + asr).distinct()
                             fetching = false
                         }
+                    }
+                    // 轮19.185：**输出方式**（豆包 / 阶跃 / 百炼 / OpenAI 支持实时 ✓）
+                    if (com.azime.input.core.speech.WebAsrProviders.supportsLive(activeProv.id)) {
+                        val liveNow = if (activeProv.id == "doubao") {
+                            (aCfg?.url ?: "").contains("_async")
+                        } else {
+                            wap.liveEnabled(context, activeProv.id)
+                        }
+                        DropdownRow(
+                            label = "输出方式",
+                            value = if (liveNow) "边说边出（实时）" else "整段一次出",
+                            options = listOf("边说边出（实时）", "整段一次出"),
+                            onPick = { idx ->
+                                val on = idx == 0
+                                if (activeProv.id == "doubao") {
+                                    save(
+                                        activeProv,
+                                        if (on) "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async"
+                                        else "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_nostream",
+                                        aCfg?.model ?: "", aCfg?.protocol ?: sem.PROTO_VOLC,
+                                    )
+                                } else {
+                                    wap.setLiveEnabled(context, activeProv.id, on)
+                                    refresh++
+                                }
+                            },
+                        )
+                    } else {
+                        Text(
+                            "输出方式：整段一次出（该提供商不支持实时）",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp),
+                        )
                     }
                     DropdownRow(
                         label = if (activeProv.id == "doubao") "模型（资源）" else "模型",

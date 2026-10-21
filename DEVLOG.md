@@ -3519,3 +3519,33 @@ OkHttp 的 `send()` 是异步排队，但**录音线程的 feed 可能先于 onO
 
 ## 四、验证
 - `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · **vc184 / 1.0.8** ✓
+
+# 轮19.185：去掉手写 AI + WS 实时接入阶跃 / 百炼 / OpenAI
+
+## 一、用户要求
+1. 手写 AI **去掉** ✗
+2. **WS 实时 × 阶跃 / 百炼 / OpenAI** ✓ 必须做
+
+## 二、实现
+1. 手写 AI：`AiManager.F_HW_FALLBACK` 与 AI 页开关**全部移除** ✓
+2. 新增 **`core/speech/RealtimeAsrClient.kt`** ✓ —— **一个客户端覆盖三家**（都是 OpenAI Realtime 风格 JSON 事件 ✓）
+   · 事件流：`session.update` → `input_audio_buffer.append`（base64 PCM16/16k ✓）→ `input_audio_buffer.commit`
+   · 结果：兼容 `…transcription.delta/completed` 与 `transcript.text.delta/done` ✓
+   · 与豆包相同的**顺序保证**（未建连先缓冲 ✓ 锁内串行 ✓）
+   · 结束：10s 等待 ✓ 有文本即认 ✓
+   · 日志：`oa-rt open/evt=/failure` ✓（事件名全记 ⇒ 出错好定位 ✓）
+   · 三家 Profile：阶跃（session.audio.input + server_vad ✓）/ 百炼（DashScope 字段 ✓）/ OpenAI（`intent=transcription` + `OpenAI-Beta` 头 ✓）
+3. `SpeechEngineManager`：实时会话抽象成 `liveFeed/liveFinish` ✓（豆包 SAUC 与 Realtime 共用 ✓）
+   触发条件：豆包 = URL 含 `_async` ✓；其它家 = `wasr_<id>_live` 开关 ✓
+4. 语音页新增 **「输出方式」下拉** ✓：豆包/阶跃/百炼/OpenAI 可切 **边说边出（实时）/ 整段一次出** ✓；其余家提示不支持 ✓
+
+## 三、PC 实测（`realtime_probe.py` ✓ 不打印凭据 ✓）
+| 家 | 结果 |
+|---|---|
+| **阶跃** | ✅ 101 → `session.created` → `session.updated`（协议通 ✓ 静音无文本属正常 ✓）|
+| **百炼** | ⚠️ 101 握手 ✓，`input_audio_buffer.commit` 时连接被重置 ✗（schema/事件名待调 ✗）|
+| **OpenAI** | ⏳ 无 Key 未实测（代码按官方 Realtime transcription 文档实现 ✓）|
+
+## 四、验证
+- `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · **vc185 / 1.0.8** ✓
+- 百炼如需修正：看日志 `oa-rt evt=…`（会列出服务端返回的事件/错误 ✓）

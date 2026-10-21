@@ -149,6 +149,17 @@ object WebAsrProviders {
         }
     }
 
+    /** 轮19.185：**实时（边说边出）开关**（豆包走 URL 判断 ✓ 其它家用这个 ✓）。 */
+    fun liveEnabled(c: Context, id: String): Boolean =
+        prefs(c).getBoolean("${PREFIX}${id}_live", false)
+
+    fun setLiveEnabled(c: Context, id: String, on: Boolean) =
+        prefs(c).edit().putBoolean("${PREFIX}${id}_live", on).apply()
+
+    /** 这家是否支持实时（豆包 = SAUC ✓ 阶跃/百炼/OpenAI = Realtime ✓）。 */
+    fun supportsLive(id: String): Boolean =
+        id == "doubao" || com.azime.input.core.speech.RealtimeAsrClient.supports(id)
+
     /** 是否已配置（有 key 就算 ✓）。 */
     fun isConfigured(c: Context, p: Provider): Boolean = cfgOf(c, p).key.isNotBlank()
 

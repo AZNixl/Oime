@@ -28,12 +28,11 @@ object AiManager {
     const val F_EXPLAIN = "ai_explain"       // 划词解释/搜索/总结
     const val F_CONTINUE = "ai_continue"     // 智能续写
     const val F_COMMAND = "ai_command"       // 口头指令
-    const val F_HW_FALLBACK = "ai_hw_fallback" // 手写 AI 兜底
 
     /** 各功能默认开关（先默认关 ✓ 用户自己开 ✓ 隐私友好） */
     private val DEFAULTS = mapOf(
         F_CLIPBOARD to false, F_TRANSLATE to false, F_REWRITE to false,
-        F_EXPLAIN to false, F_CONTINUE to false, F_COMMAND to false, F_HW_FALLBACK to false,
+        F_EXPLAIN to false, F_CONTINUE to false, F_COMMAND to false,
     )
 
     /** 各提供商的**默认对话模型**（ASR 的 model 字段不能拿来对话 ✗ 必须分开 ✓） */

@@ -208,21 +208,54 @@ object SpeechEngineManager {
                 return@launch
             }
 
-            // 轮19.180：**豆包语音实时会话**（边录边传 ✓ 边说边出 ✓）
-            var liveSession: VolcSaucClient.LiveSession? = null
+            // 轮19.180/19.185：**实时会话**（豆包 SAUC ✓ / 阶跃·百炼·OpenAI Realtime ✓）
+            var liveFeed: ((ShortArray, Int) -> Unit)? = null
+            var liveFinish: (() -> LiveOut)? = null
             if (engine == ENGINE_WEB_API) {
-                val cfg = webApiConfig(com.azime.input.AZimeApplication.instance)
-                if (cfg != null && cfg.protocol == PROTO_VOLC && cfg.baseUrl.contains("_async")) {
-                    liveSession = VolcSaucClient.openLive(
-                        endpoint = cfg.baseUrl,
-                        resourceId = cfg.model,
-                        apiKey = cfg.apiKey,
-                        appId = cfg.appId,
-                        onPartial = { partial -> withMain { callbacks.onPartial(partial) } },
-                        onFailure = { msg ->
-                            com.azime.input.core.diag.Diag.warn("Speech", "volc live 失败：$msg")
-                        },
-                    )
+                val appCtx = com.azime.input.AZimeApplication.instance
+                val cfg = webApiConfig(appCtx)
+                if (cfg != null) {
+                    val activeId = com.azime.input.core.speech.WebAsrProviders.activeId(appCtx)
+                    val wantLive = if (cfg.protocol == PROTO_VOLC) cfg.baseUrl.contains("_async")
+                    else com.azime.input.core.speech.WebAsrProviders.liveEnabled(appCtx, activeId)
+                    if (wantLive) {
+                        if (cfg.protocol == PROTO_VOLC) {
+                            val s0 = VolcSaucClient.openLive(
+                                endpoint = cfg.baseUrl,
+                                resourceId = cfg.model,
+                                apiKey = cfg.apiKey,
+                                appId = cfg.appId,
+                                onPartial = { partial -> withMain { callbacks.onPartial(partial) } },
+                                onFailure = { msg ->
+                                    com.azime.input.core.diag.Diag.warn("Speech", "volc live 失败：$msg")
+                                },
+                            )
+                            if (s0 != null) {
+                                liveFeed = { p, n -> s0.feedPcm(p, n) }
+                                liveFinish = {
+                                    val r = s0.finish()
+                                    LiveOut(r.ok, r.text, r.error)
+                                }
+                            }
+                        } else {
+                            val s0 = com.azime.input.core.speech.RealtimeAsrClient.openLive(
+                                providerId = activeId,
+                                apiKey = cfg.apiKey,
+                                modelOverride = if (activeId == "openai" || activeId == "bailian" || activeId == "stepfun") "" else cfg.model,
+                                onPartial = { partial -> withMain { callbacks.onPartial(partial) } },
+                                onFailure = { msg ->
+                                    com.azime.input.core.diag.Diag.warn("Speech", "oa-rt 失败：$msg")
+                                },
+                            )
+                            if (s0 != null) {
+                                liveFeed = { p, n -> s0.feedPcm(p, n) }
+                                liveFinish = {
+                                    val r = s0.finish()
+                                    LiveOut(r.ok, r.text, r.error)
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -249,9 +282,7 @@ object SpeechEngineManager {
                     } else {
                         chunks.add(buf.copyOf(n))
                         // 实时会话：边录边喂 ✓（内部按 200ms 攒包 ✓）
-                        if (liveSession != null) {
-                            runCatching { liveSession!!.feedPcm(buf, n) }
-                        }
+                        runCatching { liveFeed?.invoke(buf, n) }
                     }
                 }
             } finally {
@@ -291,19 +322,18 @@ object SpeechEngineManager {
                     withMain { callbacks.onResult("") }
                     return@launch
                 }
-                // 轮19.180：实时会话已"边说边出" ⇒ 结束只做**定稿** ✓；失败再回退一次性上传 ✓
-                val live = liveSession
-                if (live != null) {
-                    val r = live.finish()
+                // 实时会话已"边说边出" ⇒ 结束只做**定稿** ✓；失败再回退一次性上传 ✓
+                val fin = liveFinish
+                if (fin != null) {
+                    val r = fin()
                     com.azime.input.core.diag.Diag.log(
-                        "Speech", "volc live finish ok=${r.ok} len=${r.text.length} err=${r.error.take(80)}",
+                        "Speech", "live finish ok=${r.ok} len=${r.text.length} err=${r.error.take(80)}",
                     )
                     if (r.ok) {
                         withMain { callbacks.onResult(r.text) }
                         return@launch
                     }
-                    // 实时失败 ⇒ 回退到一次性上传（一句话识别路径 ✓）
-                    com.azime.input.core.diag.Diag.warn("Speech", "volc live 回退批量：${r.error}")
+                    com.azime.input.core.diag.Diag.warn("Speech", "live 回退批量：${r.error}")
                 }
                 webApiTranscribe(pcm) { ok, text ->
                     withMain { if (ok) callbacks.onResult(text) else callbacks.onError(text) }
@@ -311,6 +341,9 @@ object SpeechEngineManager {
             }
         }
     }
+
+    /** 实时会话的返回（Volc / Realtime 共用 ✓）。 */
+    private data class LiveOut(val ok: Boolean, val text: String, val error: String)
 
     /** 停止录音（用户点击结束）：触发停止后的解码/上传流程。 */
     fun stop() {
