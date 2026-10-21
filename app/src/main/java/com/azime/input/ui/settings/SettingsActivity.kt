@@ -2765,6 +2765,29 @@ private fun WebAsrProviderPage(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
                 )
+                // 轮19.179：豆包语音有**两个 WS 端点** ✓ 一句话识别（准）/ 双向流式（快）✓
+                if (protocol == com.azime.input.core.speech.SpeechEngineManager.PROTO_VOLC) {
+                    Row(
+                        Modifier.padding(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        val isAsync = url.contains("_async")
+                        OimeChip(
+                            selected = !isAsync,
+                            onClick = {
+                                url = "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_nostream"
+                            },
+                            label = { Text("一句话识别（准）") },
+                        )
+                        OimeChip(
+                            selected = isAsync,
+                            onClick = {
+                                url = "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async"
+                            },
+                            label = { Text("双向流式（快）") },
+                        )
+                    }
+                }
                 Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     OimeChip(
                         selected = protocol == com.azime.input.core.speech.SpeechEngineManager.PROTO_TRANSCRIBE,
@@ -2864,7 +2887,7 @@ private fun WebAsrProviderPage(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                 )
                 Text(
-                    if (isVolc) "Resource ID 在控制台「录音文件识别极速版」页面查看；开通极速版时默认 volc.bigasr.auc_turbo（部分账号显示 volc.seedasr.auc_turbo）"
+                    if (isVolc) "Resource ID 用「流式语音识别」控制台显示的那个：2.0 小时版 = volc.seedasr.sauc.duration（并发版 = …sauc.concurrent；1.0 小时版 = volc.bigasr.sauc.duration）"
                     else when (fetchState) {
                         "loading" -> "正在拉取模型列表…"
                         "ok" -> "已获取 ${models.size} 个语音类模型（点上面圆点切换）"

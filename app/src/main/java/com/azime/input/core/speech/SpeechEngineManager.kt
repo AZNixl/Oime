@@ -481,74 +481,22 @@ object SpeechEngineManager {
     }
 
     /**
-     * 轮19.176：**豆包语音（火山语音）· 录音文件识别极速版** ✓
-     * `POST /api/v3/auc/bigmodel/recognize/flash` —— **同步返回**（无轮询 ✓）
-     * 鉴权：`X-Api-Key`（控制台 API Key ✓）/ `X-Api-Resource-Id`（`volc.bigasr.auc_turbo` ✓）
-     * 成功判定：**响应头 `X-Api-Status-Code == 20000000`** ✓（HTTP 200 ≠ 业务成功 ✗）
-     * 文本位置：`result.text` ✓（兼容 `body.result.text` ✓）
+     * 轮19.179：**豆包语音（火山）** —— 走 SAUC **WebSocket** ✓
+     * （极速版 HTTP 接口多数新账号不可用 ✗ 火山给输入法场景的是「一句话识别 / 双向流式」WS ✓）
+     * 端点与资源 ID 都从配置读 ✓（见 [VolcSaucClient]）
      */
-    private fun webApiTranscribeVolc(
-        pcm: ShortArray, cfg: WebApiConfig, onDone: (Boolean, String) -> Unit,
-    ) {
+    private fun webApiTranscribeVolc(pcm: ShortArray, cfg: WebApiConfig, onDone: (Boolean, String) -> Unit) {
         runCatching {
-            val b64 = android.util.Base64.encodeToString(pcmToWav(pcm), android.util.Base64.NO_WRAP)
-            val payload = JSONObject().apply {
-                put("user", JSONObject().put("uid", "oime"))
-                put("audio", JSONObject().apply {
-                    put("data", b64)
-                    put("format", "wav")
-                    put("rate", 16000)
-                    put("bits", 16)
-                    put("channel", 1)
-                })
-                put("request", JSONObject().apply {
-                    put("model_name", "bigmodel")
-                    put("enable_itn", true)
-                    put("enable_punc", true)
-                })
-            }
-            val url = if (cfg.baseUrl.contains("/auc/bigmodel/")) cfg.baseUrl
-            else cfg.baseUrl.trimEnd('/') + "/auc/bigmodel/recognize/flash"
-            val conn = (URL(url).openConnection() as HttpURLConnection)
-            conn.requestMethod = "POST"
-            conn.doOutput = true
-            conn.connectTimeout = 15_000
-            conn.readTimeout = 60_000
-            conn.setRequestProperty("Content-Type", "application/json")
-            if (cfg.appId.isNotBlank()) {
-                // 旧版控制台：AppID + Access Token ✓
-                conn.setRequestProperty("X-Api-App-Key", cfg.appId.trim())
-                conn.setRequestProperty("X-Api-Access-Key", cfg.apiKey.trim())
-            } else {
-                // 新版控制台：单个 API Key ✓
-                conn.setRequestProperty("X-Api-Key", cfg.apiKey.trim())
-            }
-            conn.setRequestProperty("X-Api-Resource-Id", cfg.model.ifBlank { "volc.bigasr.auc_turbo" })
-            conn.setRequestProperty("X-Api-Request-Id", java.util.UUID.randomUUID().toString())
-            conn.setRequestProperty("X-Api-Sequence", "-1")
-            conn.outputStream.use { it.write(payload.toString().toByteArray()) }
-            val code = conn.responseCode
-            val status = conn.getHeaderField("X-Api-Status-Code") ?: ""
-            val apiMsg = conn.getHeaderField("X-Api-Message") ?: ""
-            val body = if (code in 200..299) conn.inputStream.bufferedReader().readText()
-            else conn.errorStream?.bufferedReader()?.readText().orEmpty()
-            com.azime.input.core.diag.Diag.warn(
-                "Speech", "volc http=$code status=$status msg=$apiMsg resp=${body.take(300)}",
+            val r = VolcSaucClient.transcribe(
+                endpoint = cfg.baseUrl,
+                resourceId = cfg.model,
+                apiKey = cfg.apiKey,
+                appId = cfg.appId,
+                pcm = pcm,
             )
-            if (status != "20000000") {
-                onDone(false, "豆包语音失败（$status $apiMsg）${body.take(100)}")
-                return
-            }
-            val text = runCatching {
-                val o = JSONObject(body)
-                val direct = o.optJSONObject("result")?.optString("text", "").orEmpty()
-                if (direct.isNotBlank()) direct
-                else o.optJSONObject("body")?.optJSONObject("result")?.optString("text", "").orEmpty()
-                    .ifBlank { o.optString("text", "") }
-            }.getOrDefault("")
-            onDone(true, text.trim())
+            if (r.ok) onDone(true, r.text) else onDone(false, "豆包语音失败：${r.error}")
         }.onFailure {
-            com.azime.input.core.diag.Diag.warn("Speech", "volc 请求异常：${it.message}")
+            com.azime.input.core.diag.Diag.warn("Speech", "volc 异常：${it.message}")
             onDone(false, "网络请求失败：${it.message ?: "未知错误"}")
         }
     }

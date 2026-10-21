@@ -56,7 +56,7 @@ android {
         targetSdk = 34
         // 轮19.145：143 → 144（本机出的 debug 测试包，便于装机核对 ✓）
         // 测试通过后再统一升到正式版 1.0.4 ✓
-        versionCode = 177
+        versionCode = 178
         versionName = "1.0.8"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -244,6 +244,8 @@ dependencies {
     implementation(files("libs/sherpa-onnx-1.13.5.aar"))
     // 轮19.127：解压 .tar.bz2 用（语音模型是 tar.bz2 ✗ Android 原生解不了 ✓）
     implementation("org.apache.commons:commons-compress:1.26.2")
+    // 轮19.179：**WebSocket 客户端**（火山「豆包语音」流式/一句话识别走 SAUC 二进制协议 ✓ 系统无内置 WS ✗）
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
     
     // Testing
     testImplementation("junit:junit:4.13.2")

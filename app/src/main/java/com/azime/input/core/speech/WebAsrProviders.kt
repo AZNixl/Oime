@@ -51,10 +51,12 @@ object WebAsrProviders {
             "stepaudio-2.5-asr", SpeechEngineManager.PROTO_TRANSCRIBE),
         // 轮19.176：**豆包语音（火山语音）** ✓ 走「录音文件识别极速版」：同步返回、base64 直传 ✓
         // 鉴权 = 控制台 API Key（X-Api-Key）✓「模型」字段在这家存 **Resource ID** ✓
+        // 轮19.179：改走 **SAUC WebSocket**（HTTP 极速版多数新账号不可用 ✗）
+        // 默认「一句话识别」（准确率优先 ✓ 适合输入法）；流式用 bigmodel_async ✓ 资源同为 2.0 小时版 ✓
         Provider(
             "doubao", "豆包语音（火山）",
-            "https://openspeech.bytedance.com/api/v3/auc/bigmodel/recognize/flash",
-            "volc.bigasr.auc_turbo", SpeechEngineManager.PROTO_VOLC,
+            "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_nostream",
+            "volc.seedasr.sauc.duration", SpeechEngineManager.PROTO_VOLC,
         ),
         Provider("openai", "OpenAI", "https://api.openai.com/v1",
             "whisper-1", SpeechEngineManager.PROTO_TRANSCRIBE),
@@ -196,6 +198,20 @@ object WebAsrProviders {
         val sp = prefs(c)
         // 轮19.174：**已迁移过但旧键还在** ⇒ 一次性清掉 ✓
         // （否则同一把 Key 在 prefs 里有两份明文副本 ✗ 用户升级路径也会残留 ✗）
+        // 轮19.179：豆包语音从「HTTP 极速版」切到「SAUC WebSocket」⇒ 旧值自动升级 ✓
+        sp.getString("${PREFIX}doubao_url", "")?.let { u ->
+            if (u.contains("/auc/bigmodel/")) {
+                sp.edit().putString(
+                    "${PREFIX}doubao_url",
+                    "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_nostream",
+                ).apply()
+            }
+        }
+        sp.getString("${PREFIX}doubao_model", "")?.let { m ->
+            if (m == "volc.bigasr.auc_turbo" || m.isBlank()) {
+                sp.edit().putString("${PREFIX}doubao_model", "volc.seedasr.sauc.duration").apply()
+            }
+        }
         if (!activeId(c).isNullOrEmpty()) {
             if (sp.contains("web_api_key") || sp.contains("web_api_url")) {
                 sp.edit()

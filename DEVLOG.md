@@ -3331,3 +3331,39 @@ volc http=401 status=45000010 msg=Invalid X-Api-Key
 
 ## 四、验证
 - `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · 版本 **vc177 / 1.0.8** ✓
+
+# 轮19.179：豆包语音改走 **SAUC WebSocket**（一句话识别 + 双向流式）
+
+## 一、背景
+用户账号（新版豆包语音控制台）**没有「录音文件识别极速版」** ✗ —— 只有「流式语音识别 2.0」；
+HTTP flash 接口持续 403 `resource not granted` ✗ ⇒ 只能走 WebSocket ✓
+
+## 二、PC 端协议验证（`volc_ws_probe.py`，自写最小 WS 客户端 ✓ 不打印凭据 ✓）
+| 资源 ID | 结果 |
+|---|---|
+| `volc.seedasr.sauc.duration`（流式 2.0 小时版）| ✅ 握手 **101**，结果帧正常返回 |
+| `volc.bigasr.sauc.duration`（1.0）| ❌ 403 未开通 |
+| `volc.seedasr.sauc.concurrent`（并发版）| ❌ `quota exceeded for types: concurrency` |
+
+**实测帧布局** ✓：
+- 客户端 → `header(4) + payloadSize(4) + payload`
+  · header: `0x11` | `msgType<<4|flags` | `serialization<<4|compression` | `0x00`
+  · msgType: 1=JSON 配置 / 2=裸 PCM；flags: 0=普通 / 2=最后一包
+- 服务端 → `header(4) + sequence(4，仅 flags=0b0001/0b0011) + payloadSize(4) + JSON`
+  · 结果在 `result.text`（累计 ✓ 取最后一次非空 ✓）；`flags=0b0011` = 结束 ✓
+
+## 三、实现
+1. `app/build.gradle.kts`：加 **OkHttp 4.12.0** ✓（系统无内置 WS ✗）
+2. 新增 **`core/speech/VolcSaucClient.kt`** ✓：阻塞式 `transcribe(endpoint, resourceId, apiKey, appId, pcm)`
+   · 建连头：`X-Api-Key` 或 `X-Api-App-Key`+`X-Api-Access-Key` ✓ + `X-Api-Resource-Id` + `X-Api-Request-Id` + `X-Api-Connect-Id` ✓
+   · 配置帧 → 音频帧（**200ms/6400B** 一块 ✓）→ 结束帧 ✓；25s 总超时 ✓
+   · 解析：跳 sequence（按 flags ✓）→ size → JSON ✓ 累计 text ✓ 结束帧判定 ✓ 错误帧 `msgType=0xF` ✓
+   · 日志只记长度/错误，**不记 Key** ✓
+3. `SpeechEngineManager.webApiTranscribeVolc` → 改调 `VolcSaucClient` ✓（旧 HTTP flash 代码删除 ✓）
+4. 预设：`wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_nostream` + `volc.seedasr.sauc.duration` ✓
+5. **旧配置自动升级** ✓：`/auc/bigmodel/` 的旧 URL → 新 wss ✓；`auc_turbo`/空资源 → `seedasr.sauc.duration` ✓
+6. UI：豆包语音下新增 **「一句话识别（准）/ 双向流式（快）」** 两芯片 ✓（切端点 ✓）；资源 ID 提示改为流式 2.0 取值说明 ✓
+
+## 四、验证
+- `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · 版本 **vc178 / 1.0.8** ✓
+- 待真机：设置里豆包语音保存后直接说话 → 看是否出字 ✓（失败时日志 `volc ws …` 会写原因 ✓）
