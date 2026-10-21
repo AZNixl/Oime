@@ -191,22 +191,42 @@ object VolcSaucClient {
         private val onFailure: (String) -> Unit,
     ) {
         private val pending = ByteArrayOutputStream()
+        /** 轮19.181：**顺序保证锁** —— 配置帧必须先于任何音频帧 ✓
+         *  （线上踩过：AudioRecord 一启动就喂数据 ⇒ 音频抢在配置帧前 ⇒ 服务端报
+         *   `payload unmarshal: no request object before data` ✗） */
+        private val lock = Any()
+        private var ready = false
         @Volatile private var opened = false
         @Volatile private var text = ""
         @Volatile private var error = ""
         @Volatile private var finished = false
         private val doneLatch = CountDownLatch(1)
 
-        internal fun markOpen() { opened = true }
+        /** onOpen 时调用：**先发配置帧** ✓，再放积压音频 ✓（同一把锁 ⇒ 严格有序 ✓）。 */
+        internal fun onOpened(configJson: ByteArray) {
+            synchronized(lock) {
+                opened = true
+                if (!finished) ws.send(frame(1, 0, configJson, isJson = true).toByteString())
+                ready = true
+                flushLocked()
+            }
+        }
 
         internal fun feed(bytes: ByteArray) {
-            pending.write(bytes)
-            while (pending.size() >= CHUNK_BYTES) {
+            synchronized(lock) {
+                if (finished) return
+                pending.write(bytes)
+                if (ready) flushLocked()
+            }
+        }
+
+        /** 已在锁内：按 200ms/6400B 打包发送 ✓。 */
+        private fun flushLocked() {
+            while (pending.size() >= CHUNK_BYTES && !finished) {
                 val all = pending.toByteArray()
-                val head = all.copyOfRange(0, CHUNK_BYTES)
-                val rest = all.copyOfRange(CHUNK_BYTES, all.size)
-                pending.reset(); pending.write(rest)
-                if (!finished) ws.send(frame(2, 0, head, isJson = false).toByteString())
+                ws.send(frame(2, 0, all.copyOfRange(0, CHUNK_BYTES), isJson = false).toByteString())
+                pending.reset()
+                pending.write(all, CHUNK_BYTES, all.size - CHUNK_BYTES)
             }
         }
 
@@ -294,7 +314,6 @@ object VolcSaucClient {
         val listener = object : WebSocketListener() {
             override fun onOpen(ws: WebSocket, response: Response) {
                 com.azime.input.core.diag.Diag.log("Speech", "volc live open ✓")
-                session.markOpen()
                 runCatching {
                     val cfg = JSONObject().apply {
                         put("user", JSONObject().put("uid", "oime").put("platform", "Android"))
@@ -308,7 +327,8 @@ object VolcSaucClient {
                             put("show_utterances", false)
                         })
                     }.toString().toByteArray()
-                    ws.send(frame(1, 0, cfg, isJson = true).toByteString())
+                    // ★ 交给 session：先发配置帧、再 flush 积压音频 ✓（顺序有保证 ✓）
+                    session.onOpened(cfg)
                 }.onFailure { session.onError("发送配置失败：${it.message}") }
             }
 

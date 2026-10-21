@@ -523,8 +523,12 @@ object SpeechEngineManager {
      */
     private fun webApiTranscribeVolc(pcm: ShortArray, cfg: WebApiConfig, onDone: (Boolean, String) -> Unit) {
         runCatching {
+            // 批量（非实时）一律走**一句话识别**端点 ✓（async 端点在"一次性灌完"时不可靠 ✗）
+            val batchEndpoint = cfg.baseUrl
+                .replace("/bigmodel_async", "/bigmodel_nostream")
+                .ifBlank { "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_nostream" }
             val r = VolcSaucClient.transcribe(
-                endpoint = cfg.baseUrl,
+                endpoint = batchEndpoint,
                 resourceId = cfg.model,
                 apiKey = cfg.apiKey,
                 appId = cfg.appId,

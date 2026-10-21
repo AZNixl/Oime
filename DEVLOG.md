@@ -3390,3 +3390,27 @@ HTTP flash 接口持续 403 `resource not granted` ✗ ⇒ 只能走 WebSocket �
 ## 三、验证
 - `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · 版本 **vc179 / 1.0.8** ✓
 - 用法：豆包语音 → 选「**双向流式（快）**」→ 说话时输入区应逐步出字；「一句话识别（准）」仍是说完一次出 ✓
+
+# 轮19.181：修复豆包「双向流式」不稳定 —— 配置帧与音频帧的竞态
+
+## 一、真机日志（2026-10-21 11:15 / 17:25~17:27，多次）
+```
+volc live error:  <{"error":"payload unmarshal: no request object before data"}
+volc live failure: null
+volc live 回退批量： <{"error":"payload unmarshal: no request object before data"}
+语音失败：豆包语音失败：服务端未返回识别文本
+```
+## 二、根因
+AudioRecord 一启动录音循环就往 WS `send()` 音频帧 ✗，而 **配置帧（full client request）是在 `onOpen` 里才发** ✗。
+OkHttp 的 `send()` 是异步排队，但**录音线程的 feed 可能先于 onOpen** ⇒ 音频帧先到服务端 ⇒
+`no request object before data` ✗。成功过的那一次只是时序刚好 ✓（竞态 ✓）。
+
+## 三、修复
+1. `LiveSession` 加 **`lock` + `ready` 标记** ✓：
+   · 未就绪时 `feed()` 只**写入缓冲** ✓ 不发送 ✓
+   · `onOpened(cfg)`：**先发配置帧** ✓ 再 `flushLocked()` 把积压音频按 200ms 打包发出 ✓
+   · `feed()` 与 `onOpened()` 同锁 ⇒ **严格有序** ✓
+2. 回退路径：批量识别**固定走 `bigmodel_nostream`** ✓（把 `_async` 换成 `_nostream` ✓ —— async 端点"一次性灌完"不可靠 ✗）
+
+## 四、验证
+- `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · 版本 **vc180 / 1.0.8** ✓
