@@ -176,6 +176,176 @@ object VolcSaucClient {
         }
     }
 
+    // ── 轮19.180：**实时会话**（边录边传 ✓ 边说边出 ✓）──────────────────
+
+    /**
+     * 边录边传的流式会话 ✓
+     * - 建连后立刻发配置帧 ✓
+     * - [sendPcm] 从录音线程持续喂 PCM（内部按 200ms/6400B 攒包 ✓）
+     * - 收到结果帧 ⇒ [onPartial]（累计文本 ✓ 只在变化时回调 ✓）
+     * - [finish] 发结束帧并等最终文本（25s 超时 ✓）
+     */
+    class LiveSession internal constructor(
+        private val ws: WebSocket,
+        private val onPartial: (String) -> Unit,
+        private val onFailure: (String) -> Unit,
+    ) {
+        private val pending = ByteArrayOutputStream()
+        @Volatile private var opened = false
+        @Volatile private var text = ""
+        @Volatile private var error = ""
+        @Volatile private var finished = false
+        private val doneLatch = CountDownLatch(1)
+
+        internal fun markOpen() { opened = true }
+
+        internal fun feed(bytes: ByteArray) {
+            pending.write(bytes)
+            while (pending.size() >= CHUNK_BYTES) {
+                val all = pending.toByteArray()
+                val head = all.copyOfRange(0, CHUNK_BYTES)
+                val rest = all.copyOfRange(CHUNK_BYTES, all.size)
+                pending.reset(); pending.write(rest)
+                if (!finished) ws.send(frame(2, 0, head, isJson = false).toByteString())
+            }
+        }
+
+        /** 录音线程直接喂 PCM（16k/16bit/mono ✓）。 */
+        internal fun feedPcm(pcm: ShortArray, n: Int) {
+            val bb = ByteBuffer.allocate(n * 2).order(ByteOrder.LITTLE_ENDIAN)
+            for (i in 0 until n) bb.putShort(pcm[i])
+            feed(bb.array())
+        }
+
+        internal fun onResultJson(json: String, isFinal: Boolean) {
+            val t = runCatching {
+                JSONObject(json).optJSONObject("result")?.optString("text", "").orEmpty()
+            }.getOrDefault("")
+            if (t.isNotBlank() && t != text) {
+                text = t
+                onPartial(t)
+            }
+            if (isFinal) {
+                finished = true
+                doneLatch.countDown()
+            }
+        }
+
+        internal fun onError(msg: String) {
+            if (error.isBlank()) error = msg
+            finished = true
+            doneLatch.countDown()
+        }
+
+        /** 发结束帧并等最终结果 ✓（阻塞，调用方在 IO 线程 ✓）。 */
+        fun finish(): Result {
+            if (!finished) {
+                if (opened) {
+                    runCatching { ws.send(frame(2, 2, ByteArray(0), isJson = false).toByteString()) }
+                        .onFailure { onError("发送结束帧失败：${it.message}") }
+                } else {
+                    onError("连接未建立（握手未完成）")
+                }
+            }
+            // 实时模式：说完后等最终结果，**8 秒**足够（原来等 25s 会干等 ✗）；
+            // 若期间已有非空文本，即使没收到"结束标记"也认它 ✓（服务端常常直接关连接 ✗）
+            runCatching { doneLatch.await(8_000, TimeUnit.MILLISECONDS) }
+            runCatching { ws.close(1000, null) }
+            return when {
+                text.isNotBlank() -> Result(true, text.trim(), "")
+                error.isNotBlank() -> Result(false, "", error)
+                else -> Result(false, "", "未收到识别结果（超时或服务端无返回）")
+            }
+        }
+
+        fun cancel() { runCatching { ws.close(1000, null) } }
+    }
+
+    /**
+     * 打开**实时会话** ✓（[onPartial] 在 OkHttp 线程回调 ⇒ 调用方自行切主线程 ✓）。
+     * 返回 null 表示建连请求都没发出去 ✗。
+     */
+    fun openLive(
+        endpoint: String,
+        resourceId: String,
+        apiKey: String,
+        appId: String,
+        onPartial: (String) -> Unit,
+        onFailure: (String) -> Unit,
+    ): LiveSession? {
+        val url = endpoint.trim().ifBlank { "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async" }
+        val res = resourceId.trim().ifBlank { "volc.seedasr.sauc.duration" }
+        val req = Request.Builder()
+            .url(url)
+            .header("X-Api-Resource-Id", res)
+            .header("X-Api-Request-Id", UUID.randomUUID().toString())
+            .header("X-Api-Connect-Id", UUID.randomUUID().toString())
+            .apply {
+                if (appId.isNotBlank()) {
+                    header("X-Api-App-Key", appId.trim())
+                    header("X-Api-Access-Key", apiKey.trim())
+                } else {
+                    header("X-Api-Key", apiKey.trim())
+                }
+            }
+            .build()
+
+        lateinit var session: LiveSession
+        val listener = object : WebSocketListener() {
+            override fun onOpen(ws: WebSocket, response: Response) {
+                com.azime.input.core.diag.Diag.log("Speech", "volc live open ✓")
+                session.markOpen()
+                runCatching {
+                    val cfg = JSONObject().apply {
+                        put("user", JSONObject().put("uid", "oime").put("platform", "Android"))
+                        put("audio", JSONObject().apply {
+                            put("format", "pcm"); put("codec", "raw")
+                            put("rate", 16000); put("bits", 16); put("channel", 1)
+                        })
+                        put("request", JSONObject().apply {
+                            put("model_name", "bigmodel")
+                            put("enable_itn", true); put("enable_punc", true)
+                            put("show_utterances", false)
+                        })
+                    }.toString().toByteArray()
+                    ws.send(frame(1, 0, cfg, isJson = true).toByteString())
+                }.onFailure { session.onError("发送配置失败：${it.message}") }
+            }
+
+            override fun onMessage(ws: WebSocket, bytes: ByteString) {
+                val data = bytes.toByteArray()
+                if (data.size < 4) return
+                val msgType = (data[1].toInt() shr 4) and 0x0F
+                val flags = data[1].toInt() and 0x0F
+                var pos = 4
+                if (flags == 0b0001 || flags == 0b0011) pos += 4
+                if (data.size < pos + 4) return
+                val size = ByteBuffer.wrap(data, pos, 4).order(ByteOrder.BIG_ENDIAN).int
+                pos += 4
+                val body = String(data, pos, minOf(size, data.size - pos), Charsets.UTF_8)
+                when (msgType) {
+                    0x9 -> session.onResultJson(body, flags == 0b0011)
+                    0xF -> {
+                        com.azime.input.core.diag.Diag.warn("Speech", "volc live error: ${body.take(200)}")
+                        session.onError(body.take(200))
+                    }
+                }
+            }
+
+            override fun onFailure(ws: WebSocket, t: Throwable, response: Response?) {
+                com.azime.input.core.diag.Diag.warn("Speech", "volc live failure: ${t.message}")
+                session.onError("连接失败：${t.message ?: "未知"}")
+            }
+
+            override fun onClosed(ws: WebSocket, code: Int, reason: String) {
+                session.onError("连接被关闭（$code ${reason.take(40)}）")
+            }
+        }
+
+        session = LiveSession(http.newWebSocket(req, listener), onPartial, onFailure)
+        return session
+    }
+
     /** 4 字节头 + 4 字节长度 + payload ✓（客户端方向 ✓）。 */
     private fun frame(msgType: Int, flags: Int, payload: ByteArray, isJson: Boolean): ByteArray {
         val out = ByteArrayOutputStream(payload.size + 8)

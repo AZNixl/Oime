@@ -208,6 +208,24 @@ object SpeechEngineManager {
                 return@launch
             }
 
+            // 轮19.180：**豆包语音实时会话**（边录边传 ✓ 边说边出 ✓）
+            var liveSession: VolcSaucClient.LiveSession? = null
+            if (engine == ENGINE_WEB_API) {
+                val cfg = webApiConfig(com.azime.input.AZimeApplication.instance)
+                if (cfg != null && cfg.protocol == PROTO_VOLC && cfg.baseUrl.contains("_async")) {
+                    liveSession = VolcSaucClient.openLive(
+                        endpoint = cfg.baseUrl,
+                        resourceId = cfg.model,
+                        apiKey = cfg.apiKey,
+                        appId = cfg.appId,
+                        onPartial = { partial -> withMain { callbacks.onPartial(partial) } },
+                        onFailure = { msg ->
+                            com.azime.input.core.diag.Diag.warn("Speech", "volc live 失败：$msg")
+                        },
+                    )
+                }
+            }
+
             val buf = ShortArray(SAMPLE_RATE / 10) // 100ms/帧
             audioSrc.startRecording()
             try {
@@ -230,6 +248,10 @@ object SpeechEngineManager {
                         if (partial.isNotEmpty()) withMain { callbacks.onPartial(partial) }
                     } else {
                         chunks.add(buf.copyOf(n))
+                        // 实时会话：边录边喂 ✓（内部按 200ms 攒包 ✓）
+                        if (liveSession != null) {
+                            runCatching { liveSession!!.feedPcm(buf, n) }
+                        }
                     }
                 }
             } finally {
@@ -268,6 +290,20 @@ object SpeechEngineManager {
                 if (pcm.isEmpty()) {
                     withMain { callbacks.onResult("") }
                     return@launch
+                }
+                // 轮19.180：实时会话已"边说边出" ⇒ 结束只做**定稿** ✓；失败再回退一次性上传 ✓
+                val live = liveSession
+                if (live != null) {
+                    val r = live.finish()
+                    com.azime.input.core.diag.Diag.log(
+                        "Speech", "volc live finish ok=${r.ok} len=${r.text.length} err=${r.error.take(80)}",
+                    )
+                    if (r.ok) {
+                        withMain { callbacks.onResult(r.text) }
+                        return@launch
+                    }
+                    // 实时失败 ⇒ 回退到一次性上传（一句话识别路径 ✓）
+                    com.azime.input.core.diag.Diag.warn("Speech", "volc live 回退批量：${r.error}")
                 }
                 webApiTranscribe(pcm) { ok, text ->
                     withMain { if (ok) callbacks.onResult(text) else callbacks.onError(text) }

@@ -3367,3 +3367,26 @@ HTTP flash 接口持续 403 `resource not granted` ✗ ⇒ 只能走 WebSocket �
 ## 四、验证
 - `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · 版本 **vc178 / 1.0.8** ✓
 - 待真机：设置里豆包语音保存后直接说话 → 看是否出字 ✓（失败时日志 `volc ws …` 会写原因 ✓）
+
+# 轮19.180：豆包语音 **边说边出字**（实时流式）
+
+## 一、需求
+用户要"边说边出字"（不是说完才出）✓ 并接受改造录音管线 ✓
+
+## 二、实现（复用现成通路 ✓ 不改 UI ✓）
+- 现有 `Callbacks.onPartial(text)` → `ic.setComposingText(text, 1)` **本来就有**（zipformer 用过 ✓）
+  ⇒ 只要把豆包增量结果接进去，"边说边出"自动生效 ✓
+- `VolcSaucClient` 新增 **`LiveSession` + `openLive()`** ✓：
+  · 建连（`bigmodel_async` ✓ 资源 `volc.seedasr.sauc.duration` ✓）
+  · `feedPcm(buf, n)`：录音线程 100ms/帧 直接喂 ✓ 内部按 **200ms/6400B** 攒包发送 ✓
+  · 结果帧 ⇒ `onPartial`（累计文本 ✓ **仅在变化时**回调 ✓ 避免重复 setComposingText）
+  · `finish()`：发结束帧 → 等最终结果（**8s** ✓ 有文本即认 ✓）→ 关闭
+- `SpeechEngineManager.start()`：
+  · engine=WEB_API 且协议=volc 且端点含 `_async` ⇒ 启动实时会话 ✓
+  · 录音循环里 `liveSession.feedPcm(buf, n)` ✓
+  · 结束后：实时成功 ⇒ `onResult(最终文本)`（`onResult` 里 `voiceStreamed=true` ⇒ 只**定稿**不重复插入 ✓）
+  · 实时失败 ⇒ **自动回退**到一次性上传 ✓（一句话识别路径 ✓）
+
+## 三、验证
+- `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · 版本 **vc179 / 1.0.8** ✓
+- 用法：豆包语音 → 选「**双向流式（快）**」→ 说话时输入区应逐步出字；「一句话识别（准）」仍是说完一次出 ✓
