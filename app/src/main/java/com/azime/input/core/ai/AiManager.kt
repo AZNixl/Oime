@@ -22,16 +22,15 @@ object AiManager {
     private const val K_PROVIDER = "ai_provider"
     private const val K_MODEL = "ai_model"
 
-    const val F_CLIPBOARD = "ai_clipboard"   // 剪贴板智能整理
     const val F_TRANSLATE = "ai_translate"   // 翻译输入
     const val F_REWRITE = "ai_rewrite"       // 风格改写
-    const val F_EXPLAIN = "ai_explain"       // 划词解释/搜索/总结
+    const val F_EXPLAIN = "ai_explain"       // 解释
     const val F_CONTINUE = "ai_continue"     // 智能续写
     const val F_COMMAND = "ai_command"       // 口头指令
 
     /** 各功能默认开关（先默认关 ✓ 用户自己开 ✓ 隐私友好） */
     private val DEFAULTS = mapOf(
-        F_CLIPBOARD to false, F_TRANSLATE to false, F_REWRITE to false,
+        F_TRANSLATE to false, F_REWRITE to false,
         F_EXPLAIN to false, F_CONTINUE to false, F_COMMAND to false,
     )
 
@@ -156,5 +155,7 @@ object AiManager {
     const val SYS_SUMMARIZE = "你是输入法里的总结助手。用不超过 60 字概括用户给的内容，只输出概括。"
     const val SYS_CONTINUE = "你是输入法续写助手。根据用户已输入的内容，自然地续写一句（不超过 30 字），只输出续写内容，不要重复原文。"
     const val SYS_CLIPBOARD = "你是剪贴板整理助手。从用户给的杂乱文本里提取关键信息（姓名/电话/地址/时间/单号/链接），用简洁的列表输出；没提取到的项不要编造。"
+    const val SYS_CHAT = "你是输入法内置的 AI 助手。回答简洁直接、不客套；除非用户要求，输出纯文本、不要 Markdown。"
+    const val SYS_LIVE_TRANSLATE = "你是输入法的实时翻译引擎。把用户输入翻译成%s，只输出译文本身，不要解释、不要引号、不要重复原文。标点使用目标语言的规范标点（译成英文时用英文半角标点）。数字、代码、专有名词保持原样。"
     const val SYS_COMMAND = "你是输入法指令助手。用户会用口语提出写作需求，请直接给出可插入的成品文本（不要解释）。"
 }

@@ -927,7 +927,15 @@ class AZimeService : InputMethodService() {
                 }
                 is KeyAction.CommitText -> {
                     val t = action.text
-                    if (t.isNotEmpty()) {
+                    // 轮19.195：**实时翻译** —— 中文先入队 ✓ 译完按序写入 ✓（失败回落原文 ✓）
+                    val translating = t.isNotEmpty() &&
+                        com.azime.input.core.ai.AiSession.mode == com.azime.input.core.ai.AiSession.Mode.TRANSLATE &&
+                        com.azime.input.core.ai.AiSession.shouldTranslate(t)
+                    if (translating) {
+                        enqueueTranslate(t)
+                        uiState.update { it.copy(hwCandidates = emptyList(), hwClearSignal = it.hwClearSignal + 1) }
+                        refreshState()
+                    } else if (t.isNotEmpty()) {
                         currentInputConnection?.commitText(t, 1)
                         pushUndo(t)
                         // 上屏后：清候选 + **触发手写板清画布** ✓（用户要求 ✓）
@@ -1770,6 +1778,42 @@ class AZimeService : InputMethodService() {
                 schemas = schemasNow ?: state.schemas,
                 statusMessage = if (RimeManager.isMaintaining()) "正在部署词典，请稍候…" else "",
             )
+        }
+    }
+
+    // ── 轮19.195：实时翻译队列（按提交顺序 ✓ 不吞字 ✓）────────────
+    private val aiQueue = java.util.concurrent.ConcurrentLinkedQueue<String>()
+    @Volatile private var aiWorker = false
+
+    private fun enqueueTranslate(src: String) {
+        aiQueue.add(src)
+        com.azime.input.core.ai.AiSession.pending = aiQueue.size
+        if (aiWorker) return
+        aiWorker = true
+        scope.launch {
+            while (true) {
+                val next = aiQueue.poll() ?: break
+                val sys = com.azime.input.core.ai.AiSession.systemPrompt()
+                val r = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    com.azime.input.core.ai.AiManager.chat(this@AZimeService, sys, next)
+                }
+                val translated = if (r.ok && r.text.isNotBlank()) {
+                    com.azime.input.core.ai.AiSession.normalizePunctuation(
+                        r.text, if (com.azime.input.core.ai.AiSession.reverse) "简体中文"
+                        else com.azime.input.core.ai.AiSession.targetLang,
+                    )
+                } else ""
+                com.azime.input.core.diag.Diag.log(
+                    "AI", "live translate ok=${r.ok} ${next.take(10)} → ${translated.take(24)} err=${r.error.take(40)}",
+                )
+                val out = translated.ifBlank { next }   // 失败 ⇒ 原样 ✓
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    currentInputConnection?.commitText(out, 1)
+                    pushUndo(out)
+                }
+                com.azime.input.core.ai.AiSession.pending = aiQueue.size
+            }
+            aiWorker = false
         }
     }
 

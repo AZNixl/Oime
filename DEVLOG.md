@@ -3763,3 +3763,32 @@ https://www.alibabacloud.com/help/zh/model-studio/qwen-asr-realtime-interaction-
 
 ## 三、验证
 - `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · **vc194 / 1.0.8** ✓
+
+# 轮19.195：AI 交互重构（第一部分）
+
+## 一、用户定稿
+1. 去掉 ○ 菜单「AI 工具」✗；AI **不读剪贴板** ✗
+2. 功能收敛为 5 个：**翻译 / 续写 / 润色 / 解释 / 对话** ✓
+3. 不再用长按符号键 ✗ ⇒ **功能键放到候选栏，点击使用** ✓
+4. AI 栏（工具栏上方）左侧显示状态、右侧 ✕ ✓；翻译的**语言键在候选栏** ✓
+5. **完全实时翻译** ✓：中文上屏被拦下 → 译成英文写入；标点按目标语言（中→英用英文标点）✓
+
+## 二、本轮实现（vc195）
+- **`core/ai/AiSession.kt`**（新）✓：模式/目标语言/方向/润色风格/状态；`normalizePunctuation`（中→英全角转半角+英文标点+补空格 ✓）；
+  `shouldTranslate`（纯数字/纯 ASCII 直通 ✓）；`inputFrom`（**选中优先，其次光标前一段；不读剪贴板** ✓）
+- `AiManager`：删 `F_CLIPBOARD`/`SYS_CLIPBOARD` ✗；新增 `SYS_CHAT` / `SYS_LIVE_TRANSLATE` ✓
+- 设置页 AI 功能列表 → **5 项** ✓
+- **实时翻译管道** ✓：`AZimeService` 在 `KeyAction.CommitText` 处拦截 ✓
+  · 翻译模式下中文入 `ConcurrentLinkedQueue` ✓（串行 worker ✓ 主线程写文本 ✓）
+  · 失败 ⇒ 原样写入中文 ✓（不吞字）；日志 `AI live translate ok=… a → b`
+- **UI** ✓：AI 状态栏（工具栏上方：`● 翻译 · 翻译中…` + ✕）✓；候选栏 **AI 功能键**（点击弹 5 项 + 关闭）✓；
+  翻译时旁边 **语言键**（单击切方向 / 点 ▾ 选语言）✓
+- 符号键长按的旧 AI 菜单**停用** ✓
+
+## 三、待做（下一轮）
+- 续写/润色/解释/对话 的**执行入口**（现在只有翻译接了提交链路 ✗）
+- 状态栏刷新（目前 400ms 轮询 ✓ 够用）
+- AI 键在「打字中（候选行）」时的占位策略（现在只在空闲工具栏 ✓）
+
+## 四、验证
+- `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · **vc195 / 1.0.8** ✓

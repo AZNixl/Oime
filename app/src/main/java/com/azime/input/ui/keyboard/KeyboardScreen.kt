@@ -571,6 +571,35 @@ fun AzimeKeyboardScreen(
                     )
                 }
             }
+            // 轮19.195：**AI 状态栏**（在工具栏正上方 ✓ 只在 AI 模式下出现）
+            if (com.azime.input.core.ai.AiSession.isActive()) {
+                val ai = com.azime.input.core.ai.AiSession
+                var tick by remember { mutableStateOf(0) }
+                androidx.compose.runtime.LaunchedEffect(Unit) {
+                    while (true) { kotlinx.coroutines.delay(400); tick++ }
+                }
+                val cAi = keyboardColors()
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(KeyboardManager.toolbarHeightDp().dp * 0.72f)
+                        .background(cAi.bg)
+                        .padding(horizontal = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "● " + ai.statusText(),
+                        fontSize = 12.sp, color = cAi.accentActive, maxLines = 1,
+                    )
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        "✕", fontSize = 14.sp, color = cAi.subText,
+                        modifier = Modifier
+                            .clickable { ai.turnOff() }
+                            .padding(horizontal = 8.dp, vertical = 2.dp),
+                    )
+                }
+            }
             ToolbarRow(
                 state = state,
                 onAction = onAction,
@@ -1281,6 +1310,8 @@ private fun ToolbarRow(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     leftItems.forEach { id -> toolbarToolItem(id, state, onAction, c) { showSchemaMenu = true } }
+                    // 轮19.195：**AI 功能键**（候选栏内 ✓ 点击选功能；翻译时右侧语言键 ✓）
+                    AiToolbarKey(c)
                 }
 
                 // ── ○ 菜单键（居中，圆环造型）：点击开菜单 / 长按语音 /
@@ -3838,7 +3869,7 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
                 }
             }
         }
-        if (showPageBubble) {
+        if (false && showPageBubble) {
             Popup(
                 alignment = Alignment.TopCenter,
                 offset = bubbleOffset,
@@ -4358,6 +4389,74 @@ private fun onKeyAction(key: Key, fromPage: String, onAction: (KeyAction) -> Uni
                     onAction(KeyAction.Resolved(key.code))
                 } else {
                     onAction(KeyAction.ToggleAscii)
+                }
+            }
+        }
+    }
+}
+
+
+/** 轮19.195：候选栏里的 **AI 功能键**（点击弹功能条 ✓ 翻译时旁边带语言键 ✓）。 */
+@Composable
+private fun AiToolbarKey(c: KeyboardColors) {
+    val ai = com.azime.input.core.ai.AiSession
+    var open by remember { mutableStateOf(false) }
+    var langOpen by remember { mutableStateOf(false) }
+    val label = if (ai.isActive()) ai.mode.label else "AI"
+
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box {
+            Text(
+                label,
+                fontSize = 12.sp,
+                fontWeight = if (ai.isActive()) FontWeight.Medium else FontWeight.Normal,
+                color = if (ai.isActive()) c.accentKeyText else c.text,
+                modifier = Modifier
+                    .background(
+                        if (ai.isActive()) c.accentKeyBg else Color.Transparent,
+                        RoundedCornerShape(8.dp),
+                    )
+                    .clickable { open = true }
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+            )
+            androidx.compose.material3.DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+                listOf(
+                    com.azime.input.core.ai.AiSession.Mode.TRANSLATE,
+                    com.azime.input.core.ai.AiSession.Mode.CONTINUE,
+                    com.azime.input.core.ai.AiSession.Mode.POLISH,
+                    com.azime.input.core.ai.AiSession.Mode.EXPLAIN,
+                    com.azime.input.core.ai.AiSession.Mode.CHAT,
+                ).forEach { m ->
+                    androidx.compose.material3.DropdownMenuItem(
+                        text = { Text(m.label) },
+                        onClick = { ai.mode = m; open = false },
+                    )
+                }
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Text("关闭") },
+                    onClick = { ai.turnOff(); open = false },
+                )
+            }
+        }
+        if (ai.mode == com.azime.input.core.ai.AiSession.Mode.TRANSLATE) {
+            Box {
+                Text(
+                    ai.translateDirection() + " ▾",
+                    fontSize = 11.sp,
+                    color = c.accentActive,
+                    modifier = Modifier
+                        .clickable { ai.reverse = !ai.reverse }           // 单击切方向 ✓
+                        .padding(horizontal = 6.dp, vertical = 4.dp),
+                )
+                androidx.compose.material3.DropdownMenu(
+                    expanded = langOpen, onDismissRequest = { langOpen = false },
+                ) {
+                    com.azime.input.core.ai.AiSession.LANGUAGES.forEach { lg ->
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text(lg) },
+                            onClick = { ai.targetLang = lg; ai.reverse = false; langOpen = false },
+                        )
+                    }
                 }
             }
         }
