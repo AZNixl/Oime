@@ -3855,3 +3855,11 @@ https://www.alibabacloud.com/help/zh/model-studio/qwen-asr-realtime-interaction-
 
 ## 四、验证
 - `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · **vc198 / 1.0.8** ✓
+
+# 轮19.199：去掉「确定」后的上屏时机 —— 译完立即写入
+
+- 用户去掉确定键 ⇒ 必须有替代时机 ✓ 按其最初要求「实时输出到文本框」✓
+- 改动：worker 里 `translated` 拿到后**直接 `commitText`** ✓（失败回落原文 ✓）
+  · `AiSession.result` 记录最近一次译文（供其它模式复用 ✓）
+- 不再需要 `takeResult()` 的"确认"路径 ✓（保留 API 备用 ✓）
+- `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · **vc199 / 1.0.8** ✓

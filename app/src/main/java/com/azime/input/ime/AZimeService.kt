@@ -1809,9 +1809,13 @@ class AZimeService : InputMethodService() {
                 com.azime.input.core.diag.Diag.log(
                     "AI", "live translate ok=${r.ok} ${next.take(10)} → ${translated.take(24)} err=${r.error.take(40)}",
                 )
-                // 轮19.196：结果累积到条内 ✓（确定时才上屏 ✓）；失败保留原文 ✓
+                // 轮19.199：**去掉确定键 ⇒ 译完立即写入文本框** ✓（失败回落原文 ✓）
                 val out = translated.ifBlank { next }
-                com.azime.input.core.ai.AiSession.result += out
+                com.azime.input.core.ai.AiSession.result = out
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    currentInputConnection?.commitText(out, 1)
+                    pushUndo(out)
+                }
                 com.azime.input.core.ai.AiSession.pending = aiQueue.size
             }
             aiWorker = false
