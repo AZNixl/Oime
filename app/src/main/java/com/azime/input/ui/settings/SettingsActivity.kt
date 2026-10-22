@@ -1120,25 +1120,29 @@ private fun StatusCard(fillWidth: Boolean = false) {
     var imeTick by remember { mutableStateOf(0) }
     androidx.compose.runtime.LaunchedEffect(Unit) {
         while (true) {
-            kotlinx.coroutines.delay(2000)
+            kotlinx.coroutines.delay(1200)
             imeTick++
         }
     }
-    val imeEnabled = remember(imeTick) {
+    // 轮19.194：**改用 InputMethodManager**（Secure 设置读取在部分 ROM 上不可靠 ✗）
+    // 同时区分两种状态：① 没启用 ② 启用了但没选成默认 ✓
+    val imeState = remember(imeTick) {
         runCatching {
-            val enabled = android.provider.Settings.Secure.getString(
-                context.contentResolver,
-                android.provider.Settings.Secure.ENABLED_INPUT_METHODS,
-            ) ?: ""
-            enabled.contains(context.packageName)
-        }.getOrDefault(false)
+            val imm = context.getSystemService(android.content.Context.INPUT_METHOD_SERVICE)
+                as android.view.inputmethod.InputMethodManager
+            val enabled = imm.enabledInputMethodList.any { it.packageName == context.packageName }
+            val isDefault = imm.currentInputMethodInfo?.packageName == context.packageName
+            Pair(enabled, isDefault)
+        }.getOrDefault(false to false)
     }
+    val imeEnabled = imeState.first
+    val imeIsDefault = imeState.second
     var showImeDialog by remember { mutableStateOf(false) }
-    val notEnabled = !imeEnabled
+    val needPick = !imeEnabled || !imeIsDefault   // 未启用 or 未选中 ✓
     // 轮19.193：**进页面时若检出未启用 ⇒ 自动弹一次**（用户要求 ✓ 一个会话只自动弹一次 ✓）
     var autoShown by remember { mutableStateOf(false) }
-    androidx.compose.runtime.LaunchedEffect(notEnabled) {
-        if (notEnabled && !autoShown) {
+    androidx.compose.runtime.LaunchedEffect(needPick) {
+        if (needPick && !autoShown) {
             autoShown = true
             showImeDialog = true
         }
@@ -1154,53 +1158,88 @@ private fun StatusCard(fillWidth: Boolean = false) {
 
     Card(
         colors = CardDefaults.cardColors(
-            containerColor = if (notEnabled) Color(0xFFB9BEC4) else cs.primaryContainer,
+            containerColor = if (needPick) Color(0xFFB9BEC4) else cs.primaryContainer,
         ),
         shape = RoundedCornerShape(16.dp),
         modifier = (
-            if (notEnabled) Modifier.clickable { showImeDialog = true } else Modifier
+            if (needPick) Modifier.clickable { showImeDialog = true } else Modifier
         ).let { if (fillWidth) it.fillMaxHeight() else it },
     ) {
         Box(Modifier.fillMaxWidth()) {
-            // 轮19.193：**未启用弹窗**（真 Dialog ✓ 覆盖整个窗口 ✓ 不是卡片内嵌 ✗）
+            // 轮19.194：**App 风格弹窗**（自绘 ✓ 标题用定稿文案 ✓ 不用 Material 默认蓝按钮 ✗）
             if (showImeDialog) {
-                androidx.compose.material3.AlertDialog(
-                    onDismissRequest = { showImeDialog = false },
-                    title = { Text("启用或选择 ○输入法") },
-                    text = { Text("可以先去系统设置启用，或直接切到 ○输入法。") },
-                    confirmButton = {
-                        androidx.compose.material3.TextButton(onClick = {
-                            showImeDialog = false
-                            runCatching {
-                                context.startActivity(
-                                    Intent(android.provider.Settings.ACTION_INPUT_METHOD_SETTINGS),
+                androidx.compose.ui.window.Dialog(onDismissRequest = { showImeDialog = false }) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 28.dp)
+                            .background(Color(0xFFF3F4F6), RoundedCornerShape(20.dp))
+                            .padding(horizontal = 20.dp, vertical = 18.dp),
+                    ) {
+                        Text(
+                            "选择 ○输入法作为默认输入法",
+                            fontSize = 17.sp, fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFF1A1C1E),
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            if (!imeEnabled) "先在系统设置的输入法列表里启用它，再切过来。"
+                            else "已经启用，直接切换过去就行。",
+                            fontSize = 13.sp, color = Color(0xFF5F6368), lineHeight = 20.sp,
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                "取消", fontSize = 14.sp, color = Color(0xFF5F6368),
+                                modifier = Modifier
+                                    .clickable { showImeDialog = false }
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                            )
+                            if (imeEnabled) {
+                                Text(
+                                    "切换输入法", fontSize = 14.sp, fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier
+                                        .clickable {
+                                            showImeDialog = false
+                                            runCatching {
+                                                val imm = context.getSystemService(android.content.Context.INPUT_METHOD_SERVICE)
+                                                    as android.view.inputmethod.InputMethodManager
+                                                imm.showInputMethodPicker()
+                                            }
+                                        }
+                                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                                )
+                            } else {
+                                Text(
+                                    "去启用", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = Color.White,
+                                    modifier = Modifier
+                                        .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(10.dp))
+                                        .clickable {
+                                            showImeDialog = false
+                                            runCatching {
+                                                context.startActivity(
+                                                    Intent(android.provider.Settings.ACTION_INPUT_METHOD_SETTINGS),
+                                                )
+                                            }
+                                        }
+                                        .padding(horizontal = 16.dp, vertical = 8.dp),
                                 )
                             }
-                        }) { Text("去启用") }
-                    },
-                    dismissButton = {
-                        Row {
-                            androidx.compose.material3.TextButton(onClick = {
-                                showImeDialog = false
-                                runCatching {
-                                    val imm = context.getSystemService(android.content.Context.INPUT_METHOD_SERVICE)
-                                        as android.view.inputmethod.InputMethodManager
-                                    imm.showInputMethodPicker()
-                                }
-                            }) { Text("切换输入法") }
-                            androidx.compose.material3.TextButton(onClick = { showImeDialog = false }) {
-                                Text("取消")
-                            }
                         }
-                    },
-                )
+                    }
+                }
             }
             // 轮19.47：右缘放一个**四分之一圆环**做背景装饰；
             // 已启用 = 白色，未启用 = 黑色（用户要求）
             androidx.compose.foundation.Canvas(Modifier.matchParentSize()) {
                 val r = size.height * 1.15f
                 val stroke = size.height * 0.13f
-                val col = if (notEnabled) Color.Black.copy(alpha = 0.30f)
+                val col = if (needPick) Color.Black.copy(alpha = 0.30f)
                 else Color.White.copy(alpha = 0.38f)
                 drawCircle(
                     color = col,
@@ -1223,7 +1262,7 @@ private fun StatusCard(fillWidth: Boolean = false) {
                             .size(11.dp)
                             .background(
                                 when {
-                                    notEnabled -> Color(0xFF6B7075)
+                                    needPick -> Color(0xFF6B7075)
                                     ready -> Color(0xFF2E9E5B)
                                     else -> cs.tertiary
                                 },
@@ -1235,15 +1274,15 @@ private fun StatusCard(fillWidth: Boolean = false) {
                     Text(
                         text = when {
                             // 轮19.193：用户定稿文案 ✓（不再有下面那行说明 ✗）
-                            notEnabled -> "选择 ○输入法作为默认输入法"
+                            needPick -> "选择 ○输入法作为默认输入法"
                             ready -> "运行正常"
                             else -> "引擎未就绪 / 首次部署中…"
                         },
-                        fontSize = if (notEnabled) 16.sp else 20.sp,
+                        fontSize = if (needPick) 16.sp else 20.sp,
                         fontWeight = FontWeight.SemiBold,
-                        maxLines = if (notEnabled) 2 else 1,
+                        maxLines = if (needPick) 2 else 1,
                         overflow = TextOverflow.Ellipsis,
-                        color = if (notEnabled) Color(0xFF3C4043) else Color.White,
+                        color = if (needPick) Color(0xFF3C4043) else Color.White,
                     )
                 }
                 // 轮19.15：第三行 = 当前方案

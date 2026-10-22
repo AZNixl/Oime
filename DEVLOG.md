@@ -3741,3 +3741,25 @@ https://www.alibabacloud.com/help/zh/model-studio/qwen-asr-realtime-interaction-
 
 ## 三、验证
 - `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · **vc193 / 1.0.8** ✓
+
+# 轮19.194：修 3 点（弹窗风格 / 标题用定稿 / 状态检测实时性）
+
+## 一、用户反馈
+1. 弹窗 UI 风格没对齐 App（Material 默认蓝按钮 ✗）→ 按 App 风格重画 ✓
+2. **弹窗标题被我擅自改了** ✗ → 必须用「**选择 ○输入法作为默认输入法**」✓
+3. 选了输入法后大方块**状态没实时变** ✗，再进设置又弹窗 ✗
+
+## 二、修复
+1. **弹窗自绘**（`androidx.compose.ui.window.Dialog` ✓）：
+   · 背景 `#F3F4F6` + 20dp 圆角 ✓ 标题 17sp SemiBold `#1A1C1E` ✓ 正文 13sp `#5F6368` ✓
+   · 按钮：`取消`（灰文本）/ `切换输入法`（主色文本）/ `去启用`（主色填充 + 10dp 圆角）✓
+   · **标题固定「选择 ○输入法作为默认输入法」** ✓（按状态不同只变正文 ✓）
+2. **检测换 `InputMethodManager`** ✓（`Secure` 读取在部分 ROM 不可靠 ✗）：
+   · `enabledInputMethodList.any { it.packageName == packageName }` ⇒ 是否启用 ✓
+   · `currentInputMethodInfo?.packageName == packageName` ⇒ 是否已是默认 ✓
+   · 轮询 **1.2s** ✓ ⇒ 切完回来立刻变 ✓
+3. **三态**：未启用 → 卡片「选择 ○输入法作为默认输入法」+ 弹窗只给「去启用」✓；
+   已启用但非默认 → 同一标题 + 弹窗给「切换输入法」✓；已启用且默认 → 「运行正常」✓ 不弹 ✓
+
+## 三、验证
+- `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · **vc194 / 1.0.8** ✓
