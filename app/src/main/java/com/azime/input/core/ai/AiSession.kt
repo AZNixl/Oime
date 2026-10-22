@@ -31,6 +31,45 @@ object AiSession {
     @Volatile var polishStyle: Int = 0              // 0=正式 1=口语 2=简短
     val polishStyles = listOf("正式", "口语", "简短")
 
+    /**
+     * 轮19.203：**条内真编辑**（豆包同款 ✓）
+     * · 有光标/选区 ✓ 可点选、可删中间字 ✓ 改完触发重译 ✓
+     * · 键盘按键由 Service 路由到这里（IME 的键本来只写 App 输入框 ✗）
+     */
+    @Volatile var edit: androidx.compose.ui.text.input.TextFieldValue =
+        androidx.compose.ui.text.input.TextFieldValue("")
+
+    /** 是否处于「条内输入」模式（点过条内框 ✓）。 */
+    @Volatile var editing: Boolean = false
+
+    fun insertAtCursor(s: String) {
+        val v = edit
+        val start = minOf(v.selection.start, v.selection.end).coerceIn(0, v.text.length)
+        val end = maxOf(v.selection.start, v.selection.end).coerceIn(0, v.text.length)
+        val newText = v.text.substring(0, start) + s + v.text.substring(end)
+        val pos = (start + s.length).coerceIn(0, newText.length)
+        edit = androidx.compose.ui.text.input.TextFieldValue(newText, androidx.compose.ui.text.TextRange(pos))
+    }
+
+    fun backspaceAtCursor() {
+        val v = edit
+        val start = minOf(v.selection.start, v.selection.end).coerceIn(0, v.text.length)
+        val end = maxOf(v.selection.start, v.selection.end).coerceIn(0, v.text.length)
+        if (start != end) {
+            edit = androidx.compose.ui.text.input.TextFieldValue(
+                v.text.substring(0, start) + v.text.substring(end),
+                androidx.compose.ui.text.TextRange(start),
+            )
+        } else if (start > 0) {
+            // 按"码点"删 ✓（emoji 不会被删半个 ✓）
+            val prev = v.text.offsetByCodePoints(start, -1).coerceAtLeast(0)
+            edit = androidx.compose.ui.text.input.TextFieldValue(
+                v.text.substring(0, prev) + v.text.substring(start),
+                androidx.compose.ui.text.TextRange(prev),
+            )
+        }
+    }
+
     /** 条内显示的**原文**（用户输入的中文 ✓ 累积 ✓）。 */
     @Volatile var buffer: String = ""
     /** 最近一次译好的**结果**（确定时上屏 ✓）。 */
@@ -38,7 +77,7 @@ object AiSession {
 
     /** 取结果上屏 ✓（没有结果就用原文 ✓）并清空 ✓。 */
     fun takeResult(): String {
-        val out = result.ifBlank { buffer }
+        val out = result.ifBlank { edit.text.ifBlank { buffer } }
         buffer = ""
         result = ""
         return out
@@ -53,6 +92,8 @@ object AiSession {
 
     fun turnOff() {
         mode = Mode.OFF
+        editing = false
+        edit = androidx.compose.ui.text.input.TextFieldValue("")
         buffer = ""
         result = ""
         status = ""

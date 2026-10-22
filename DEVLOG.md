@@ -3875,3 +3875,39 @@ https://www.alibabacloud.com/help/zh/model-studio/qwen-asr-realtime-interaction-
 
 ## 二、验证
 - `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · **vc200 / 1.0.8** ✓
+
+# 轮19.201：AI 弹窗选项放大 + 真机自动化测试
+
+## 一、自动化测试（adb input + 截图）
+| 用例 | 结果 |
+|---|---|
+| 点 ✕ | ✅ AI 条消失、候选行恢复剪贴板/○/铅笔 |
+| 长按 123（符号键） | ✅ 弹出新 5 项（翻译/续写/润色/解释/对话）|
+| 脚本点「翻译」 | ⚠️ 点偏（弹窗项点击区域偏小）⇒ 已把项 padding 9/7 → **14/12**、字号 12→14 ✓ |
+
+## 二、样式
+- 弹窗项放大 ✓（更容易点 ✓）
+- `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · **vc201 / 1.0.8** ✓
+
+# 轮19.202/19.203：AI 条改成**真输入框**（豆包 B 方案）
+
+## 一、用户确认（关键）
+豆包实测：条内**有光标竖线** ✓ 能**选中/删除中间字** ✓ 改字后英文**跟随变化** ✓
+⇒ 豆包用的是 **B：IME 内的真输入框 + 按键路由**（不是只读镜像 ✗）
+
+## 二、实现（vc202）
+1. `AiSession` 增 **`edit: TextFieldValue`**（文本 + 光标/选区 ✓）+ `editing` 标志 ✓
+   · `insertAtCursor(s)` ✓（在选区处插入 ✓）
+   · `backspaceAtCursor()` ✓（有选区删选区 ✓ 否则按**码点**删 ✓ 不劈 emoji ✓）
+2. AI 条中间改成 **`BasicTextField`** ✓（真光标 ✓ 可点选 ✓ 单选一行 ✓）
+3. **按键路由**（`AZimeService`）✓：
+   · `CommitText` 且在编辑模式 ⇒ `insertAtCursor` ✓（**不再写 App** ✗）
+   · `Backspace` 且在编辑模式 ⇒ `backspaceAtCursor` ✓
+   · 两者都触发 **防抖重译** ✓
+4. **防抖重译** `scheduleAiEditTranslate()` ✓：600ms ✓ 取 `edit.text` 整段重译 ✓ → `result` ✓
+   · 日志 `AI edit translate ok=… src=… → …` ✓
+5. 「确定」= 插入译文 ✓（`takeResult()`：result → edit.text → buffer 兜底 ✓）
+
+## 三、验证
+- `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · **vc202 / 1.0.8** ✓
+- 待真机：点条内框 → 打字 → 候选上屏**进条内** ✓ → 点中间删字 ✓ → 英文跟随 ✓ → 确定插入 ✓

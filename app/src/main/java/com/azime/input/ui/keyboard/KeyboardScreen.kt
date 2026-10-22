@@ -207,6 +207,9 @@ sealed interface KeyAction {
     data class SetToolbarItems(val ids: List<String>) : KeyAction
     /** 键盘 UI 内部：切页（main/symbols/numpad/emoji），不经 Service。 */
     data class SwitchPage(val page: String) : KeyAction
+    /** 轮19.203：AI 条内文本被编辑（触发重译 ✓）。 */
+    object AiEditChanged : KeyAction
+
     /** 更多候选面板开关。 */
     data object ToggleCandidatePanel : KeyAction
     /** 候选上一页（PageUp keysym 0xFF54）。 */
@@ -618,7 +621,7 @@ fun AzimeKeyboardScreen(
                         }
                     }
                     Spacer(Modifier.width(8.dp))
-                    // 中：原文框（显示当前待译中文 ✓ 可清空 ✓）
+                    // 中：**真输入框**（豆包同款 ✓ 有光标/选区 ✓ 可删中间字 ✓）
                     Box(
                         modifier = Modifier
                             .weight(1f)
@@ -627,19 +630,31 @@ fun AzimeKeyboardScreen(
                             .padding(horizontal = 12.dp),
                         contentAlignment = Alignment.CenterStart,
                     ) {
-                        // 轮19.200：**镜像正在输入的中文**（已提交 buffer + 首选候选 ✓）
-                        // （IME 里键盘输入永远进 App 输入框 ✗ 条内只能"显示"✓ 不能真正编辑 ✗）
-                        val typing = (state.candidates.firstOrNull()?.text ?: "")
-                        val shown = ai.buffer + typing
-                        Text(
-                            shown.ifBlank {
+                        if (ai.edit.text.isEmpty()) {
+                            Text(
                                 if (ai.mode == com.azime.input.core.ai.AiSession.Mode.TRANSLATE)
                                     "输入中文，实时译成" + if (ai.reverse) "中文" else ai.targetLang
-                                else ai.mode.label + "：选中文字或直接输入"
+                                else ai.mode.label + "：选中文字或直接输入",
+                                fontSize = 13.sp, color = Color(0xFF9AA0A6), maxLines = 1,
+                            )
+                        }
+                        androidx.compose.foundation.text.BasicTextField(
+                            value = ai.edit,
+                            onValueChange = { v ->
+                                ai.edit = v
+                                ai.editing = true
+                                onAction(KeyAction.AiEditChanged)
                             },
-                            fontSize = 13.sp,
-                            color = if (shown.isBlank()) Color(0xFF9AA0A6) else Color(0xFF202124),
-                            maxLines = 1,
+                            singleLine = true,
+                            textStyle = androidx.compose.ui.text.TextStyle(
+                                fontSize = 13.sp, color = Color(0xFF202124),
+                            ),
+                            cursorBrush = androidx.compose.ui.graphics.SolidColor(c.accentActive),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .pointerInput(Unit) {
+                                    detectTapGestures { ai.editing = true }
+                                },
                         )
                     }
                     Spacer(Modifier.width(6.dp))
@@ -647,8 +662,17 @@ fun AzimeKeyboardScreen(
                     Text(
                         "✕", fontSize = 13.sp, color = cAi.subText,
                         modifier = Modifier
-                            .clickable { ai.buffer = ""; ai.turnOff() }
+                            .clickable { ai.buffer = ""; ai.result = ""; ai.turnOff() }
                             .padding(horizontal = 6.dp, vertical = 6.dp),
+                    )
+                    // 确定 = **插入译文** ✓（豆包同款 ✓ 用户截图里的「确定」✓）
+                    Text(
+                        "确定",
+                        fontSize = 13.sp, color = cAi.text,
+                        modifier = Modifier
+                            .background(cAi.funcKeyBg, RoundedCornerShape(16.dp))
+                            .clickable { onAction(KeyAction.CommitText(ai.takeResult())) }
+                            .padding(horizontal = 14.dp, vertical = 7.dp),
                     )
 
                 }

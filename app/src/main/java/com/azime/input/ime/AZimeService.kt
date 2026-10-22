@@ -852,7 +852,17 @@ class AZimeService : InputMethodService() {
                     refreshState()
                 }
                 KeyAction.Shift -> uiState.update { it.copy(shiftOn = !it.shiftOn, capsOn = false) }
-                KeyAction.Backspace -> handleBackspace()
+                KeyAction.Backspace -> {
+                    if (com.azime.input.core.ai.AiSession.editing &&
+                        com.azime.input.core.ai.AiSession.isActive()
+                    ) {
+                        com.azime.input.core.ai.AiSession.backspaceAtCursor()
+                        scheduleAiEditTranslate()
+                        refreshState()
+                    } else {
+                        handleBackspace()
+                    }
+                }
                 KeyAction.Space -> {
                     // 抄 xime.az ImeKeyRouter "space"：以引擎实时组词状态（inputText）
                     // 为准，非组词状态一律直出空格。不依赖 UI state（残留态曾吞空格）：
@@ -927,6 +937,14 @@ class AZimeService : InputMethodService() {
                 }
                 is KeyAction.CommitText -> {
                     val t = action.text
+                    // 轮19.203：**条内编辑模式** ⇒ 键打到 AI 条里 ✓（豆包同款 ✓）
+                    if (com.azime.input.core.ai.AiSession.editing &&
+                        com.azime.input.core.ai.AiSession.isActive()
+                    ) {
+                        com.azime.input.core.ai.AiSession.insertAtCursor(t)
+                        scheduleAiEditTranslate()
+                        refreshState()
+                    } else {
                     // 轮19.195：**实时翻译** —— 中文先入队 ✓ 译完按序写入 ✓（失败回落原文 ✓）
                     val translating = t.isNotEmpty() &&
                         com.azime.input.core.ai.AiSession.mode == com.azime.input.core.ai.AiSession.Mode.TRANSLATE &&
@@ -942,6 +960,10 @@ class AZimeService : InputMethodService() {
                         uiState.update { it.copy(hwCandidates = emptyList(), hwClearSignal = it.hwClearSignal + 1) }
                         refreshState()
                     }
+                    }
+                }
+                is KeyAction.AiEditChanged -> {
+                    scheduleAiEditTranslate()
                 }
                 is KeyAction.ToggleSwitch -> {
                     RimeManager.setOption(action.name, !RimeManager.getOption(action.name))
@@ -1781,6 +1803,35 @@ class AZimeService : InputMethodService() {
         }
     }
 
+    // ── 轮19.203：AI 条内编辑 ⇒ 防抖重译（600ms ✓ 只译最后状态 ✓）────
+    private var aiEditJob: kotlinx.coroutines.Job? = null
+
+    private fun scheduleAiEditTranslate() {
+        aiEditJob?.cancel()
+        aiEditJob = scope.launch {
+            kotlinx.coroutines.delay(600)
+            val src = com.azime.input.core.ai.AiSession.edit.text
+            if (src.isBlank()) {
+                com.azime.input.core.ai.AiSession.result = ""
+                return@launch
+            }
+            val sys = com.azime.input.core.ai.AiSession.systemPrompt()
+            val r = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                com.azime.input.core.ai.AiManager.chat(this@AZimeService, sys, src)
+            }
+            val out = if (r.ok && r.text.isNotBlank()) {
+                com.azime.input.core.ai.AiSession.normalizePunctuation(
+                    r.text, if (com.azime.input.core.ai.AiSession.reverse) "简体中文"
+                    else com.azime.input.core.ai.AiSession.targetLang,
+                )
+            } else ""
+            com.azime.input.core.ai.AiSession.result = out
+            com.azime.input.core.diag.Diag.log(
+                "AI", "edit translate ok=${r.ok} src=${src.take(12)} → ${out.take(24)}",
+            )
+        }
+    }
+
     // ── 轮19.195：实时翻译队列（按提交顺序 ✓ 不吞字 ✓）────────────
     private val aiQueue = java.util.concurrent.ConcurrentLinkedQueue<String>()
     @Volatile private var aiWorker = false
@@ -1809,13 +1860,9 @@ class AZimeService : InputMethodService() {
                 com.azime.input.core.diag.Diag.log(
                     "AI", "live translate ok=${r.ok} ${next.take(10)} → ${translated.take(24)} err=${r.error.take(40)}",
                 )
-                // 轮19.199：**去掉确定键 ⇒ 译完立即写入文本框** ✓（失败回落原文 ✓）
+                // 轮19.202：**回到豆包式流程** —— 译入 result ✓ 用户点「确定(插入)」才上屏 ✓
                 val out = translated.ifBlank { next }
-                com.azime.input.core.ai.AiSession.result = out
-                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                    currentInputConnection?.commitText(out, 1)
-                    pushUndo(out)
-                }
+                com.azime.input.core.ai.AiSession.result += out
                 com.azime.input.core.ai.AiSession.pending = aiQueue.size
             }
             aiWorker = false
