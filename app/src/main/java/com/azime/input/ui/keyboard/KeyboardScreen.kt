@@ -645,15 +645,7 @@ fun AzimeKeyboardScreen(
                             .clickable { ai.buffer = ""; ai.turnOff() }
                             .padding(horizontal = 6.dp, vertical = 6.dp),
                     )
-                    // 确定 ⇒ 把译文/结果上屏 ✓
-                    Text(
-                        "确定",
-                        fontSize = 13.sp, color = cAi.text,
-                        modifier = Modifier
-                            .background(cAi.funcKeyBg, RoundedCornerShape(16.dp))
-                            .clickable { onAction(KeyAction.CommitText(ai.takeResult())) }
-                            .padding(horizontal = 14.dp, vertical = 7.dp),
-                    )
+
                 }
             }
             ToolbarRow(
@@ -1344,6 +1336,59 @@ private fun ToolbarRow(
                 contentAlignment = Alignment.Center,
             ) {
                 Text("✕", fontSize = 15.sp, color = c.subText)
+            }
+        }
+        // 轮19.198：AI 激活 ⇒ **候选行整行让给 AI 键** ✓（覆盖 ○ 圆环/剪贴板等 ✓）
+        com.azime.input.core.ai.AiSession.isActive() -> {
+            val ai = com.azime.input.core.ai.AiSession
+            var langOpen by remember { mutableStateOf(false) }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(barHeight)
+                    .background(c.bg),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                Box {
+                    val label = when (ai.mode) {
+                        com.azime.input.core.ai.AiSession.Mode.TRANSLATE ->
+                            if (ai.reverse) "英 - 中" else "中 - ${ai.targetLang.take(1)}"
+                        else -> ai.mode.label
+                    }
+                    Text(
+                        label,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = c.accentActive,
+                        modifier = Modifier
+                            .pointerInput(Unit) {
+                                detectTapGestures(
+                                    onTap = {
+                                        // 翻译：切方向 ✓ 其它模式：切风格/无操作 ✓
+                                        if (ai.mode == com.azime.input.core.ai.AiSession.Mode.TRANSLATE) {
+                                            ai.reverse = !ai.reverse
+                                        } else if (ai.mode == com.azime.input.core.ai.AiSession.Mode.POLISH) {
+                                            ai.polishStyle = (ai.polishStyle + 1) %
+                                                com.azime.input.core.ai.AiSession.polishStyles.size
+                                        }
+                                    },
+                                    onLongPress = { langOpen = true },
+                                )
+                            }
+                            .padding(horizontal = 14.dp, vertical = 6.dp),
+                    )
+                    androidx.compose.material3.DropdownMenu(
+                        expanded = langOpen, onDismissRequest = { langOpen = false },
+                    ) {
+                        com.azime.input.core.ai.AiSession.LANGUAGES.forEach { lg ->
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = { Text(lg) },
+                                onClick = { ai.targetLang = lg; ai.reverse = false; langOpen = false },
+                            )
+                        }
+                    }
+                }
             }
         }
         else -> {
