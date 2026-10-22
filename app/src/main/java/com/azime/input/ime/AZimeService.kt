@@ -843,10 +843,12 @@ class AZimeService : InputMethodService() {
                         }
                     }
                     val ic = currentInputConnection
-                    ic?.commitText(text, 1)
+                    commitToTarget(text)          // 轮19.205：AI 条编辑态 ⇒ 进条内 ✓
                     // 成对括号：上屏后光标自动居中（不依赖 {Left}）
                     val bm = bracketMiddleMove(text)
-                    if (bm > 0 && ic != null) moveCursorByConnection(ic, -bm)
+                    if (bm > 0 && ic != null && !com.azime.input.core.ai.AiSession.editing) {
+                        moveCursorByConnection(ic, -bm)
+                    }
                     pushUndo(text)
                     uiState.update { it.copy(shiftOn = false) }
                     refreshState()
@@ -1010,8 +1012,8 @@ class AZimeService : InputMethodService() {
                         is ResolvedAction.Commit -> {
                             val ic = currentInputConnection
                             if (ic != null) {
+                                commitToTarget(resolved.text)   // 轮19.205 ✓
                                 ic.beginBatchEdit()
-                                ic.commitText(resolved.text, 1)
                                 ic.endBatchEdit()
                                 // 轮19.19：**光标回退必须在 batch 之外做**——batch 内
                                 // getExtractedText 常返回提交前的过期快照，导致 setSelection
@@ -1817,6 +1819,22 @@ class AZimeService : InputMethodService() {
                 statusMessage = if (RimeManager.isMaintaining()) "正在部署词典，请稍候…" else "",
             )
         }
+    }
+
+    /**
+     * 轮19.205：**统一上屏闸门** —— AI 条处于编辑态时，所有上屏改投条内 ✓
+     * （Rime 提交不走 `KeyAction.CommitText` ✗ 之前只拦菜单 ⇒ 打字进不去条里 ✗）
+     */
+    private fun commitToTarget(text: String) {
+        if (text.isEmpty()) return
+        val ai = com.azime.input.core.ai.AiSession
+        if (ai.editing && ai.isActive()) {
+            ai.insertAtCursor(text)
+            scheduleAiEditTranslate()
+            // 条自身 300ms 轮询刷新 ✓ 这里不调 suspend 的 refreshState() ✗
+            return
+        }
+        currentInputConnection?.commitText(text, 1)
     }
 
     // ── 轮19.203：AI 条内编辑 ⇒ 防抖重译（600ms ✓ 只译最后状态 ✓）────

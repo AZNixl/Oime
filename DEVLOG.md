@@ -3937,3 +3937,25 @@ https://www.alibabacloud.com/help/zh/model-studio/qwen-asr-realtime-interaction-
 ## 三、注意
 - 译文现在是 **composing（可能带下划线）** ✓ 这是设计行为 ✓ 点确定才固化 ✓
 - 密码/验证码等敏感框：豆包报告建议**上层拦截** ✓ 我们尚未做 ✗（待办）
+
+# 轮19.205：修「条内光标有了但打不进字」
+
+## 一、根因
+拼音上屏**不走** `KeyAction.CommitText` ✗ —— 它走 Rime 提交回调里的
+`ic?.commitText(text, 1)` ✗ ⇒ 我上一版只拦了菜单/候选那一路 ⇒ **打字永远进不了条内** ✗
+
+## 二、修复
+新增**统一上屏闸门** `commitToTarget(text)` ✓：
+```
+条处于编辑态 → insertAtCursor（进条内 ✓）
+否则         → currentInputConnection.commitText（照常 ✓）
+```
+接上三处关键提交：
+1. **Rime 提交**（主路径，中文上屏 ✓）
+2. `KeyAction.CommitText`（菜单/候选 ✓）
+3. `ResolvedAction.Commit`（内置动作 ✓）
+
+（`refreshState()` 是 suspend ✗ ⇒ 闸门内不调 ✓ 由条自身 300ms 轮询刷新 ✓）
+
+## 三、验证
+- `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · **vc204 / 1.0.8** ✓
