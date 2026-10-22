@@ -509,12 +509,6 @@ fun SettingsScreen(
                                 style = MaterialTheme.typography.bodyMedium,
                                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp),
                             )
-                            Text(
-                                "长按符号键后进入哪个页面（点图选择）",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp),
-                            )
                             SymbolKeyboardPicker(
                                 onPick = { page ->
                                     com.azime.input.core.keyboard.KeyboardManager.setPreferredPage(page)
@@ -1120,16 +1114,35 @@ private fun StatusCard(fillWidth: Boolean = false) {
     val context = LocalContext.current
     var ready by remember { mutableStateOf(false) }
     var schema by remember { mutableStateOf("") }
-    // 反馈轮10：输入法未启用时大方块灰色显示「未启用」，点击跳转系统启用页
-    val imeEnabled = remember {
+    // 轮19.193：**启用检测修复**
+    // 原来：remember{} 只算一次 ✗ + 只查 DEFAULT_INPUT_METHOD ✗ ⇒ 中途启用后仍显示"未启用" ✗
+    // 现在：读 **ENABLED_INPUT_METHODS**（是否被启用）+ 每 2s 刷新一次 ✓
+    var imeTick by remember { mutableStateOf(0) }
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(2000)
+            imeTick++
+        }
+    }
+    val imeEnabled = remember(imeTick) {
         runCatching {
-            val current = android.provider.Settings.Secure.getString(
-                context.contentResolver, android.provider.Settings.Secure.DEFAULT_INPUT_METHOD,
+            val enabled = android.provider.Settings.Secure.getString(
+                context.contentResolver,
+                android.provider.Settings.Secure.ENABLED_INPUT_METHODS,
             ) ?: ""
-            current.startsWith(context.packageName)
+            enabled.contains(context.packageName)
         }.getOrDefault(false)
     }
+    var showImeDialog by remember { mutableStateOf(false) }
     val notEnabled = !imeEnabled
+    // 轮19.193：**进页面时若检出未启用 ⇒ 自动弹一次**（用户要求 ✓ 一个会话只自动弹一次 ✓）
+    var autoShown by remember { mutableStateOf(false) }
+    androidx.compose.runtime.LaunchedEffect(notEnabled) {
+        if (notEnabled && !autoShown) {
+            autoShown = true
+            showImeDialog = true
+        }
+    }
 
     LaunchedEffect(Unit) {
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
@@ -1145,10 +1158,43 @@ private fun StatusCard(fillWidth: Boolean = false) {
         ),
         shape = RoundedCornerShape(16.dp),
         modifier = (
-            if (notEnabled) Modifier else Modifier
+            if (notEnabled) Modifier.clickable { showImeDialog = true } else Modifier
         ).let { if (fillWidth) it.fillMaxHeight() else it },
     ) {
         Box(Modifier.fillMaxWidth()) {
+            // 轮19.193：**未启用弹窗**（真 Dialog ✓ 覆盖整个窗口 ✓ 不是卡片内嵌 ✗）
+            if (showImeDialog) {
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = { showImeDialog = false },
+                    title = { Text("启用或选择 ○输入法") },
+                    text = { Text("可以先去系统设置启用，或直接切到 ○输入法。") },
+                    confirmButton = {
+                        androidx.compose.material3.TextButton(onClick = {
+                            showImeDialog = false
+                            runCatching {
+                                context.startActivity(
+                                    Intent(android.provider.Settings.ACTION_INPUT_METHOD_SETTINGS),
+                                )
+                            }
+                        }) { Text("去启用") }
+                    },
+                    dismissButton = {
+                        Row {
+                            androidx.compose.material3.TextButton(onClick = {
+                                showImeDialog = false
+                                runCatching {
+                                    val imm = context.getSystemService(android.content.Context.INPUT_METHOD_SERVICE)
+                                        as android.view.inputmethod.InputMethodManager
+                                    imm.showInputMethodPicker()
+                                }
+                            }) { Text("切换输入法") }
+                            androidx.compose.material3.TextButton(onClick = { showImeDialog = false }) {
+                                Text("取消")
+                            }
+                        }
+                    },
+                )
+            }
             // 轮19.47：右缘放一个**四分之一圆环**做背景装饰；
             // 已启用 = 白色，未启用 = 黑色（用户要求）
             androidx.compose.foundation.Canvas(Modifier.matchParentSize()) {
@@ -1188,51 +1234,17 @@ private fun StatusCard(fillWidth: Boolean = false) {
                     // 轮19.15：第二行只放**运行状态**（方案挪到第三行）
                     Text(
                         text = when {
-                            notEnabled -> "未启用 · 去启用 / 切换输入法"
+                            // 轮19.193：用户定稿文案 ✓（不再有下面那行说明 ✗）
+                            notEnabled -> "选择 ○输入法作为默认输入法"
                             ready -> "运行正常"
                             else -> "引擎未就绪 / 首次部署中…"
                         },
-                        // 轮19.71：按用户要求**改回白色 + 放大**（19.70 的回退撤销）
-                        fontSize = 20.sp,
+                        fontSize = if (notEnabled) 16.sp else 20.sp,
                         fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
+                        maxLines = if (notEnabled) 2 else 1,
                         overflow = TextOverflow.Ellipsis,
                         color = if (notEnabled) Color(0xFF3C4043) else Color.White,
                     )
-                }
-                // 轮19.190：未启用时给两个动作 —— **去启用** + **切换输入法**（用户要求 ✓）
-                if (notEnabled) {
-                    Spacer(Modifier.height(10.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(
-                            "去启用",
-                            fontSize = 13.sp, color = Color(0xFF1A1C1E),
-                            modifier = Modifier
-                                .background(Color(0xFFE8EAED), RoundedCornerShape(8.dp))
-                                .clickable {
-                                    runCatching {
-                                        context.startActivity(
-                                            Intent(android.provider.Settings.ACTION_INPUT_METHOD_SETTINGS),
-                                        )
-                                    }
-                                }
-                                .padding(horizontal = 12.dp, vertical = 6.dp),
-                        )
-                        Text(
-                            "切换输入法",
-                            fontSize = 13.sp, color = Color(0xFF1A1C1E),
-                            modifier = Modifier
-                                .background(Color(0xFFE8EAED), RoundedCornerShape(8.dp))
-                                .clickable {
-                                    runCatching {
-                                        val imm = context.getSystemService(android.content.Context.INPUT_METHOD_SERVICE)
-                                            as android.view.inputmethod.InputMethodManager
-                                        imm.showInputMethodPicker()
-                                    }
-                                }
-                                .padding(horizontal = 12.dp, vertical = 6.dp),
-                        )
-                    }
                 }
                 // 轮19.15：第三行 = 当前方案
                 if (ready && schema.isNotBlank()) {
@@ -3074,25 +3086,56 @@ private fun SymbolKeyboardPicker(onPick: (String) -> Unit) {
     val symBg = MaterialTheme.colorScheme.surfaceVariant
     val symFg = MaterialTheme.colorScheme.onSurfaceVariant
 
-@Composable
+    @Composable
     fun previewSymbols(selected: Boolean) {
-        // 26 键符号：3 行 × 10
+        // 轮19.193：**4 行 × 6 键**（等宽、不裁切 ✓ 用户已确认排布 ✓）
         val rows = listOf(
-            listOf("~", "!", "@", "#", "$", "%", "^", "&", "*", "("),
-            listOf("-", "_", "=", "+", "[", "]", "{", "}", "%", "|"),
-            listOf(";", ":", "'", "\"", ",", ".", "/", "?", "<", ">"),
+            listOf("~", "!", "@", "#", "$", "%"),
+            listOf("-", "_", "=", "+", "[", "]"),
+            listOf(";", ":", "'", "`", ",", "."),
         )
-        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            rows.forEach { row ->
-                Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                    row.forEach { ch ->
+        Column(
+            modifier = Modifier.fillMaxWidth().height(104.dp),
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                rows.forEach { row ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        row.forEach { ch ->
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f).height(18.dp)
+                                    .background(Color.White, androidx.compose.foundation.shape.RoundedCornerShape(4.dp)),
+                                contentAlignment = androidx.compose.ui.Alignment.Center,
+                            ) {
+                                Text(ch, fontSize = 9.sp, color = Color(0xFF202124), maxLines = 1)
+                            }
+                        }
+                    }
+                }
+                // 第 4 行：123 / 切换 / ? / ⌫（其中 123 用主色，与真键盘一致 ✓）
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    listOf("123" to true, "/" to false, "?" to false, "⌫" to false).forEach { (label, accent) ->
                         Box(
                             modifier = Modifier
-                                .width(20.dp).height(22.dp)
-                                .background(symBg, androidx.compose.foundation.shape.RoundedCornerShape(3.dp)),
+                                .weight(if (accent) 1.6f else 1f).height(18.dp)
+                                .background(
+                                    if (accent) MaterialTheme.colorScheme.primary else Color.White,
+                                    androidx.compose.foundation.shape.RoundedCornerShape(4.dp),
+                                ),
                             contentAlignment = androidx.compose.ui.Alignment.Center,
                         ) {
-                            Text(ch, fontSize = 9.sp, color = symFg, maxLines = 1)
+                            Text(
+                                label, fontSize = 9.sp,
+                                color = if (accent) Color.White else Color(0xFF202124),
+                                maxLines = 1,
+                            )
                         }
                     }
                 }
@@ -3100,19 +3143,35 @@ private fun SymbolKeyboardPicker(onPick: (String) -> Unit) {
         }
     }
 
-@Composable
+    @Composable
     fun previewNumpad(selected: Boolean) {
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            listOf(listOf("1", "2", "3"), listOf("4", "5", "6"), listOf("7", "8", "9")).forEach { row ->
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    row.forEach { n ->
-                        Box(
-                            modifier = Modifier
-                                .width(28.dp).height(26.dp)
-                                .background(symBg, androidx.compose.foundation.shape.RoundedCornerShape(4.dp)),
-                            contentAlignment = androidx.compose.ui.Alignment.Center,
-                        ) {
-                            Text(n, fontSize = 13.sp, color = symFg, fontWeight = FontWeight.Medium)
+        Column(
+            modifier = Modifier.fillMaxWidth().height(104.dp),
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                listOf(
+                    listOf("1", "2", "3"),
+                    listOf("4", "5", "6"),
+                    listOf("7", "8", "9"),
+                    listOf("0", ".", "⌫"),
+                ).forEach { row ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        row.forEach { n ->
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f).height(18.dp)
+                                    .background(Color.White, androidx.compose.foundation.shape.RoundedCornerShape(4.dp)),
+                                contentAlignment = androidx.compose.ui.Alignment.Center,
+                            ) {
+                                Text(
+                                    n, fontSize = if (n.length > 1) 9.sp else 11.sp,
+                                    color = Color(0xFF202124), fontWeight = FontWeight.Medium,
+                                )
+                            }
                         }
                     }
                 }
@@ -3130,10 +3189,11 @@ private fun SymbolKeyboardPicker(onPick: (String) -> Unit) {
                 modifier = Modifier
                     .weight(1f)
                     .border(
-                        if (sel) 1.5.dp else 0.5.dp,
-                        if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
-                        androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+                        if (sel) 2.dp else 1.dp,
+                        if (sel) MaterialTheme.colorScheme.primary else Color(0xFFD3D1C7),
+                        androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
                     )
+                    .background(Color(0xFFE9EBEE), androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
                     .clickable {
                         cur = page
                         onPick(page)
