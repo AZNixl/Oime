@@ -3808,3 +3808,22 @@ https://www.alibabacloud.com/help/zh/model-studio/qwen-asr-realtime-interaction-
 
 ## 三、验证
 - `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · **vc196 / 1.0.8** ✓
+
+# 轮19.197：修两处「上次没生效」——长按 popup 重做 / AI 工具真删掉
+
+## 一、用户指出（都对）
+1. 长按符号键呼出的还是**旧菜单**（含 整理/改写/总结 ✗），点「翻译」没反应 ✗
+   ⇒ 我上次只是把 vc190 的旧弹窗「恢复」了 ✗ 不是新功能 ✗
+2. ○ 菜单「AI 工具」**还在** ✗ —— 上次的删除脚本报错后我没复查 ✗
+
+## 二、修复（vc197，含验证）
+1. 长按 popup **重写成 5 项选择器** ✓：翻译 / 续写 / 润色 / 解释 / 对话
+   · 点击 = `AiSession.mode = 该项` ✓ 关闭 popup ✓ 触发振动 ✓ ⇒ AI 条立刻出现 ✓
+   · 不再调用旧的 `runAi(...)` ✗（这就是"点了没反应"的原因 ✗）
+2. **真正删除** ○ 菜单「AI 工具」项 + `aitools` 子页整块 ✓
+   · `grep -c '"AI 工具"|"aitools"'` = **0** ✓
+   · `grep -c SYS_CLIPBOARD` = **0** ✓
+
+## 三、验证
+- `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · **vc197 / 1.0.8** ✓
+- 教训：**改完必须 grep 验证 + 编译**（这次两步都做了 ✓）
