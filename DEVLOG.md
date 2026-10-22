@@ -3911,3 +3911,29 @@ https://www.alibabacloud.com/help/zh/model-studio/qwen-asr-realtime-interaction-
 ## 三、验证
 - `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · **vc202 / 1.0.8** ✓
 - 待真机：点条内框 → 打字 → 候选上屏**进条内** ✓ → 点中间删字 ✓ → 英文跟随 ✓ → 确定插入 ✓
+
+# 轮19.204：按豆包 v1.3.15 真实链路重做输出（报告已读 ✓）
+
+## 一、豆包真实链路（报告结论）
+```
+按键 → 原生虚拟缓冲（自绘，非 EditText）
+     → POST 翻译
+     → currentInputConnection.setComposingText(译文, 1)   ← 译文以 **preedit** 实时进 App
+     → 确定 ⇒ finishComposingText()                        ← 只结束组合（**不再 commitText** ✗）
+     → 取消 ⇒ setComposingText("",1) + finishComposingText()
+```
+
+## 二、我们的差距与修复（vc203）
+| 项 | 之前 | 现在 |
+|---|---|---|
+| 译文去向 | 只存 result ✓ 等确定 ✗ | **实时 `setComposingText(译文)`** 写进 App ✓ |
+| 确定 | `commitText(result)` ✗ | **`finishComposingText()`** ✓ |
+| 取消/✕ | 只关面板 ✗ | `setComposingText("")` + `finishComposingText()` ✓ |
+| 源文 | BasicTextField + 按键路由 ✓ | 保持 ✓（对应豆包的虚拟缓冲 ✓）|
+
+- 新增 `KeyAction.AiConfirm` / `KeyAction.AiCancel` ✓
+- `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · **vc203 / 1.0.8** ✓
+
+## 三、注意
+- 译文现在是 **composing（可能带下划线）** ✓ 这是设计行为 ✓ 点确定才固化 ✓
+- 密码/验证码等敏感框：豆包报告建议**上层拦截** ✓ 我们尚未做 ✗（待办）

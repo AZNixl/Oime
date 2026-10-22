@@ -965,6 +965,22 @@ class AZimeService : InputMethodService() {
                 is KeyAction.AiEditChanged -> {
                     scheduleAiEditTranslate()
                 }
+                // 轮19.204：豆包链路 —— 确定=结束组合 ✓ 取消=清空组合 ✓
+                is KeyAction.AiConfirm -> {
+                    runCatching { currentInputConnection?.finishComposingText() }
+                    com.azime.input.core.ai.AiSession.turnOff()
+                    refreshState()
+                }
+                is KeyAction.AiCancel -> {
+                    runCatching {
+                        currentInputConnection?.let { ic ->
+                            ic.setComposingText("", 1)
+                            ic.finishComposingText()
+                        }
+                    }
+                    com.azime.input.core.ai.AiSession.turnOff()
+                    refreshState()
+                }
                 is KeyAction.ToggleSwitch -> {
                     RimeManager.setOption(action.name, !RimeManager.getOption(action.name))
                     refreshState()
@@ -1829,6 +1845,18 @@ class AZimeService : InputMethodService() {
             com.azime.input.core.diag.Diag.log(
                 "AI", "edit translate ok=${r.ok} src=${src.take(12)} → ${out.take(24)}",
             )
+            // 轮19.204：**译文以 composing 实时写进宿主 App** ✓（豆包链路 ✓ 可被确定/取消）
+            if (com.azime.input.core.ai.AiSession.editing) {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    currentInputConnection?.let { ic ->
+                        runCatching {
+                            ic.beginBatchEdit()
+                            ic.setComposingText(out, 1)
+                            ic.endBatchEdit()
+                        }
+                    }
+                }
+            }
         }
     }
 

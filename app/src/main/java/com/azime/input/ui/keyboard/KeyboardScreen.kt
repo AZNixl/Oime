@@ -210,6 +210,10 @@ sealed interface KeyAction {
     /** 轮19.203：AI 条内文本被编辑（触发重译 ✓）。 */
     object AiEditChanged : KeyAction
 
+    /** 轮19.204：确定（结束组合 ✓）/ 取消（清组合 ✓）。 */
+    object AiConfirm : KeyAction
+    object AiCancel : KeyAction
+
     /** 更多候选面板开关。 */
     data object ToggleCandidatePanel : KeyAction
     /** 候选上一页（PageUp keysym 0xFF54）。 */
@@ -662,7 +666,7 @@ fun AzimeKeyboardScreen(
                     Text(
                         "✕", fontSize = 13.sp, color = cAi.subText,
                         modifier = Modifier
-                            .clickable { ai.buffer = ""; ai.result = ""; ai.turnOff() }
+                            .clickable { onAction(KeyAction.AiCancel) }
                             .padding(horizontal = 6.dp, vertical = 6.dp),
                     )
                     // 确定 = **插入译文** ✓（豆包同款 ✓ 用户截图里的「确定」✓）
@@ -671,7 +675,7 @@ fun AzimeKeyboardScreen(
                         fontSize = 13.sp, color = cAi.text,
                         modifier = Modifier
                             .background(cAi.funcKeyBg, RoundedCornerShape(16.dp))
-                            .clickable { onAction(KeyAction.CommitText(ai.takeResult())) }
+                            .clickable { onAction(KeyAction.AiConfirm) }
                             .padding(horizontal = 14.dp, vertical = 7.dp),
                     )
 
