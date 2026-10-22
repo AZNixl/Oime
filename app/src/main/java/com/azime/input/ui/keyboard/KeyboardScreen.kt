@@ -572,12 +572,13 @@ fun AzimeKeyboardScreen(
                 }
             }
             // 轮19.196：**AI / 翻译条**（独立一条 ✓ 语言键 + 原文框 + ✕ + 确定 ✓ 参考用户截图）
-            if (com.azime.input.core.ai.AiSession.isActive()) {
+            // 轮19.201：**tick 必须在条件之前** ✓ 否则 ✕ 关闭后不重组 ⇒ 界面不消失 ✗
+            var aiTick by remember { mutableStateOf(0) }
+            androidx.compose.runtime.LaunchedEffect(Unit) {
+                while (true) { kotlinx.coroutines.delay(300); aiTick++ }
+            }
+            if (com.azime.input.core.ai.AiSession.isActive() && aiTick >= 0) {
                 val ai = com.azime.input.core.ai.AiSession
-                var tick by remember { mutableStateOf(0) }
-                androidx.compose.runtime.LaunchedEffect(Unit) {
-                    while (true) { kotlinx.coroutines.delay(400); tick++ }
-                }
                 var langOpen by remember { mutableStateOf(false) }
                 val cAi = keyboardColors()
                 Row(
@@ -626,14 +627,18 @@ fun AzimeKeyboardScreen(
                             .padding(horizontal = 12.dp),
                         contentAlignment = Alignment.CenterStart,
                     ) {
+                        // 轮19.200：**镜像正在输入的中文**（已提交 buffer + 首选候选 ✓）
+                        // （IME 里键盘输入永远进 App 输入框 ✗ 条内只能"显示"✓ 不能真正编辑 ✗）
+                        val typing = (state.candidates.firstOrNull()?.text ?: "")
+                        val shown = ai.buffer + typing
                         Text(
-                            ai.buffer.ifBlank {
+                            shown.ifBlank {
                                 if (ai.mode == com.azime.input.core.ai.AiSession.Mode.TRANSLATE)
                                     "输入中文，实时译成" + if (ai.reverse) "中文" else ai.targetLang
                                 else ai.mode.label + "：选中文字或直接输入"
                             },
                             fontSize = 13.sp,
-                            color = if (ai.buffer.isBlank()) Color(0xFF9AA0A6) else Color(0xFF202124),
+                            color = if (shown.isBlank()) Color(0xFF9AA0A6) else Color(0xFF202124),
                             maxLines = 1,
                         )
                     }
@@ -1146,6 +1151,11 @@ private fun ToolbarRow(
         return
     }
 
+    // 轮19.201：AI 状态轮询（对象非 Compose State ✓ 必须靠 tick 驱动重组 ✓）
+    var aiTick by remember { mutableStateOf(0) }
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        while (true) { kotlinx.coroutines.delay(300); aiTick++ }
+    }
     // 剪贴板条：复制后常驻，点击直接上屏；打字/新复制时消亡（参考 复制自动添加到候选.lua）
     val clipFresh = state.clipText.isNotBlank()
 
@@ -1339,7 +1349,7 @@ private fun ToolbarRow(
             }
         }
         // 轮19.198：AI 激活 ⇒ **候选行整行让给 AI 键** ✓（覆盖 ○ 圆环/剪贴板等 ✓）
-        com.azime.input.core.ai.AiSession.isActive() -> {
+        (com.azime.input.core.ai.AiSession.isActive() && aiTick >= 0) -> {
             val ai = com.azime.input.core.ai.AiSession
             var langOpen by remember { mutableStateOf(false) }
             Row(

@@ -3863,3 +3863,15 @@ https://www.alibabacloud.com/help/zh/model-studio/qwen-asr-realtime-interaction-
   · `AiSession.result` 记录最近一次译文（供其它模式复用 ✓）
 - 不再需要 `takeResult()` 的"确认"路径 ✓（保留 API 备用 ✓）
 - `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · **vc199 / 1.0.8** ✓
+
+# 轮19.200/19.201：AI 条原文回显 + ✕ 关闭不生效修复
+
+## 一、问题
+1. 原文框"无法点选输入" ✗ —— IME 里键盘输入永远进 **App 输入框** ✗，条内无法成为真编辑框 ✗
+   → 改为**回显**：`buffer（已提交中文） + 首选候选` ✓ ⇒ 打字时条内能看到中文在增长 ✓
+2. **点 ✕ 关不掉** ✗ —— 根因：`AiSession` 是普通 object ✗ 不是 Compose State ✗，
+   `if (AiSession.isActive())` 在**父层**求值，而 tick 写在 `if` **内部** ✗ ⇒ turnOff 后永不重组 ✗
+   → tick 提到条件**之前** ✓（父层 + ToolbarRow 各一个，300ms ✓）并让条件引用 tick ✓
+
+## 二、验证
+- `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · **vc200 / 1.0.8** ✓
