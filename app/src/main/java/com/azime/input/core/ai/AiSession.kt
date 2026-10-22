@@ -31,6 +31,19 @@ object AiSession {
     @Volatile var polishStyle: Int = 0              // 0=正式 1=口语 2=简短
     val polishStyles = listOf("正式", "口语", "简短")
 
+    /** 条内显示的**原文**（用户输入的中文 ✓ 累积 ✓）。 */
+    @Volatile var buffer: String = ""
+    /** 最近一次译好的**结果**（确定时上屏 ✓）。 */
+    @Volatile var result: String = ""
+
+    /** 取结果上屏 ✓（没有结果就用原文 ✓）并清空 ✓。 */
+    fun takeResult(): String {
+        val out = result.ifBlank { buffer }
+        buffer = ""
+        result = ""
+        return out
+    }
+
     /** UI 用的状态文本（空 = 空闲）。 */
     @Volatile var status: String = ""
     /** 队列里还有多少段没译完（AI 栏显示「翻译中…」用 ✓）。 */
@@ -40,6 +53,8 @@ object AiSession {
 
     fun turnOff() {
         mode = Mode.OFF
+        buffer = ""
+        result = ""
         status = ""
         pending = 0
     }

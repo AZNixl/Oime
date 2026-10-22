@@ -571,32 +571,88 @@ fun AzimeKeyboardScreen(
                     )
                 }
             }
-            // 轮19.195：**AI 状态栏**（在工具栏正上方 ✓ 只在 AI 模式下出现）
+            // 轮19.196：**AI / 翻译条**（独立一条 ✓ 语言键 + 原文框 + ✕ + 确定 ✓ 参考用户截图）
             if (com.azime.input.core.ai.AiSession.isActive()) {
                 val ai = com.azime.input.core.ai.AiSession
                 var tick by remember { mutableStateOf(0) }
                 androidx.compose.runtime.LaunchedEffect(Unit) {
                     while (true) { kotlinx.coroutines.delay(400); tick++ }
                 }
+                var langOpen by remember { mutableStateOf(false) }
                 val cAi = keyboardColors()
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(KeyboardManager.toolbarHeightDp().dp * 0.72f)
                         .background(cAi.bg)
-                        .padding(horizontal = 10.dp),
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(
-                        "● " + ai.statusText(),
-                        fontSize = 12.sp, color = cAi.accentActive, maxLines = 1,
-                    )
-                    Spacer(Modifier.weight(1f))
-                    Text(
-                        "✕", fontSize = 14.sp, color = cAi.subText,
+                    // 左：语言/方向键（圆形 ✓ 点=切方向 / 长按=语言菜单 ✓）
+                    Box {
+                        Column(
+                            modifier = Modifier
+                                .size(34.dp)
+                                .background(cAi.funcKeyBg, androidx.compose.foundation.shape.CircleShape)
+                                .pointerInput(Unit) {
+                                    detectTapGestures(
+                                        onTap = { ai.reverse = !ai.reverse },
+                                        onLongPress = { langOpen = true },
+                                    )
+                                },
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center,
+                        ) {
+                            Text("中", fontSize = 10.sp, color = cAi.text)
+                            Text("A", fontSize = 9.sp, color = cAi.subText)
+                        }
+                        androidx.compose.material3.DropdownMenu(
+                            expanded = langOpen, onDismissRequest = { langOpen = false },
+                        ) {
+                            com.azime.input.core.ai.AiSession.LANGUAGES.forEach { lg ->
+                                androidx.compose.material3.DropdownMenuItem(
+                                    text = { Text(lg) },
+                                    onClick = { ai.targetLang = lg; ai.reverse = false; langOpen = false },
+                                )
+                            }
+                        }
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    // 中：原文框（显示当前待译中文 ✓ 可清空 ✓）
+                    Box(
                         modifier = Modifier
-                            .clickable { ai.turnOff() }
-                            .padding(horizontal = 8.dp, vertical = 2.dp),
+                            .weight(1f)
+                            .height(34.dp)
+                            .background(Color.White, RoundedCornerShape(17.dp))
+                            .padding(horizontal = 12.dp),
+                        contentAlignment = Alignment.CenterStart,
+                    ) {
+                        Text(
+                            ai.buffer.ifBlank {
+                                if (ai.mode == com.azime.input.core.ai.AiSession.Mode.TRANSLATE)
+                                    "输入中文，实时译成" + if (ai.reverse) "中文" else ai.targetLang
+                                else ai.mode.label + "：选中文字或直接输入"
+                            },
+                            fontSize = 13.sp,
+                            color = if (ai.buffer.isBlank()) Color(0xFF9AA0A6) else Color(0xFF202124),
+                            maxLines = 1,
+                        )
+                    }
+                    Spacer(Modifier.width(6.dp))
+                    // ✕ 清空 ✓
+                    Text(
+                        "✕", fontSize = 13.sp, color = cAi.subText,
+                        modifier = Modifier
+                            .clickable { ai.buffer = ""; ai.turnOff() }
+                            .padding(horizontal = 6.dp, vertical = 6.dp),
+                    )
+                    // 确定 ⇒ 把译文/结果上屏 ✓
+                    Text(
+                        "确定",
+                        fontSize = 13.sp, color = cAi.text,
+                        modifier = Modifier
+                            .background(cAi.funcKeyBg, RoundedCornerShape(16.dp))
+                            .clickable { onAction(KeyAction.CommitText(ai.takeResult())) }
+                            .padding(horizontal = 14.dp, vertical = 7.dp),
                     )
                 }
             }
@@ -1310,8 +1366,8 @@ private fun ToolbarRow(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     leftItems.forEach { id -> toolbarToolItem(id, state, onAction, c) { showSchemaMenu = true } }
-                    // 轮19.195：**AI 功能键**（候选栏内 ✓ 点击选功能；翻译时右侧语言键 ✓）
-                    AiToolbarKey(c)
+                    // 轮19.196：AI 键改为**可选**（定制工具栏里勾选 "ai" 才显示 ✓ 默认靠长按符号键 ✓）
+                    if (KeyboardManager.toolbarItems().contains("ai")) AiToolbarKey(c)
                 }
 
                 // ── ○ 菜单键（居中，圆环造型）：点击开菜单 / 长按语音 /
@@ -3869,7 +3925,7 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
                 }
             }
         }
-        if (false && showPageBubble) {
+        if (showPageBubble) {
             Popup(
                 alignment = Alignment.TopCenter,
                 offset = bubbleOffset,

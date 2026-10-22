@@ -3792,3 +3792,19 @@ https://www.alibabacloud.com/help/zh/model-studio/qwen-asr-realtime-interaction-
 
 ## 四、验证
 - `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · **vc195 / 1.0.8** ✓
+
+# 轮19.196：AI/翻译条按用户截图重做（确认后上屏）+ 长按符号键恢复为默认入口
+
+## 一、用户参考图（搜狗式翻译条）
+- 独立一条：左**语言/方向圆键** · 中**原文输入框** · 右 **✕** · 最右 **「确定」**
+- 译文/原文在条内，**点确定才进 App 文本框** ✓（不是自动直写 ✗）
+
+## 二、实现（vc196）
+1. `AiSession` 增 **`buffer`（原文累积）** + **`result`（译文累积）** + `takeResult()`（确定上屏 ✓ 无结果回落原文 ✓）
+2. 服务端：`CommitText` 拦截后 ⇒ 原文进 `buffer` ✓ 翻译结果进 `result` ✓ **不再直接 commit** ✗
+3. AI 条重画 ✓：圆键（点=切方向 / 长按=语言菜单 ✓）· 白底圆角原文框（placeholder 提示 ✓）· ✕（清空并关闭 ✓）· **确定**（`CommitText(result)` ✓）
+4. **符号键长按恢复为默认入口** ✓（vc195 的停用撤销 ✓）；候选栏 AI 键改为**仅当定制工具栏含 `ai` 时显示** ✓
+   ⚠️ 定制工具栏的 `ai` 选项**还没加** ✗（下一轮补 ✓）⇒ 当前唯一入口 = 长按符号键 ✓
+
+## 三、验证
+- `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · **vc196 / 1.0.8** ✓
