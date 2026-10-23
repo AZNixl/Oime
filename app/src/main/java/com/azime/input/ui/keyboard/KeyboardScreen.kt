@@ -40,7 +40,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -740,9 +740,11 @@ fun AzimeKeyboardScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(end = 24.dp),
+                            // 轮19.211：预览**跟着光标走**（用户要求）——跟在文本流里
+                            // （inner 不撑满、只按内容宽，预览紧贴文本尾/光标后）。
                             decorationBox = { inner ->
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Box(Modifier.weight(1f)) { inner() }
+                                    Box(Modifier.wrapContentWidth()) { inner() }
                                     if (embedPreview.isNotEmpty()) {
                                         Text(
                                             embedPreview,
@@ -4494,20 +4496,24 @@ private fun AiToolbarKey(c: KeyboardColors, onAction: (KeyAction) -> Unit) {
     var open by remember { mutableStateOf(false) }
 
     Box {
+        // 轮19.211：未激活**不要灰底**（用户反馈：跟其它工具键不一致、太突兀 ✗）——
+        // 只保留激活时的强调底；未激活 = 纯图标，与其它工具键一致。
         Box(
             modifier = Modifier
                 .size(32.dp)
-                .background(
-                    if (ai.isActive()) c.accentKeyBg else c.funcKeyBg,
-                    RoundedCornerShape(10.dp),
-                )
                 .clickable { open = true },
             contentAlignment = Alignment.Center,
         ) {
             Icon(
                 Icons.Filled.AutoAwesome,
                 contentDescription = "AI",
-                modifier = Modifier.size(18.dp),
+                modifier = Modifier
+                    .background(
+                        if (ai.isActive()) c.accentKeyBg else Color.Transparent,
+                        RoundedCornerShape(10.dp),
+                    )
+                    .padding(7.dp)
+                    .size(18.dp),
                 tint = if (ai.isActive()) c.accentKeyText else c.text,
             )
         }

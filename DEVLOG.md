@@ -4098,3 +4098,11 @@ https://www.alibabacloud.com/help/zh/model-studio/qwen-asr-realtime-interaction-
 ## 六、验证
 - `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · **vc210 / 1.0.8** ✓
 - 待真机：嵌入条内预览、菜单反色、AI 图标键、对话覆盖、关于页无本次更新。
+
+# 轮19.211：AI 键去灰底 + 嵌入预览跟光标（vc211）
+
+1. AiToolbarKey 未激活**无底**（funcKeyBg 灰底突兀、与其它工具键不一致）——纯图标，
+   激活时保留 accentKeyBg 强调底（底色挪到 Icon 自身 modifier）。
+2. 嵌入预览不再固定在行尾：decorationBox 里 inner 用 `wrapContentWidth()`（只占内容宽），
+   预览文本**紧跟在文本流里**（光标在末尾时即跟在光标后；光标在中间的极端情况跟文本尾）。
+- `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · **vc211 / 1.0.8** ✓
