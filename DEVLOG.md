@@ -4106,3 +4106,30 @@ https://www.alibabacloud.com/help/zh/model-studio/qwen-asr-realtime-interaction-
 2. 嵌入预览不再固定在行尾：decorationBox 里 inner 用 `wrapContentWidth()`（只占内容宽），
    预览文本**紧跟在文本流里**（光标在末尾时即跟在光标后；光标在中间的极端情况跟文本尾）。
 - `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · **vc211 / 1.0.8** ✓
+
+# 轮19.212：v1.0.8 正式发布（vc212）
+
+## 一、App 关于页
+- 新增「关于 ○输入法」条目（卡片①，版本下方）+ `ABOUT_TEXT`：引擎 / 键盘 / 手势 / 语音 / AI / 数据 + 开发方式。
+- 隐私条约：第三条补「使用 AI 功能会联网，文本发往自选提供商」；第五条补 AI 服务商与本地 ONNX 说明。
+
+## 二、README（以仓库版本为基础，6 处）
+1. 顶部简介加「AI 输入（翻译/续写/润色/对话）」；
+2. 长按符号键 → AI 功能菜单（默认符号键盘移到设置）；
+3. 工具栏工具列表补「手写、AI」；
+4. 语音章节改「离线两种 + 联网多家」（实时流式、三级联动、Key 只存本机）；
+5. 新增「AI 输入」章节（功能 / AI 条 / 嵌入预览 / 提供商 / 开关 / 隐私）；
+6. 隐私说明补 AI 与密钥两条。
+
+## 三、仓库 About
+- description 按候选 B 重写（222 字符）：开源 / 三种主键盘 / 方案即放即用 / 键位编辑与手势 / ○ 圆环 / 语音离线+联网实时 / AI 输入 / 隐私优先全离线 / Android 6.0+ / 双 ABI。
+- topics 追加 `ai`、`translation`、`speech-recognition`（共 15 个）。
+
+## 四、发布
+- release.yml 正文换成 v1.0.8 手写清单（18 条）；`generate_release_notes: false` 保持。
+- versionCode 212 → push `66d72f52` → CI `39967250703` success → tag `v1.0.8` → Release 工作流 `39967872201` success。
+- 核验：Release 正文为手写清单、无 `Full Changelog`；资产 `oime-1.0.8-arm64-v8a.apk` 51.6MB / `oime-1.0.8-armeabi-v7a.apk` 40.9MB；签名 `CN=Oime, OU=InputMethod, O=AZNixl`（两个包）。
+
+## 五、安全（发布前检查）
+- 源码 / assets / gradle 配置 / APK 全量扫描：**无任何 API Key**（`sk-` 前缀 0 命中）。
+- Key 只存 `speech_prefs`（运行时），备份规则已从 cloud-backup + device-transfer 排除；`ai_prefs` 不含 Key。

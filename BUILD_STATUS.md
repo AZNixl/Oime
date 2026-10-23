@@ -1,18 +1,19 @@
 # ○输入法 / Oime 项目状态
 
-> 最后更新：2026-09-30（轮19.164，**1.0.7-dev** / vc166：悬浮窗「自定义图片」（images/ png + 候选文字 X/Y ±80dp）+ 原自定义改名自定义颜色）+ 发版准备）
+> 最后更新：2026-10-23（轮19.212，**1.0.8 / vc212 已正式发布**：AI 输入全链路 + 关于页介绍与隐私条约补 AI + README AI 章节 + 仓库 About 重写）
 
 ## 项目信息
 
 - **项目名称**：○输入法（Oime）
-- **版本**：1.0.5（versionCode 147；1.0.4/vc146 已正式发布，1.0.5 尚未发版）
+- **版本**：1.0.8（versionCode 212；tag `v1.0.8` 已发布，资产 `oime-1.0.8-arm64-v8a.apk` 51.6MB / `oime-1.0.8-armeabi-v7a.apk` 40.9MB，签名 `CN=Oime` 已核）
 - **包名**：`com.azime.input`
 - **仓库**：https://github.com/AZNixl/Oime （曾名 AZime，main 分支）
 - **技术栈**：Kotlin 1.9.22 / AGP 8.3.0 / Gradle 8.4 / Compose BOM 2024.02.00
 - **构建目标**：compileSdk 34 / minSdk 23 / targetSdk 34 / JDK 17
 - **NDK**：自适应取本机已装最高版（CI 与本机均为 `29.0.14206865`）；手写 JNI 用 CMake 编译
 - **引擎**：librime（`librime_jni.so`，arm64-v8a）+ 平台 RIME；方案组目录即 librime user 数据目录（trime2 架构，零拷贝）
-- **语音**：sherpa-onnx `1.13.5`（AAR 不进仓库，CI 构建时下载）+ SenseVoice / 流式 zipformer / OpenAI 兼容 API
+- **语音**：sherpa-onnx `1.13.5`（AAR 不进仓库，CI 构建时下载）+ SenseVoice / 流式 zipformer + 联网语音（豆包 / 智谱 / 百炼 / 硅基流动 / 阶跃 / OpenAI，支持实时流式）
+- **AI**：AI 条（真输入框 + 嵌入预览）、翻译（实时）/ 续写 / 润色 / 对话；提供商与语音共用 Key，模型可拉取或手填；功能开关真实生效
 
 ## 构建与产物
 
