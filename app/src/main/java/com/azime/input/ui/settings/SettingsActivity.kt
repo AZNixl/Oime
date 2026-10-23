@@ -670,6 +670,8 @@ fun SettingsScreen(
             var logRev by remember { mutableStateOf(0) }   // 日志列表/开关变更后强制重组 ✓
             var showLicense by remember { mutableStateOf(false) }
             var showPrivacy by remember { mutableStateOf(false) }
+            // 轮19.212：关于页新增「关于 ○输入法」介绍（产品定位 + 能力概览 ✓ 用户要求）。
+            var showAbout by remember { mutableStateOf(false) }
             // 轮19.210：关于页不再撰写「本次更新」（用户要求 ✓）。
             // 轮19.133：备份列表直接挂在「恢复备份」项下面 ✓（不再单开版块 ✗）
             var bkRev by remember { mutableStateOf(0) }
@@ -695,6 +697,13 @@ fun SettingsScreen(
                                 }.getOrDefault("") + " · 包名 com.oime.input · 平台 RIME (librime)",
                                 onClick = {},
                                 showChevron = false,
+                            )
+                            KsuItem(
+                                icon = OimeIcons.info,
+                                title = "关于 ○输入法",
+                                subtitle = "RIME 引擎 · 本地优先 · AI 输入可选",
+                                onClick = { showAbout = true },
+                                showChevron = true,
                             )
                             KsuItem(
                                 icon = OimeIcons.link,
@@ -905,6 +914,9 @@ fun SettingsScreen(
             }
             if (showPrivacy) {
                 LongTextDialog("隐私条约", PRIVACY_TEXT) { showPrivacy = false }
+            }
+            if (showAbout) {
+                LongTextDialog("关于 ○输入法", ABOUT_TEXT) { showAbout = false }
             }
             return@Scaffold
         }
@@ -4666,6 +4678,28 @@ private val LICENSE_TEXT = """
 """.trimIndent()
 
 /** 轮19.83：隐私条约。 */
+/** 轮19.212：关于页「关于 ○输入法」介绍（用户审阅稿 ✓ 只写能力，不写内部实现）。 */
+private val ABOUT_TEXT = """
+○输入法（Oime）
+
+一款基于 RIME（librime）的 Android 输入法。
+键盘、图标与 ○ 圆环均为手绘，设置与键盘用 Jetpack Compose 构建。
+
+· 引擎　RIME / librime，方案组架构：组目录即用户目录，零拷贝加载；
+        支持 ZIP / 文件夹导入方案、全量部署、拆字与拼音注释
+· 键盘　26 键 / 九宫格 / 十四键，可视化编辑器可改键位、长按与四向滑动；
+        符号、数字、emoji 与全部符号网格
+· 手势　○ 圆环：点按菜单、长按语音、左右拖动移光标、下滑收键盘、上滑快捷应用
+· 语音　离线 SenseVoice / 流式 zipformer；也可接联网语音（豆包、阶跃、百炼、
+        硅基流动、智谱、OpenAI）
+· AI　　翻译（实时）、续写、润色、对话；Key 与语音共用，只存本机
+· 数据　方案、词库、字体、音效、备份与日志都在 Documents/Oime/，只存在本机；
+        无统计/遥测，不连接作者服务器
+
+开发方式：需求、调参与验收由人工完成，代码、界面、文档与 CI 排障由 AI 协作完成。
+问题与建议：github.com/AZNixl/Oime
+""".trimIndent()
+
 private val PRIVACY_TEXT = """
 ○输入法 隐私条约（本地优先）
 
@@ -4684,8 +4718,11 @@ private val PRIVACY_TEXT = """
 · **只有**你主动做以下事情时才联网：
   1) 点开 GitHub 链接；
   2) 使用「联网 API」语音识别（请求发往你自己填写的服务地址）；
-  3) 手动下载/更新方案、模型。
-· 以上都可选择不用 ⇒ 全部功能可离线运行
+  3) 使用 AI 功能（翻译 / 续写 / 润色 / 对话）——文本会发送到你在
+     「设置 → AI」里选择的提供商；
+  4) 手动下载/更新方案、模型。
+· AI 与联网语音都由你自行配置提供商与 Key，输入法不会把内容发给作者；
+  不开启这些功能时，全部能力可离线运行
 
 四、权限说明
 · 录音：仅在你长按 ○ 键听写时使用
@@ -4693,8 +4730,10 @@ private val PRIVACY_TEXT = """
 · 网络：仅用于上面第三条列出的场景
 
 五、第三方
-· 语音识别所用的 sherpa-onnx 在**本地**运行；
-  若你选择「联网 API」，数据将发送到**你自己配置**的服务，请自行确认其隐私政策。
+· 语音识别所用的 sherpa-onnx、手写识别所用的 ONNX 模型均在**本地**运行；
+· 若你选择「联网 API」语音或启用 AI 功能，数据将发送到**你自己配置**的服务
+  （如智谱、百炼、硅基流动、阶跃、OpenAI、Kimi、DeepSeek），
+  请自行确认对应服务的隐私政策与计费规则。
 
 六、联系
 · 问题与建议：github.com/AZNixl/Oime（Issues）
