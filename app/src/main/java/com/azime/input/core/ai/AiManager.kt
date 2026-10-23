@@ -23,15 +23,15 @@ object AiManager {
     private const val K_MODEL = "ai_model"
 
     const val F_TRANSLATE = "ai_translate"   // 翻译输入
-    const val F_REWRITE = "ai_rewrite"       // 风格改写
-    const val F_EXPLAIN = "ai_explain"       // 解释
+    const val F_REWRITE = "ai_rewrite"       // 润色（风格改写）
     const val F_CONTINUE = "ai_continue"     // 智能续写
-    const val F_COMMAND = "ai_command"       // 口头指令
+    const val F_CHAT = "ai_chat"             // 对话
+    const val F_COMMAND = "ai_command"       // 口头指令（语音指令场景，不在 AI 条菜单）
 
-    /** 各功能默认开关（先默认关 ✓ 用户自己开 ✓ 隐私友好） */
+    /** 各功能默认开关（轮19.208 起默认开 ✓ 开关真实生效：关掉即从菜单消失 ✓）。 */
     private val DEFAULTS = mapOf(
-        F_TRANSLATE to false, F_REWRITE to false,
-        F_EXPLAIN to false, F_CONTINUE to false, F_COMMAND to false,
+        F_TRANSLATE to true, F_REWRITE to true,
+        F_CONTINUE to true, F_CHAT to true, F_COMMAND to false,
     )
 
     /** 各提供商的**默认对话模型**（ASR 的 model 字段不能拿来对话 ✗ 必须分开 ✓） */
@@ -76,6 +76,15 @@ object AiManager {
 
     fun setEnabled(c: Context, feature: String, on: Boolean) =
         prefs(c).edit().putBoolean(feature, on).apply()
+
+    /** 轮19.208：该 AI 模式是否在菜单中可用（设置 → AI → AI 功能 开关 ✓）。 */
+    fun modeEnabled(c: Context, m: AiSession.Mode): Boolean = when (m) {
+        AiSession.Mode.TRANSLATE -> isEnabled(c, F_TRANSLATE)
+        AiSession.Mode.CONTINUE -> isEnabled(c, F_CONTINUE)
+        AiSession.Mode.POLISH -> isEnabled(c, F_REWRITE)
+        AiSession.Mode.CHAT -> isEnabled(c, F_CHAT)
+        AiSession.Mode.OFF -> false
+    }
 
     /** 当前是否可用（有提供商 + 已填 Key ✓）。 */
     fun isReady(c: Context): Boolean {

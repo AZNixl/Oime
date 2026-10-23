@@ -5,7 +5,7 @@ import android.content.Context
 /**
  * 轮19.195：**AI 会话状态 + 实时翻译管道**
  *
- * - 模式：翻译 / 续写 / 润色 / 解释 / 对话（`OFF` = 关闭）
+ * - 模式：翻译 / 续写 / 润色 / 对话（`OFF` = 关闭；解释已按用户要求移除 轮19.208）
  * - 实时翻译：候选上屏的中文**先入队** → 后台翻译 → 按序写入文本框 ✓
  *   · 失败 ⇒ 原样写入中文（不吞字 ✓）
  *   · 标点：译成目标语言时做一次本地规范化（中→英 = 半角 + 英文标点 ✓）
@@ -18,7 +18,6 @@ object AiSession {
         TRANSLATE("翻译"),
         CONTINUE("续写"),
         POLISH("润色"),
-        EXPLAIN("解释"),
         CHAT("对话"),
     }
 
@@ -110,7 +109,6 @@ object AiSession {
         Mode.TRANSLATE -> "翻译 · ${if (pending > 0) "翻译中…" else "待输入"}"
         Mode.POLISH -> "润色 · ${polishStyles[polishStyle]}"
         Mode.CONTINUE -> "续写"
-        Mode.EXPLAIN -> "解释"
         Mode.CHAT -> "对话"
     }
 
@@ -119,7 +117,6 @@ object AiSession {
         Mode.TRANSLATE -> AiManager.SYS_LIVE_TRANSLATE.format(if (reverse) "简体中文" else targetLang)
         Mode.POLISH -> AiManager.SYS_REWRITE.format(polishStyles[polishStyle])
         Mode.CONTINUE -> AiManager.SYS_CONTINUE
-        Mode.EXPLAIN -> AiManager.SYS_EXPLAIN
         Mode.CHAT -> AiManager.SYS_CHAT
         Mode.OFF -> ""
     }
@@ -156,7 +153,7 @@ object AiSession {
         return true
     }
 
-    /** 给 AI 功能（续写/润色/解释/对话）取输入：选中文本优先 ✓ 不读剪贴板 ✗ */
+    /** 给 AI 功能（续写/润色/对话）取输入：选中文本优先 ✓ 不读剪贴板 ✗ */
     fun inputFrom(ic: android.view.inputmethod.InputConnection?): String {
         if (ic == null) return ""
         val sel = runCatching {

@@ -4020,3 +4020,28 @@ https://www.alibabacloud.com/help/zh/model-studio/qwen-asr-realtime-interaction-
 ## 四、验证
 - `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · **vc207 / 1.0.8** ✓
 - 待真机：双按钮点击、✕入框、候选栏回撤、续写/润色/解释/对话回车执行、嵌入模式打字可见编码。
+
+# 轮19.208：七条反馈落地（vc208）
+
+## 一、功能
+1. **解释功能移除** ✓（Mode.EXPLAIN 删除；枚举/菜单/systemPrompt 全部清掉）。
+2. **续写/对话加「确定」按钮** ✓（AI 条右侧，仅这两种模式显示；与回车同一条 `aiConfirmRun()` 路径：
+   执行 AI → commitText 上屏 → 关闭；失败 toast 错误 ✓）。翻译/润色仍是回车固化译文。
+3. 润色 = **实时**（同翻译，600ms 防抖，边打边出润色结果到 App composing）。
+5. **AI 功能开关真实生效** ✓：新增 `AiManager.modeEnabled(c, mode)`；长按符号键菜单、AI 条功能菜单、
+   候选栏 AI 键菜单全部按开关过滤（关掉即消失；全关时菜单显示提示）。默认全开（用户已在用）；
+   键位对齐：翻译=F_TRANSLATE / 续写=F_CONTINUE / 润色=F_REWRITE / 对话=新增 F_CHAT。
+
+## 二、UI
+4. **AI 菜单对齐主题** ✓：material3 BOM 2024.02 的 DropdownMenu 无 containerColor ✗ ⇒ 自绘
+   `AiMenu`/`AiMenuItem`（Popup + funcKeyBg 圆角 + 主题文字色 + 选中项 accentKeyBg），
+   替换 AI 条功能/语言菜单 + 候选栏 AI 键菜单共 4 处。
+6. **定制工具栏新增「AI」可选** ✓：`availableToolbarTools` 加 "ai"（OimeIcons.byName 映射到
+   Icons.Filled.AutoAwesome——注意它是 `Icons.Filled` 的**扩展属性**，必须带 receiver 引用 ✓）。
+   渲染沿用候选栏 AiToolbarKey（弹功能菜单）。
+7. **AI 激活时禁用嵌入** ✓（用户反馈：AI 条输入不应把文本嵌进 App）：updateFromResult 恢复
+   `!aiActive` 条件；App composing 只显示译文，编码留在 AI 条/工具栏。
+
+## 三、验证
+- `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · **vc208 / 1.0.8** ✓
+- 待真机：开关过滤、确定按钮执行、菜单主题色、AI 工具栏键、AI 态嵌入关闭。

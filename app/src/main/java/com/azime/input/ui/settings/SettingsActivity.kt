@@ -1069,7 +1069,7 @@ fun SettingsScreen(
                     KsuItem(
                         icon = OimeIcons.tune,
                         title = "AI",
-                        subtitle = "AI 提供商 · 剪贴板整理 · 翻译 · 改写 · 解释",
+                        subtitle = "AI 提供商 · 翻译 · 续写 · 润色 · 对话",
                         onClick = { subPage = "ai" },
                     )
                 }
@@ -2821,13 +2821,12 @@ private fun AiSettingsPage(
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
                 )
                 data class Feat(val key: String, val name: String, val desc: String)
-                // 轮19.195：**AI 功能收敛为 5 个**（翻译/续写/润色/解释/对话 ✓ 用户定稿）
+                // 轮19.208：解释已移除；开关真实生效（关掉的功能从长按菜单/AI 条菜单消失 ✓）。
                 val feats = listOf(
                     Feat(ai.F_TRANSLATE, "翻译", "中文 ⇄ 外语，实时译入文本框"),
-                    Feat(ai.F_CONTINUE, "续写", "根据已输入内容续一句"),
-                    Feat(ai.F_REWRITE, "润色", "正式 / 口语 / 简短"),
-                    Feat(ai.F_EXPLAIN, "解释", "选中文本或光标前文字"),
-                    Feat(ai.F_COMMAND, "对话", "和 AI 直接聊，结果上屏"),
+                    Feat(ai.F_CONTINUE, "续写", "根据已输入内容续一句，点确定执行"),
+                    Feat(ai.F_REWRITE, "润色", "正式 / 口语 / 简短，实时出结果"),
+                    Feat(ai.F_CHAT, "对话", "和 AI 直接聊，点确定执行"),
                 )
                 feats.forEach { f ->
                     var on by remember(rev, f.key) { mutableStateOf(ai.isEnabled(context, f.key)) }

@@ -842,6 +842,7 @@ object KeyboardManager {
         "settings" to "设置",
         "voice" to "语音",
         "handwriting" to "手写",   // 轮19.116：点击打开手写板 ✓
+        "ai" to "AI",              // 轮19.208：候选栏 AI 启动键（弹功能菜单 ✓）
         "hide" to "收起",
         "ascii" to "中英",
         "undo" to "撤回",

@@ -1,5 +1,7 @@
 package com.azime.input.ui.icons
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
@@ -444,6 +446,7 @@ object OimeIcons {
         "onehand", "hand" -> oneHand
         "trash", "deleteall" -> trash
         "voice" -> mic
+        "ai" -> Icons.Filled.AutoAwesome  // 轮19.208：AI 启动键
         "handwriting" -> handwriting   // 轮19.138：**专用手写笔图标** ✓（原来是键盘图标 ✗）
         "float" -> pip
         "floatkbd" -> floatKbd
