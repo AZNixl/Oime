@@ -644,21 +644,20 @@ fun AzimeKeyboardScreen(
                         }
                         androidx.compose.foundation.text.BasicTextField(
                             value = ai.edit,
+                            // 光标/选区必须持续写入 AiSession，Service 删除与插入才按选区生效；
+                            // 仅在文本真正变化时触发重译，避免移动光标也发请求。
                             onValueChange = { v ->
-                                ai.edit = v
+                                val textChanged = v.text != ai.edit.text
                                 ai.editing = true
-                                onAction(KeyAction.AiEditChanged)
+                                ai.edit = v
+                                if (textChanged) onAction(KeyAction.AiEditChanged)
                             },
                             singleLine = true,
                             textStyle = androidx.compose.ui.text.TextStyle(
                                 fontSize = 13.sp, color = Color(0xFF202124),
                             ),
                             cursorBrush = androidx.compose.ui.graphics.SolidColor(c.accentActive),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .pointerInput(Unit) {
-                                    detectTapGestures { ai.editing = true }
-                                },
+                            modifier = Modifier.fillMaxWidth(),
                         )
                     }
                     Spacer(Modifier.width(6.dp))

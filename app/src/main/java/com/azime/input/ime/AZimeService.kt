@@ -276,6 +276,8 @@ class AZimeService : InputMethodService() {
 
     override fun onStartInput(info: EditorInfo?, restarting: Boolean) {
         super.onStartInput(info, restarting)
+        // AI 会话是单编辑器临时态，切换宿主输入框必须重置，避免旧缓冲写进新输入框。
+        if (com.azime.input.core.ai.AiSession.isActive()) com.azime.input.core.ai.AiSession.turnOff()
         // 轮19.38：同一窗口内切换输入框（密码框 → 普通框）时 onStartInputView 不一定重跑，
         // 这里补一次，保证中英/页面能跟着输入框类型恢复。
         if (!restarting) runCatching { applyAutoPageForEditor(info) }
@@ -528,8 +530,8 @@ class AZimeService : InputMethodService() {
                                 }
                                 if (r.ok) {
                                     runCatching { ic.finishComposingText() }
-                                    ic.commitText(r.text, 1)
-                                    pushUndo(r.text)
+                                    commitToTarget(r.text)
+                                    if (!com.azime.input.core.ai.AiSession.isActive()) pushUndo(r.text)
                                 } else {
                                     toast(r.error)
                                 }
@@ -549,9 +551,9 @@ class AZimeService : InputMethodService() {
                         } else {
                             // 非流式（sense_voice / 联网 API）：没有预览 ⇒ 正常上屏 ✓
                             runCatching { ic.finishComposingText() }
-                            ic.commitText(text, 1)
+                            commitToTarget(text)
                         }
-                        pushUndo(text)
+                        if (!com.azime.input.core.ai.AiSession.isActive()) pushUndo(text)
                     }
                 }
 
@@ -846,7 +848,8 @@ class AZimeService : InputMethodService() {
                     commitToTarget(text)          // 轮19.205：AI 条编辑态 ⇒ 进条内 ✓
                     // 成对括号：上屏后光标自动居中（不依赖 {Left}）
                     val bm = bracketMiddleMove(text)
-                    if (bm > 0 && ic != null && !com.azime.input.core.ai.AiSession.editing) {
+                    // 括号居中只对真实目标 App 文本有意义；AI 源文文本不入宿主，不做光标回退。
+                    if (bm > 0 && ic != null && !com.azime.input.core.ai.AiSession.isActive()) {
                         moveCursorByConnection(ic, -bm)
                     }
                     pushUndo(text)
@@ -854,24 +857,15 @@ class AZimeService : InputMethodService() {
                     refreshState()
                 }
                 KeyAction.Shift -> uiState.update { it.copy(shiftOn = !it.shiftOn, capsOn = false) }
-                KeyAction.Backspace -> {
-                    if (com.azime.input.core.ai.AiSession.editing &&
-                        com.azime.input.core.ai.AiSession.isActive()
-                    ) {
-                        com.azime.input.core.ai.AiSession.backspaceAtCursor()
-                        scheduleAiEditTranslate()
-                        refreshState()
-                    } else {
-                        handleBackspace()
-                    }
-                }
+                // 先交给 Rime 删除未确认编码，再删除 AI 原文；不能越过编码直接删正文。
+                KeyAction.Backspace -> handleBackspace()
                 KeyAction.Space -> {
                     // 抄 xime.az ImeKeyRouter "space"：以引擎实时组词状态（inputText）
                     // 为准，非组词状态一律直出空格。不依赖 UI state（残留态曾吞空格）：
                     // 组词中 → 选首选/顶屏；非组词 → commitText(" ")
                     val composing = RimeManager.getProcessResult().inputText.isNotEmpty()
                     if (!composing) {
-                        currentInputConnection?.commitText(" ", 1)
+                        commitToTarget(" ")
                         pushUndo(" ")
                         refreshState()
                     } else {
@@ -938,35 +932,11 @@ class AZimeService : InputMethodService() {
                     it.copy(hwCandidates = action.items.take(if (action.items.isEmpty()) 0 else 9))
                 }
                 is KeyAction.CommitText -> {
-                    val t = action.text
-                    // 轮19.203：**条内编辑模式** ⇒ 键打到 AI 条里 ✓（豆包同款 ✓）
-                    if (com.azime.input.core.ai.AiSession.editing &&
-                        com.azime.input.core.ai.AiSession.isActive()
-                    ) {
-                        com.azime.input.core.ai.AiSession.insertAtCursor(t)
-                        scheduleAiEditTranslate()
-                        refreshState()
-                    } else {
-                    // 轮19.195：**实时翻译** —— 中文先入队 ✓ 译完按序写入 ✓（失败回落原文 ✓）
-                    val translating = t.isNotEmpty() &&
-                        com.azime.input.core.ai.AiSession.mode == com.azime.input.core.ai.AiSession.Mode.TRANSLATE &&
-                        com.azime.input.core.ai.AiSession.shouldTranslate(t)
-                    if (translating) {
-                        enqueueTranslate(t)
-                        uiState.update { it.copy(hwCandidates = emptyList(), hwClearSignal = it.hwClearSignal + 1) }
-                        refreshState()
-                    } else if (t.isNotEmpty()) {
-                        currentInputConnection?.commitText(t, 1)
-                        pushUndo(t)
-                        // 上屏后：清候选 + **触发手写板清画布** ✓（用户要求 ✓）
-                        uiState.update { it.copy(hwCandidates = emptyList(), hwClearSignal = it.hwClearSignal + 1) }
-                        refreshState()
-                    }
-                    }
+                    // 菜单/候选等显式文本都走同一目标路由；AI 激活时不再写宿主 App。
+                    commitToTarget(action.text)
                 }
-                is KeyAction.AiEditChanged -> {
-                    scheduleAiEditTranslate()
-                }
+                // 条内文本被用户编辑（光标/选区变化由 UI 持续写入 AiSession）⇒ 仅重译。
+                is KeyAction.AiEditChanged -> scheduleAiEditTranslate()
                 // 轮19.204：豆包链路 —— 确定=结束组合 ✓ 取消=清空组合 ✓
                 is KeyAction.AiConfirm -> {
                     runCatching { currentInputConnection?.finishComposingText() }
@@ -1140,8 +1110,8 @@ class AZimeService : InputMethodService() {
                     uiState.update { it.copy(clipText = "", clipAtMs = 0L, clipFull = "") }
                 }
                 is KeyAction.CommitClipboard -> {
-                    currentInputConnection?.commitText(action.text, 1)
-                    pushUndo(action.text)
+                    commitToTarget(action.text)
+                    if (!com.azime.input.core.ai.AiSession.isActive()) pushUndo(action.text)
                     // 轮19.25：**必须按 take(80) 记**——readClipboard 用的是 `text.take(80)` 比对，
                     // 19.24 把上屏文本换成了完整长文本却直接赋给 lastCommittedClip ⇒ 长文本永远比不中，
                     // 上屏后又被剪贴板回调塞回工具栏（用户反馈「点击上屏也不能消亡」）。
@@ -1198,8 +1168,8 @@ class AZimeService : InputMethodService() {
                     it.copy(clipTab = if (action.tab == "phrase") "phrase" else "clipboard")
                 }
                 is KeyAction.CommitClipText -> {
-                    currentInputConnection?.commitText(action.text, 1)
-                    pushUndo(action.text)
+                    commitToTarget(action.text)
+                    if (!com.azime.input.core.ai.AiSession.isActive()) pushUndo(action.text)
                 }
                 is KeyAction.ClipFav -> {
                     if (!phraseItems.contains(action.text)) phraseItems.add(0, action.text)
@@ -1296,12 +1266,12 @@ class AZimeService : InputMethodService() {
             "date" -> {
                 val s = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
                     .format(java.util.Date())
-                ic?.commitText(s, 1); pushUndo(s)
+                commitToTarget(s); if (!com.azime.input.core.ai.AiSession.isActive()) pushUndo(s)
             }
             "time" -> {
                 val s = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
                     .format(java.util.Date())
-                ic?.commitText(s, 1); pushUndo(s)
+                commitToTarget(s); if (!com.azime.input.core.ai.AiSession.isActive()) pushUndo(s)
             }
             "chinesedate" -> {
                 val now = java.util.Calendar.getInstance()
@@ -1310,26 +1280,24 @@ class AZimeService : InputMethodService() {
                     now.get(java.util.Calendar.MONTH) + 1,
                     now.get(java.util.Calendar.DAY_OF_MONTH),
                 )
-                if (s.isNotEmpty()) { ic?.commitText(s, 1); pushUndo(s) }
+                if (s.isNotEmpty()) { commitToTarget(s); if (!com.azime.input.core.ai.AiSession.isActive()) pushUndo(s) }
             }
             "repeatcommit" -> {
                 // 重复上一次上屏文本（含空格/换行等，由 pushUndo 记录）
-                lastCommittedText?.takeIf { it.isNotEmpty() }?.let {
-                    ic?.commitText(it, 1)
-                }
+                lastCommittedText?.takeIf { it.isNotEmpty() }?.let { commitToTarget(it) }
             }
             "toggle_ascii" -> onKeyAction(KeyAction.ToggleAscii)
             "newline" -> {
-                ic?.commitText("\n", 1)
-                pushUndo("\n")
+                commitToTarget("\n")
+                if (!com.azime.input.core.ai.AiSession.isActive()) pushUndo("\n")
             }
             "backspace" -> handleBackspace()
             "delete" -> ic?.deleteSurroundingText(0, 1)
             "space" -> {
-                ic?.commitText(" ", 1)
-                pushUndo(" ")
+                commitToTarget(" ")
+                if (!com.azime.input.core.ai.AiSession.isActive()) pushUndo(" ")
             }
-            "tab" -> ic?.commitText("\t", 1)
+            "tab" -> commitToTarget("\t")
             "esc" -> RimeManager.clearComposition()
             "left" -> ic?.sendKeyEvent(android.view.KeyEvent(0, 0, 0, 0, 0, 0, android.view.KeyEvent.KEYCODE_DPAD_LEFT, 0))
             "right" -> ic?.sendKeyEvent(android.view.KeyEvent(0, 0, 0, 0, 0, 0, android.view.KeyEvent.KEYCODE_DPAD_RIGHT, 0))
@@ -1357,8 +1325,8 @@ class AZimeService : InputMethodService() {
                 val clip = runCatching { clipboardManager.primaryClip }.getOrNull()
                 val text = clip?.getItemAt(0)?.coerceToText(this)?.toString().orEmpty()
                 if (text.isNotEmpty()) {
-                    ic?.commitText(text, 1)
-                    pushUndo(text)
+                    commitToTarget(text)
+                    if (!com.azime.input.core.ai.AiSession.isActive()) pushUndo(text)
                 }
             }
             "caps_lock" -> uiState.update { it.copy(capsOn = !it.capsOn, shiftOn = false) }
@@ -1487,7 +1455,7 @@ class AZimeService : InputMethodService() {
         val state = uiState.value
         // emoji / 非字母符号直出
         if (c.code > 0x7F) {
-            currentInputConnection?.commitText(c.toString(), 1)
+            commitToTarget(c.toString())
             pushUndo(c.toString())
             return
         }
@@ -1498,7 +1466,7 @@ class AZimeService : InputMethodService() {
                 state.capsOn && c.isLetter() -> c.uppercaseChar()
                 else -> c
             }
-            currentInputConnection?.commitText(text.toString(), 1)
+            commitToTarget(text.toString())
             pushUndo(text.toString())
             uiState.update { it.copy(shiftOn = false) }
             return
@@ -1509,7 +1477,7 @@ class AZimeService : InputMethodService() {
             return
         }
         // 编码未消费（如数字/标点无菜单时）：直接上屏
-        currentInputConnection?.commitText(c.toString(), 1)
+        commitToTarget(c.toString())
         pushUndo(c.toString())
         refreshState()
     }
@@ -1564,6 +1532,13 @@ class AZimeService : InputMethodService() {
         val result = RimeManager.processKey(KEY_BACKSPACE)
         if (result.processed) {
             applyResult(result)
+            return
+        }
+        val ai = com.azime.input.core.ai.AiSession
+        if (ai.isActive()) {
+            ai.backspaceAtCursor()
+            scheduleAiEditTranslate()
+            refreshState()
             return
         }
         val ic = currentInputConnection
@@ -1740,9 +1715,9 @@ class AZimeService : InputMethodService() {
     /** 把一次按键结果同步到输入框与 UI 状态。 */
     private fun applyResult(result: com.kingzcheung.xime.rime.RimeProcessResult) {
         if (result.committedText.isNotEmpty()) {
-            com.azime.input.core.diag.Diag.log("Embed", "提交 '${result.committedText}'")
-            currentInputConnection?.commitText(result.committedText, 1)
-            pushUndo(result.committedText)
+            // 所有 Rime 上屏（选候选、空格、顶字、回车）必须走同一目标路由。
+            commitToTarget(result.committedText)
+            if (!com.azime.input.core.ai.AiSession.isActive()) pushUndo(result.committedText)
         }
         updateFromResult(result)
     }
@@ -1765,7 +1740,9 @@ class AZimeService : InputMethodService() {
         // 正确做法：组合结束用 `setComposingText("", 1)` **清预览**（不落字 ✓）；
         // 提交由既有 `commitText` 负责 —— 它会**替换**组合区 ✓ 天然不重复 ✓
         val embedMode = com.azime.input.core.keyboard.KeyboardManager.embedMode()
-        if (embedMode == "code" || embedMode == "top") {
+        if (!com.azime.input.core.ai.AiSession.isActive() &&
+            (embedMode == "code" || embedMode == "top")
+        ) {
             val ic = currentInputConnection
             val preview = if (embedMode == "code") {
                 result.preeditText
@@ -1828,10 +1805,13 @@ class AZimeService : InputMethodService() {
     private fun commitToTarget(text: String) {
         if (text.isEmpty()) return
         val ai = com.azime.input.core.ai.AiSession
-        if (ai.editing && ai.isActive()) {
+        // 输入目标由会话决定，不依赖 BasicTextField 的点击/焦点回调。
+        if (ai.isActive()) {
+            ai.editing = true
             ai.insertAtCursor(text)
+            com.azime.input.core.diag.Diag.log("AiRoute",
+                "target=source chars=${text.length} sourceLength=${ai.edit.text.length}")
             scheduleAiEditTranslate()
-            // 条自身 300ms 轮询刷新 ✓ 这里不调 suspend 的 refreshState() ✗
             return
         }
         currentInputConnection?.commitText(text, 1)

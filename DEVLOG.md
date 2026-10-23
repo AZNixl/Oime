@@ -3959,3 +3959,25 @@ https://www.alibabacloud.com/help/zh/model-studio/qwen-asr-realtime-interaction-
 
 ## 三、验证
 - `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · **vc204 / 1.0.8** ✓
+
+# 轮19.206：AI 输入条统一目标路由（vc205）
+
+## 一、vc204 未生效的实证
+- 设备确认：`versionCode=204 versionName=1.0.8`，装的是 vc204。
+- vc204 声称把「Rime 提交」接进 `commitToTarget`，但真实源码仍是
+  `applyResult → currentInputConnection.commitText`；`editing && isActive()` 还会被 UI 点击覆盖，
+  所以拼音/文字仍直入 App。
+
+## 二、修复
+- `commitToTarget`：AI 激活即路由到条内源文，不再依赖 `editing`；写入目标前补 `Diag("AiRoute")`。
+- `applyResult`：Rime 提交统一走 `commitToTarget`。
+- 路由补齐：`handleChar`（中文/英文/直出）、`DirectCommit`、空格、`CommitText`、剪贴板上屏、
+  Resolved Commit、语音最终结果、内置 date/time/newline/space/paste/repeatcommit 等命令。
+- 退格：先删 Rime 编码，再删 AI 源文，不能跳过编码删正文。
+- UI：`BasicTextField` 每次回调都写回光标/选区，仅文本变化时触发重译；移除会干扰点选的内层 tap 手势。
+- 宿主切换：`onStartInput` 先关闭 AI 会话，避免旧缓冲跨输入框污染。
+- 其他：AI 激活时不做括号光标回退、不写 undo；嵌入模式预览暂停，避免 preedit 与 AI 源文互写。
+
+## 三、验证
+- `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · **vc205 / 1.0.8** ✓
+- 待真机：长按符号键 → 翻译 → 打字/选候选应进条内；删字重译；确定固化 App 译文；取消清空 composing。
