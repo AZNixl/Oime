@@ -1457,8 +1457,12 @@ private fun ToolbarRow(
         // AI 状态下打字由上面的 composing 分支（preedit+候选）覆盖显示 ✓
         else -> {
             val items = KeyboardManager.toolbarItems()
-            val leftItems = items.take((items.size + 1) / 2)
-            val rightItems = items.drop((items.size + 1) / 2)
+            // 轮19.209："ai" 由 AiToolbarKey 专用渲染（文字键+菜单）⇒ 从通用图标渲染中剔除，
+            // 否则会出现 ✦ 图标 + 「AI」文字键**双重显示**（用户反馈）。
+            val leftItems = items.take((items.size + 1) / 2).filter { it != "ai" }
+            val rightItems = items.drop((items.size + 1) / 2).filter { it != "ai" }
+            val aiIdx = items.indexOf("ai")
+            val aiOnLeft = aiIdx >= 0 && aiIdx < (items.size + 1) / 2
 
             Row(
                 modifier = Modifier
@@ -1476,7 +1480,7 @@ private fun ToolbarRow(
                 ) {
                     leftItems.forEach { id -> toolbarToolItem(id, state, onAction, c) { showSchemaMenu = true } }
                     // 轮19.196：AI 键改为**可选**（定制工具栏里勾选 "ai" 才显示 ✓ 默认靠长按符号键 ✓）
-                    if (KeyboardManager.toolbarItems().contains("ai")) AiToolbarKey(c, onAction)
+                    if (aiIdx >= 0 && aiOnLeft) AiToolbarKey(c, onAction)
                 }
 
                 // ── ○ 菜单键（居中，圆环造型）：点击开菜单 / 长按语音 /
@@ -1871,6 +1875,8 @@ private fun ToolbarRow(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     rightItems.forEach { id -> toolbarToolItem(id, state, onAction, c) { showSchemaMenu = true } }
+                    // 轮19.209：AI 键放右侧（定制时勾在后半区）✓
+                    if (aiIdx >= 0 && !aiOnLeft) AiToolbarKey(c, onAction)
                 }
             }
         }

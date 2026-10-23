@@ -935,8 +935,11 @@ class AZimeService : InputMethodService() {
                     // 菜单/候选等显式文本都走同一目标路由；AI 激活时不再写宿主 App。
                     commitToTarget(action.text)
                 }
-                // 条内文本被用户编辑（光标/选区变化由 UI 持续写入 AiSession）⇒ 仅重译。
-                is KeyAction.AiEditChanged -> scheduleAiEditTranslate()
+                // 条内文本被用户编辑（光标/选区变化由 UI 持续写入 AiSession）⇒ 镜像 + 重译。
+                is KeyAction.AiEditChanged -> {
+                    aiMirrorToApp()          // 轮19.209：条内直接键入/删除也实时镜像
+                    scheduleAiEditTranslate()
+                }
                 // 轮19.207：刚选定 AI 功能 ⇒ 条内为空时带入选中文字（选中优先，不读剪贴板 ✓），
                 // 实时模式（翻译/润色）立刻跑一次。
                 is KeyAction.AiModePicked -> {
@@ -951,7 +954,10 @@ class AZimeService : InputMethodService() {
                     }
                     if (ai0.mode == com.azime.input.core.ai.AiSession.Mode.TRANSLATE ||
                         ai0.mode == com.azime.input.core.ai.AiSession.Mode.POLISH
-                    ) scheduleAiEditTranslate()
+                    ) {
+                        aiMirrorToApp()      // 轮19.209：带入选中文字后也镜像
+                        scheduleAiEditTranslate()
+                    }
                     refreshState()
                 }
                 // 轮19.208：确定——翻译/润色固化译文；续写/对话执行 AI 上屏。
@@ -1553,6 +1559,7 @@ class AZimeService : InputMethodService() {
         val ai = com.azime.input.core.ai.AiSession
         if (ai.isActive()) {
             ai.backspaceAtCursor()
+            aiMirrorToApp()          // 轮19.209：嵌入开启 ⇒ 删字同步镜像
             scheduleAiEditTranslate()
             refreshState()
             return
@@ -1835,6 +1842,7 @@ class AZimeService : InputMethodService() {
             ai.insertAtCursor(text)
             com.azime.input.core.diag.Diag.log("AiRoute",
                 "target=source chars=${text.length} sourceLength=${ai.edit.text.length}")
+            aiMirrorToApp()          // 轮19.209：嵌入开启 ⇒ 源文实时镜像 App
             scheduleAiEditTranslate()
             return
         }
@@ -1845,6 +1853,9 @@ class AZimeService : InputMethodService() {
      * 轮19.208：AI「确定」统一入口（回车键与 AI 条确定按钮都走这里 ✓）。
      * - 翻译/润色：译文已是 App composing ⇒ finishComposingText 固化 ✓
      * - 续写/对话：执行 AI（边打边跑没有语义 ✗）⇒ 结果 commitText 上屏 ✓
+     *
+     * 轮19.209：确定**不关闭** AI 条（用户要求 ✓）——继续输入下一段；
+     * 关闭只由 ✕（AiCancel）/ 切换输入框负责。
      */
     private suspend fun aiConfirmRun() {
         val ai = com.azime.input.core.ai.AiSession
@@ -1853,13 +1864,13 @@ class AZimeService : InputMethodService() {
             com.azime.input.core.ai.AiSession.Mode.TRANSLATE,
             com.azime.input.core.ai.AiSession.Mode.POLISH -> {
                 runCatching { ic?.finishComposingText() }
-                ai.turnOff()
+                ai.result = ""
             }
             else -> {
                 val src = ai.edit.text.ifBlank { ai.inputFrom(ic) }
                 runCatching { ic?.finishComposingText() }
                 if (src.isBlank()) {
-                    ai.turnOff()
+                    // 空内容按确定 = 无操作（不关 ✓）
                 } else {
                     ai.status = "生成中…"
                     val r = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
@@ -1874,10 +1885,33 @@ class AZimeService : InputMethodService() {
                     if (r.ok) {
                         ic?.commitText(out, 1)
                         pushUndo(out)
+                        // 成功 ⇒ 清空条内待命，可继续下一段；失败保留原文可改后再试。
+                        ai.edit = androidx.compose.ui.text.input.TextFieldValue("")
+                        ai.result = ""
                     } else {
                         toast(r.error)
                     }
-                    ai.turnOff()
+                }
+            }
+        }
+    }
+
+    /**
+     * 轮19.209：**嵌入模式 + AI 激活** ⇒ 把条内源文**实时镜像**进 App composing
+     * （嵌入的定义 = 输入过程实时可见，DEVLOG 轮19.114；AI 态对应「条内源文」✓）。
+     * 停手 600ms 后防抖 job 把 composing 换成译文（或删空时清空）——互不清除 ✗。
+     */
+    private fun aiMirrorToApp() {
+        val ai = com.azime.input.core.ai.AiSession
+        if (!ai.isActive()) return
+        val embedMode = com.azime.input.core.keyboard.KeyboardManager.embedMode()
+        if (embedMode != "code" && embedMode != "top") return
+        scope.launch(kotlinx.coroutines.Dispatchers.Main) {
+            currentInputConnection?.let { ic ->
+                runCatching {
+                    ic.beginBatchEdit()
+                    ic.setComposingText(ai.edit.text, 1)
+                    ic.endBatchEdit()
                 }
             }
         }

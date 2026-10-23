@@ -4045,3 +4045,28 @@ https://www.alibabacloud.com/help/zh/model-studio/qwen-asr-realtime-interaction-
 ## 三、验证
 - `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · **vc208 / 1.0.8** ✓
 - 待真机：开关过滤、确定按钮执行、菜单主题色、AI 工具栏键、AI 态嵌入关闭。
+
+# 轮19.209：四条反馈（vc209）
+
+## 一、嵌入（用户指 DEVLOG 轮19.114 的嵌入定义）
+- 新 `aiMirrorToApp()`：嵌入模式（code/top）开启 + AI 激活时，条内源文**实时镜像**进 App composing
+  （输入/退格/条内直改/带入选中文字都镜像）；停手 600ms 后防抖 job 换成译文，删空则清空——
+  互不清除、无闪烁。嵌入关闭时行为不变（App 只显示译文）。
+- updateFromResult 的 AI 态禁用保持（AI 态嵌入由镜像负责，不再嵌入 preedit 编码）。
+
+## 二、确定不关闭 AI 条
+- `aiConfirmRun()`：翻译/润色 → finishComposingText 固化 + 清 result（**不关**）；
+  续写/对话 → 执行 AI → commitText 上屏 → **成功才清空条内**（失败保留原文可改后再试），**不关**。
+- 关闭只由 ✕（AiCancel）/ 切换输入框（onStartInput）负责。回车与确定按钮同路径。
+
+## 三、候选栏 AI 双图标
+- 根因：`toolbarToolItem` 对 "ai" 渲染 ✦ 图标 + 追加的 AiToolbarKey 渲染「AI」文字 ⇒ 两个。
+- 修：左右 items 渲染剔除 "ai"；AiToolbarKey 按 "ai" 在定制列表的左右半区放到对应侧。
+
+## 四、设置-AI 提供商下拉
+- 只列**已配置 Key** 的提供商（WebAsrProviders.isConfigured ✓）；空列表给「先配置 API Key」提示项。
+  （模型配置次级页原本就有未配置折叠，不动。）
+
+## 五、验证
+- `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · **vc209 / 1.0.8** ✓
+- 待真机：嵌入模式打字 App 实时见源文→停手变译文；确定后条保留继续输入；✕ 关闭；候选栏 AI 单图标。

@@ -2766,8 +2766,17 @@ private fun AiSettingsPage(
                             Spacer(Modifier.width(6.dp))
                             Text("▾", color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
+                        // 轮19.209：只列**已配置 Key** 的提供商（用户反馈：未配置的别出现 ✓）。
+                        val wap0 = com.azime.input.core.speech.WebAsrProviders
+                        val configured = providers.filter { wap0.isConfigured(context, it) }
                         DropdownMenu(expanded = provOpen, onDismissRequest = { provOpen = false }) {
-                            providers.forEach { p ->
+                            if (configured.isEmpty()) {
+                                DropdownMenuItem(
+                                    text = { Text("先配置 API Key（下方入口）") },
+                                    onClick = { provOpen = false },
+                                )
+                            }
+                            configured.forEach { p ->
                                 DropdownMenuItem(
                                     text = { Text(p.name) },
                                     onClick = {
