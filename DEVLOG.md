@@ -4070,3 +4070,31 @@ https://www.alibabacloud.com/help/zh/model-studio/qwen-asr-realtime-interaction-
 ## 五、验证
 - `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · **vc209 / 1.0.8** ✓
 - 待真机：嵌入模式打字 App 实时见源文→停手变译文；确定后条保留继续输入；✕ 关闭；候选栏 AI 单图标。
+
+# 轮19.210：菜单反色/AI 纯图标/去本次更新/嵌入真义/对话覆盖（vc210）
+
+## 一、菜单选中项反色
+- AiMenuItem 选中项文字 `accentActive` → `accentActiveText`（on 色）——蓝底蓝字看不见（同色压同色铁律）。
+
+## 二、候选栏 AI 键纯图标
+- AiToolbarKey 重写：32dp 圆角方块 + AutoAwesome 图标（激活 = accentKeyBg+accentKeyText），
+  点击弹功能菜单；删掉「翻译」文字与「中→英▾」附属（功能/设定都在 AI 条双按钮）。
+
+## 三、关于页去「本次更新」
+- 删弹窗（showUpdateLog）、入口 KsuItem、UPDATE_LOG_1_0_5 常量。
+
+## 四、嵌入真义（用户第三次澄清，最终版）
+- **嵌入的输入码/首选字显示在 AI 条，不是 App**。撤销 vc209 的 aiMirrorToApp（App 镜像源文）——
+  函数与调用点全删。
+- AI 条输入框 decorationBox：嵌入 code → 条内源文后灰字显示 state.preedit；
+  top → 显示首选字；嵌入关闭时不显示。placeholder 仅在源文与预览都空时显示。
+- App composing 只保留译文（scheduleAiEditTranslate 链路不变）。
+
+## 五、对话模式回答覆盖
+- CHAT 确定 → 回答写 **composing 不固化**（且**不先 finish**，否则上一条被固化留下）；
+  下一次回答 setComposingText 覆盖上一条 ⇒ 文本框只保留最新消息 ✓。
+- CONTINUE 续写保持 commitText 固化追加。
+
+## 六、验证
+- `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · **vc210 / 1.0.8** ✓
+- 待真机：嵌入条内预览、菜单反色、AI 图标键、对话覆盖、关于页无本次更新。

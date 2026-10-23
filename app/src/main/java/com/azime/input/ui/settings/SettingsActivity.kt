@@ -670,24 +670,10 @@ fun SettingsScreen(
             var logRev by remember { mutableStateOf(0) }   // 日志列表/开关变更后强制重组 ✓
             var showLicense by remember { mutableStateOf(false) }
             var showPrivacy by remember { mutableStateOf(false) }
-            // 轮19.146：本次更新（1.0.4）说明弹窗 ✓
-            var showUpdateLog by remember { mutableStateOf(false) }
+            // 轮19.210：关于页不再撰写「本次更新」（用户要求 ✓）。
             // 轮19.133：备份列表直接挂在「恢复备份」项下面 ✓（不再单开版块 ✗）
             var bkRev by remember { mutableStateOf(0) }
             var pendingRestore by remember { mutableStateOf<java.io.File?>(null) }
-            // 轮19.146：本次更新说明弹窗 ✓（1.0.4 的新增/修改/修复 ✓）
-            if (showUpdateLog) {
-                androidx.compose.material3.AlertDialog(
-                    onDismissRequest = { showUpdateLog = false },
-                    title = { Text("本次更新（1.0.4）") },
-                    text = {
-                        Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                            Text(UPDATE_LOG_1_0_5, style = MaterialTheme.typography.bodySmall)
-                        }
-                    },
-                    confirmButton = { TextButton(onClick = { showUpdateLog = false }) { Text("知道了") } },
-                )
-            }
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
@@ -709,13 +695,6 @@ fun SettingsScreen(
                                 }.getOrDefault("") + " · 包名 com.oime.input · 平台 RIME (librime)",
                                 onClick = {},
                                 showChevron = false,
-                            )
-                            KsuItem(
-                                icon = OimeIcons.info,
-                                title = "本次更新",
-                                subtitle = "1.0.4 · 手写输入 · 启动向导 · 微信表情退格修复（点开看全部）",
-                                onClick = { showUpdateLog = true },
-                                showChevron = true,
                             )
                             KsuItem(
                                 icon = OimeIcons.link,
@@ -4561,22 +4540,7 @@ private fun HandwritingSettingsPage(
     }
 }
 
-/**
- * 轮19.146：**1.0.4 更新说明**（关于页「本次更新」弹窗用 ✓）。
- *
- * 只写 **1.0.3 → 1.0.4** 的差异 ✓：本轮开发中「引入后又修掉」的问题（用户从没见过 ✗）
- * 不进这份清单 ✗ 否则用户会看得莫名其妙 ✓
- */
-private val UPDATE_LOG_1_0_5 = """
-本次更新：1.0.5
-
-· 修复　表情退格：酷安、微信等所有"自带表情"的 App 一次删净
-· 新增　手写板：识别后画布自动清空，直接写下一个字
-· 新增　手写板「⌫ 退格」：清笔迹 / 删候选 / 删文本，一个键搞定
-· 新增　方案开关支持多态开关（如按键纠错 关/弱/中/强），滑动调档
-· 变更　方案开关界面统一卡片 / 滑块风格，配色跟随主题强调色
-· 变更　「语音手写管理」图标更新
-""".trimIndent()
+// 轮19.210：UPDATE_LOG_1_0_5 与关于页「本次更新」入口已按用户要求移除（不再撰写）。
 
 private val HANDWRITING_HELP_TEXT = """
 手写输入使用说明

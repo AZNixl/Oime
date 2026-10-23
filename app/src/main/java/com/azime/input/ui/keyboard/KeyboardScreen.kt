@@ -696,6 +696,16 @@ fun AzimeKeyboardScreen(
                     }
                     Spacer(Modifier.width(8.dp))
                     // 中：**真输入框**（豆包同款 ✓ 有光标/选区 ✓ 可删中间字 ✓）+ ✕ 移入框内 ✓
+                    // 轮19.210：**嵌入预览进 AI 条**（用户澄清的嵌入语义 ✓）——
+                    // 嵌入模式开启时，输入码(code)/首选字(top) 跟在条内源文后显示（灰字），
+                    // **不写 App**；App composing 只显示译文。
+                    val embedModeAi = com.azime.input.core.keyboard.KeyboardManager.embedMode()
+                    val embedPreview = when (embedModeAi) {
+                        "code" -> state.preedit
+                        "top" -> if (state.preedit.isNotEmpty())
+                            state.candidates.firstOrNull()?.text ?: "" else ""
+                        else -> ""
+                    }
                     Box(
                         modifier = Modifier
                             .weight(1f)
@@ -704,7 +714,7 @@ fun AzimeKeyboardScreen(
                             .padding(start = 12.dp, end = 3.dp),
                         contentAlignment = Alignment.CenterStart,
                     ) {
-                        if (ai.edit.text.isEmpty()) {
+                        if (ai.edit.text.isEmpty() && embedPreview.isEmpty()) {
                             Text(
                                 if (ai.mode == com.azime.input.core.ai.AiSession.Mode.TRANSLATE)
                                     "输入中文，实时译成" + if (ai.reverse) "中文" else ai.targetLang
@@ -730,6 +740,19 @@ fun AzimeKeyboardScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(end = 24.dp),
+                            decorationBox = { inner ->
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(Modifier.weight(1f)) { inner() }
+                                    if (embedPreview.isNotEmpty()) {
+                                        Text(
+                                            embedPreview,
+                                            fontSize = 13.sp,
+                                            color = cAi.subText,
+                                            maxLines = 1,
+                                        )
+                                    }
+                                }
+                            },
                         )
                         Box(
                             modifier = Modifier
@@ -4444,10 +4467,12 @@ private fun AiMenuItem(
     c: KeyboardColors,
     onClick: () -> Unit,
 ) {
+    // 轮19.210：选中项 = accentKeyBg 强调底 ⇒ 文字必须用 on 色（accentActiveText），
+    // 原来 accentActive（同色压同色）⇒ 蓝底蓝字看不见（用户截图）。
     Text(
         label,
         fontSize = 13.sp,
-        color = if (selected) c.accentActive else c.text,
+        color = if (selected) c.accentActiveText else c.text,
         modifier = Modifier
             .clickable { onClick() }
             .background(
@@ -4458,70 +4483,53 @@ private fun AiMenuItem(
     )
 }
 
-/** 轮19.195：候选栏里的 **AI 功能键**（点击弹功能条 ✓ 翻译时旁边带语言键 ✓）。 */
+/**
+ * 轮19.210：候选栏 **AI 启动键 = 纯图标开关**（用户要求 ✓）——
+ * 只显示 ✦ 图标（激活时强调底+on 色），点击弹功能菜单；不再带文字/语言方向
+ * （功能与附属设定都在 AI 条左侧双按钮里 ✓）。
+ */
 @Composable
 private fun AiToolbarKey(c: KeyboardColors, onAction: (KeyAction) -> Unit) {
     val ai = com.azime.input.core.ai.AiSession
     var open by remember { mutableStateOf(false) }
-    var langOpen by remember { mutableStateOf(false) }
-    val label = if (ai.isActive()) ai.mode.label else "AI"
 
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Box {
-            Text(
-                label,
-                fontSize = 12.sp,
-                fontWeight = if (ai.isActive()) FontWeight.Medium else FontWeight.Normal,
-                color = if (ai.isActive()) c.accentKeyText else c.text,
-                modifier = Modifier
-                    .background(
-                        if (ai.isActive()) c.accentKeyBg else Color.Transparent,
-                        RoundedCornerShape(8.dp),
-                    )
-                    .clickable { open = true }
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
-            )
-            val keyCtx = androidx.compose.ui.platform.LocalContext.current
-            val keyModes = listOf(
-                com.azime.input.core.ai.AiSession.Mode.TRANSLATE,
-                com.azime.input.core.ai.AiSession.Mode.CONTINUE,
-                com.azime.input.core.ai.AiSession.Mode.POLISH,
-                com.azime.input.core.ai.AiSession.Mode.CHAT,
-            ).filter { com.azime.input.core.ai.AiManager.modeEnabled(keyCtx, it) }
-            AiMenu(expanded = open, onDismiss = { open = false }, c = c) {
-                if (keyModes.isEmpty()) {
-                    AiMenuItem("功能已全部关闭", false, c) { open = false }
-                }
-                keyModes.forEach { m ->
-                    AiMenuItem(m.label, ai.mode == m, c) {
-                        ai.mode = m
-                        open = false
-                        onAction(KeyAction.AiModePicked)
-                    }
-                }
-                AiMenuItem("关闭", false, c) { ai.turnOff(); open = false }
-            }
-        }
-        if (ai.mode == com.azime.input.core.ai.AiSession.Mode.TRANSLATE) {
-            Box {
-                Text(
-                    ai.translateDirection() + " ▾",
-                    fontSize = 11.sp,
-                    color = c.accentActive,
-                    modifier = Modifier
-                        .clickable { ai.reverse = !ai.reverse }           // 单击切方向 ✓
-                        .padding(horizontal = 6.dp, vertical = 4.dp),
+    Box {
+        Box(
+            modifier = Modifier
+                .size(32.dp)
+                .background(
+                    if (ai.isActive()) c.accentKeyBg else c.funcKeyBg,
+                    RoundedCornerShape(10.dp),
                 )
-                AiMenu(expanded = langOpen, onDismiss = { langOpen = false }, c = c) {
-                    com.azime.input.core.ai.AiSession.LANGUAGES.forEach { lg ->
-                        AiMenuItem(lg, lg == ai.targetLang && !ai.reverse, c) {
-                            ai.targetLang = lg
-                            ai.reverse = false
-                            langOpen = false
-                        }
-                    }
+                .clickable { open = true },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.Filled.AutoAwesome,
+                contentDescription = "AI",
+                modifier = Modifier.size(18.dp),
+                tint = if (ai.isActive()) c.accentKeyText else c.text,
+            )
+        }
+        val keyCtx = androidx.compose.ui.platform.LocalContext.current
+        val keyModes = listOf(
+            com.azime.input.core.ai.AiSession.Mode.TRANSLATE,
+            com.azime.input.core.ai.AiSession.Mode.CONTINUE,
+            com.azime.input.core.ai.AiSession.Mode.POLISH,
+            com.azime.input.core.ai.AiSession.Mode.CHAT,
+        ).filter { com.azime.input.core.ai.AiManager.modeEnabled(keyCtx, it) }
+        AiMenu(expanded = open, onDismiss = { open = false }, c = c) {
+            if (keyModes.isEmpty()) {
+                AiMenuItem("功能已全部关闭", false, c) { open = false }
+            }
+            keyModes.forEach { m ->
+                AiMenuItem(m.label, ai.mode == m, c) {
+                    ai.mode = m
+                    open = false
+                    onAction(KeyAction.AiModePicked)
                 }
             }
+            AiMenuItem("关闭", false, c) { ai.turnOff(); open = false }
         }
     }
 }
