@@ -3981,3 +3981,22 @@ https://www.alibabacloud.com/help/zh/model-studio/qwen-asr-realtime-interaction-
 ## 三、验证
 - `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · **vc205 / 1.0.8** ✓
 - 待真机：长按符号键 → 翻译 → 打字/选候选应进条内；删字重译；确定固化 App 译文；取消清空 composing。
+
+# 轮19.207：删空 AI 源文时同步清 App 译文（vc206）
+
+## 一、真机反馈（vc205 实测）
+- 条内输入「你好」→ App 显示 `hello`（composing）✓
+- **删光「你好」→ App 的 `hello` 残留** ✗
+- 再输入「我」→ App 变 `I` ✓
+
+## 二、根因
+`scheduleAiEditTranslate()`：源文 `isBlank()` 时只清 `result` 就 `return`，
+**没清 App 里已写入的译文 composing** ⇒ 残留。
+
+## 三、修复
+源文为空分支补 `setComposingText("", 1)`（Main 线程 + batch + runCatching，
+与非空写译文同一套姿势）。防抖 cancel 保证「删后又打」时旧 job 不会覆盖新译文 ✓
+
+## 四、验证
+- `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · **vc206 / 1.0.8** ✓
+- 待真机：删光源文 → App composing 同步清空。

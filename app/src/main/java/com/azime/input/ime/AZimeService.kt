@@ -1826,7 +1826,20 @@ class AZimeService : InputMethodService() {
             kotlinx.coroutines.delay(600)
             val src = com.azime.input.core.ai.AiSession.edit.text
             if (src.isBlank()) {
+                // 源文删空 ⇒ 结果清空，且必须**同步清掉 App 里残留的译文 composing**
+                // （否则「删光源文，hello 还留在 App」✗）。
                 com.azime.input.core.ai.AiSession.result = ""
+                if (com.azime.input.core.ai.AiSession.isActive()) {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        currentInputConnection?.let { ic ->
+                            runCatching {
+                                ic.beginBatchEdit()
+                                ic.setComposingText("", 1)
+                                ic.endBatchEdit()
+                            }
+                        }
+                    }
+                }
                 return@launch
             }
             val sys = com.azime.input.core.ai.AiSession.systemPrompt()
