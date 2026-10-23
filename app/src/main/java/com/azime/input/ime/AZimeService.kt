@@ -937,6 +937,23 @@ class AZimeService : InputMethodService() {
                 }
                 // 条内文本被用户编辑（光标/选区变化由 UI 持续写入 AiSession）⇒ 仅重译。
                 is KeyAction.AiEditChanged -> scheduleAiEditTranslate()
+                // 轮19.207：刚选定 AI 功能 ⇒ 条内为空时带入选中文字（选中优先，不读剪贴板 ✓），
+                // 实时模式（翻译/润色）立刻跑一次。
+                is KeyAction.AiModePicked -> {
+                    val ai0 = com.azime.input.core.ai.AiSession
+                    if (ai0.edit.text.isEmpty()) {
+                        val sel = ai0.inputFrom(currentInputConnection)
+                        if (sel.isNotBlank()) {
+                            ai0.edit = androidx.compose.ui.text.input.TextFieldValue(
+                                sel, androidx.compose.ui.text.TextRange(sel.length),
+                            )
+                        }
+                    }
+                    if (ai0.mode == com.azime.input.core.ai.AiSession.Mode.TRANSLATE ||
+                        ai0.mode == com.azime.input.core.ai.AiSession.Mode.POLISH
+                    ) scheduleAiEditTranslate()
+                    refreshState()
+                }
                 // 轮19.204：豆包链路 —— 确定=结束组合 ✓ 取消=清空组合 ✓
                 is KeyAction.AiConfirm -> {
                     runCatching { currentInputConnection?.finishComposingText() }
@@ -1687,6 +1704,42 @@ class AZimeService : InputMethodService() {
             applyResult(result)
             return
         }
+        // 轮19.207：AI 激活时回车 = 「确定」——
+        //   翻译/润色：译文已是 App composing ⇒ finishComposingText 固化 ✓
+        //   续写/解释/对话：此时才执行 AI（边打边跑没有语义 ✗）⇒ 结果直接上屏 ✓
+        val ai = com.azime.input.core.ai.AiSession
+        if (ai.isActive()) {
+            val ic0 = currentInputConnection
+            when (ai.mode) {
+                com.azime.input.core.ai.AiSession.Mode.TRANSLATE,
+                com.azime.input.core.ai.AiSession.Mode.POLISH -> {
+                    runCatching { ic0?.finishComposingText() }
+                    ai.turnOff()
+                }
+                else -> {
+                    val src = ai.edit.text.ifBlank { ai.inputFrom(ic0) }
+                    runCatching { ic0?.finishComposingText() }
+                    if (src.isBlank()) {
+                        ai.turnOff()
+                    } else {
+                        val r = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            com.azime.input.core.ai.AiManager.chat(
+                                this@AZimeService, ai.systemPrompt(), src,
+                            )
+                        }
+                        val out = if (r.ok && r.text.isNotBlank()) r.text else src
+                        com.azime.input.core.diag.Diag.log(
+                            "AI", "enter run ${ai.mode} ok=${r.ok} → ${out.take(24)}",
+                        )
+                        ic0?.commitText(out, 1)
+                        pushUndo(out)
+                        ai.turnOff()
+                    }
+                }
+            }
+            refreshState()
+            return
+        }
         // 无编码时回车：输入框声明了编辑动作（发送/搜索/完成/前往）则触发动作（对齐 xime.az，
         // 微信等聊天应用可用回车直接发送）；多行文本框（NO_ENTER_ACTION）或未声明动作时
         // 发系统回车键（与 xime.az 一致，由应用自行处理换行）。
@@ -1740,8 +1793,11 @@ class AZimeService : InputMethodService() {
         // 正确做法：组合结束用 `setComposingText("", 1)` **清预览**（不落字 ✓）；
         // 提交由既有 `commitText` 负责 —— 它会**替换**组合区 ✓ 天然不重复 ✓
         val embedMode = com.azime.input.core.keyboard.KeyboardManager.embedMode()
-        if (!com.azime.input.core.ai.AiSession.isActive() &&
-            (embedMode == "code" || embedMode == "top")
+        val aiActive = com.azime.input.core.ai.AiSession.isActive()
+        // 轮19.207：AI 激活时嵌入照常——有编码就嵌入（覆盖译文区，打字可见 ✓）；
+        // 编码清空则**不动**（译文 composing 留给 AI job，互不清除 ✗ 闪烁）。
+        if ((embedMode == "code" || embedMode == "top") &&
+            (!aiActive || result.preeditText.isNotEmpty())
         ) {
             val ic = currentInputConnection
             val preview = if (embedMode == "code") {
@@ -1824,6 +1880,12 @@ class AZimeService : InputMethodService() {
         aiEditJob?.cancel()
         aiEditJob = scope.launch {
             kotlinx.coroutines.delay(600)
+            val aiMode = com.azime.input.core.ai.AiSession.mode
+            // 轮19.207：续写/解释/对话没有「边打边出」语义 ⇒ 不自动执行，等回车（确定）一次跑。
+            if (aiMode == com.azime.input.core.ai.AiSession.Mode.CONTINUE ||
+                aiMode == com.azime.input.core.ai.AiSession.Mode.EXPLAIN ||
+                aiMode == com.azime.input.core.ai.AiSession.Mode.CHAT
+            ) return@launch
             val src = com.azime.input.core.ai.AiSession.edit.text
             if (src.isBlank()) {
                 // 源文删空 ⇒ 结果清空，且必须**同步清掉 App 里残留的译文 composing**

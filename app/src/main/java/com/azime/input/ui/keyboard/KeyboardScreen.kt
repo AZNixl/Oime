@@ -61,7 +61,12 @@ import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.PlaylistAddCheck
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.ChatBubble
+import androidx.compose.material.icons.filled.Psychology
+import androidx.compose.material.icons.filled.ShortText
 import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -211,6 +216,9 @@ sealed interface KeyAction {
     object AiEditChanged : KeyAction
 
     /** 轮19.204：确定（结束组合 ✓）/ 取消（清组合 ✓）。 */
+    /** 轮19.207：AI 功能刚被选定（Service 侧带入选中文字/按需触发）。 */
+    object AiModePicked : KeyAction
+
     object AiConfirm : KeyAction
     object AiCancel : KeyAction
 
@@ -586,6 +594,7 @@ fun AzimeKeyboardScreen(
             }
             if (com.azime.input.core.ai.AiSession.isActive() && aiTick >= 0) {
                 val ai = com.azime.input.core.ai.AiSession
+                var funcOpen by remember { mutableStateOf(false) }
                 var langOpen by remember { mutableStateOf(false) }
                 val cAi = keyboardColors()
                 Row(
@@ -595,23 +604,87 @@ fun AzimeKeyboardScreen(
                         .padding(horizontal = 8.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    // 左：语言/方向键（圆形 ✓ 点=切方向 / 长按=语言菜单 ✓）
+                    // 轮19.207：左侧**圆角双按钮**（外观一个按键，实际两个点击区）——
+                    // 左半 = AI 功能图标（点击弹功能菜单），右半 = 附属设定（翻译→语言 / 润色→风格）。
+                    val funcIcon = when (ai.mode) {
+                        com.azime.input.core.ai.AiSession.Mode.TRANSLATE -> Icons.Filled.Translate
+                        com.azime.input.core.ai.AiSession.Mode.CONTINUE -> Icons.Filled.ShortText
+                        com.azime.input.core.ai.AiSession.Mode.POLISH -> Icons.Filled.AutoAwesome
+                        com.azime.input.core.ai.AiSession.Mode.EXPLAIN -> Icons.Filled.Psychology
+                        com.azime.input.core.ai.AiSession.Mode.CHAT -> Icons.Filled.ChatBubble
+                        com.azime.input.core.ai.AiSession.Mode.OFF -> Icons.Filled.AutoAwesome
+                    }
+                    val settingLabel = when (ai.mode) {
+                        com.azime.input.core.ai.AiSession.Mode.TRANSLATE ->
+                            if (ai.reverse) "英→中" else "中→${ai.targetLang.take(1)}"
+                        com.azime.input.core.ai.AiSession.Mode.POLISH -> ai.polishStyles[ai.polishStyle]
+                        else -> ""
+                    }
                     Box {
-                        Column(
+                        Row(
                             modifier = Modifier
-                                .size(34.dp)
-                                .background(cAi.funcKeyBg, androidx.compose.foundation.shape.CircleShape)
-                                .pointerInput(Unit) {
-                                    detectTapGestures(
-                                        onTap = { ai.reverse = !ai.reverse },
-                                        onLongPress = { langOpen = true },
-                                    )
-                                },
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center,
+                                .background(cAi.funcKeyBg, RoundedCornerShape(17.dp)),
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Text("中", fontSize = 10.sp, color = cAi.text)
-                            Text("A", fontSize = 9.sp, color = cAi.subText)
+                            Box(
+                                modifier = Modifier
+                                    .clickable { funcOpen = true }
+                                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(funcIcon, contentDescription = ai.mode.label,
+                                    modifier = Modifier.size(16.dp), tint = cAi.text)
+                            }
+                            if (settingLabel.isNotEmpty()) {
+                                Box(
+                                    modifier = Modifier
+                                        .width(1.dp)
+                                        .height(14.dp)
+                                        .background(cAi.subText.copy(alpha = 0.35f)),
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .clickable {
+                                            when (ai.mode) {
+                                                com.azime.input.core.ai.AiSession.Mode.TRANSLATE ->
+                                                    langOpen = true
+                                                com.azime.input.core.ai.AiSession.Mode.POLISH ->
+                                                    ai.polishStyle = (ai.polishStyle + 1) %
+                                                        ai.polishStyles.size
+                                                else -> {}
+                                            }
+                                            onAction(KeyAction.AiEditChanged)
+                                        }
+                                        .padding(horizontal = 8.dp, vertical = 8.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text(settingLabel, fontSize = 11.sp, color = cAi.text)
+                                }
+                            }
+                        }
+                        androidx.compose.material3.DropdownMenu(
+                            expanded = funcOpen, onDismissRequest = { funcOpen = false },
+                        ) {
+                            listOf(
+                                com.azime.input.core.ai.AiSession.Mode.TRANSLATE,
+                                com.azime.input.core.ai.AiSession.Mode.CONTINUE,
+                                com.azime.input.core.ai.AiSession.Mode.POLISH,
+                                com.azime.input.core.ai.AiSession.Mode.EXPLAIN,
+                                com.azime.input.core.ai.AiSession.Mode.CHAT,
+                            ).forEach { m ->
+                                androidx.compose.material3.DropdownMenuItem(
+                                    text = { Text(m.label) },
+                                    onClick = {
+                                        ai.mode = m
+                                        funcOpen = false
+                                        onAction(KeyAction.AiModePicked)
+                                    },
+                                )
+                            }
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = { Text("关闭") },
+                                onClick = { ai.turnOff(); funcOpen = false },
+                            )
                         }
                         androidx.compose.material3.DropdownMenu(
                             expanded = langOpen, onDismissRequest = { langOpen = false },
@@ -625,13 +698,13 @@ fun AzimeKeyboardScreen(
                         }
                     }
                     Spacer(Modifier.width(8.dp))
-                    // 中：**真输入框**（豆包同款 ✓ 有光标/选区 ✓ 可删中间字 ✓）
+                    // 中：**真输入框**（豆包同款 ✓ 有光标/选区 ✓ 可删中间字 ✓）+ ✕ 移入框内 ✓
                     Box(
                         modifier = Modifier
                             .weight(1f)
                             .height(34.dp)
                             .background(Color.White, RoundedCornerShape(17.dp))
-                            .padding(horizontal = 12.dp),
+                            .padding(start = 12.dp, end = 3.dp),
                         contentAlignment = Alignment.CenterStart,
                     ) {
                         if (ai.edit.text.isEmpty()) {
@@ -657,27 +730,20 @@ fun AzimeKeyboardScreen(
                                 fontSize = 13.sp, color = Color(0xFF202124),
                             ),
                             cursorBrush = androidx.compose.ui.graphics.SolidColor(c.accentActive),
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(end = 24.dp),
                         )
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.CenterEnd)
+                                .size(24.dp)
+                                .clickable { onAction(KeyAction.AiCancel) },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text("✕", fontSize = 12.sp, color = cAi.subText)
+                        }
                     }
-                    Spacer(Modifier.width(6.dp))
-                    // ✕ 清空 ✓
-                    Text(
-                        "✕", fontSize = 13.sp, color = cAi.subText,
-                        modifier = Modifier
-                            .clickable { onAction(KeyAction.AiCancel) }
-                            .padding(horizontal = 6.dp, vertical = 6.dp),
-                    )
-                    // 确定 = **插入译文** ✓（豆包同款 ✓ 用户截图里的「确定」✓）
-                    Text(
-                        "确定",
-                        fontSize = 13.sp, color = cAi.text,
-                        modifier = Modifier
-                            .background(cAi.funcKeyBg, RoundedCornerShape(16.dp))
-                            .clickable { onAction(KeyAction.AiConfirm) }
-                            .padding(horizontal = 14.dp, vertical = 7.dp),
-                    )
-
                 }
             }
             ToolbarRow(
@@ -1375,59 +1441,8 @@ private fun ToolbarRow(
                 Text("✕", fontSize = 15.sp, color = c.subText)
             }
         }
-        // 轮19.198：AI 激活 ⇒ **候选行整行让给 AI 键** ✓（覆盖 ○ 圆环/剪贴板等 ✓）
-        (com.azime.input.core.ai.AiSession.isActive() && aiTick >= 0) -> {
-            val ai = com.azime.input.core.ai.AiSession
-            var langOpen by remember { mutableStateOf(false) }
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(barHeight)
-                    .background(c.bg),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center,
-            ) {
-                Box {
-                    val label = when (ai.mode) {
-                        com.azime.input.core.ai.AiSession.Mode.TRANSLATE ->
-                            if (ai.reverse) "英 - 中" else "中 - ${ai.targetLang.take(1)}"
-                        else -> ai.mode.label
-                    }
-                    Text(
-                        label,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = c.accentActive,
-                        modifier = Modifier
-                            .pointerInput(Unit) {
-                                detectTapGestures(
-                                    onTap = {
-                                        // 翻译：切方向 ✓ 其它模式：切风格/无操作 ✓
-                                        if (ai.mode == com.azime.input.core.ai.AiSession.Mode.TRANSLATE) {
-                                            ai.reverse = !ai.reverse
-                                        } else if (ai.mode == com.azime.input.core.ai.AiSession.Mode.POLISH) {
-                                            ai.polishStyle = (ai.polishStyle + 1) %
-                                                com.azime.input.core.ai.AiSession.polishStyles.size
-                                        }
-                                    },
-                                    onLongPress = { langOpen = true },
-                                )
-                            }
-                            .padding(horizontal = 14.dp, vertical = 6.dp),
-                    )
-                    androidx.compose.material3.DropdownMenu(
-                        expanded = langOpen, onDismissRequest = { langOpen = false },
-                    ) {
-                        com.azime.input.core.ai.AiSession.LANGUAGES.forEach { lg ->
-                            androidx.compose.material3.DropdownMenuItem(
-                                text = { Text(lg) },
-                                onClick = { ai.targetLang = lg; ai.reverse = false; langOpen = false },
-                            )
-                        }
-                    }
-                }
-            }
-        }
+        // 轮19.207：撤销 19.198 的「AI 激活占满候选行」——恢复 ○ 圆环/剪贴板条/工具，
+        // AI 状态下打字由上面的 composing 分支（preedit+候选）覆盖显示 ✓
         else -> {
             val items = KeyboardManager.toolbarItems()
             val leftItems = items.take((items.size + 1) / 2)
@@ -1449,7 +1464,7 @@ private fun ToolbarRow(
                 ) {
                     leftItems.forEach { id -> toolbarToolItem(id, state, onAction, c) { showSchemaMenu = true } }
                     // 轮19.196：AI 键改为**可选**（定制工具栏里勾选 "ai" 才显示 ✓ 默认靠长按符号键 ✓）
-                    if (KeyboardManager.toolbarItems().contains("ai")) AiToolbarKey(c)
+                    if (KeyboardManager.toolbarItems().contains("ai")) AiToolbarKey(c, onAction)
                 }
 
                 // ── ○ 菜单键（居中，圆环造型）：点击开菜单 / 长按语音 /
@@ -3929,6 +3944,8 @@ private fun RowScope.KeyboardKey(key: Key, state: KeyboardUiState, onAction: (Ke
                                     showPageBubble = false
                                     com.azime.input.core.ai.AiSession.mode = m
                                     com.azime.input.core.haptic.HapticsManager.press()
+                                    // 轮19.207：通知 Service 带入选中文字（翻译/润色立即跑）。
+                                    onAction(KeyAction.AiModePicked)
                                 }
                                 .padding(horizontal = 9.dp, vertical = 7.dp),
                         )
@@ -4383,7 +4400,7 @@ private fun onKeyAction(key: Key, fromPage: String, onAction: (KeyAction) -> Uni
 
 /** 轮19.195：候选栏里的 **AI 功能键**（点击弹功能条 ✓ 翻译时旁边带语言键 ✓）。 */
 @Composable
-private fun AiToolbarKey(c: KeyboardColors) {
+private fun AiToolbarKey(c: KeyboardColors, onAction: (KeyAction) -> Unit) {
     val ai = com.azime.input.core.ai.AiSession
     var open by remember { mutableStateOf(false) }
     var langOpen by remember { mutableStateOf(false) }
@@ -4412,10 +4429,14 @@ private fun AiToolbarKey(c: KeyboardColors) {
                     com.azime.input.core.ai.AiSession.Mode.EXPLAIN,
                     com.azime.input.core.ai.AiSession.Mode.CHAT,
                 ).forEach { m ->
-                    androidx.compose.material3.DropdownMenuItem(
-                        text = { Text(m.label) },
-                        onClick = { ai.mode = m; open = false },
-                    )
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text(m.label) },
+                            onClick = {
+                                ai.mode = m
+                                open = false
+                                onAction(KeyAction.AiModePicked)
+                            },
+                        )
                 }
                 androidx.compose.material3.DropdownMenuItem(
                     text = { Text("关闭") },

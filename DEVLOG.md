@@ -4000,3 +4000,23 @@ https://www.alibabacloud.com/help/zh/model-studio/qwen-asr-realtime-interaction-
 ## 四、验证
 - `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · **vc206 / 1.0.8** ✓
 - 待真机：删光源文 → App composing 同步清空。
+
+# 轮19.207：AI 工具栏 UI 改造 + 其余功能打通 + 嵌入修复（vc207）
+
+## 一、UI（按用户截图要求）
+1. AI 条左侧改**圆角双按钮**：一个圆角矩形，左半 = AI 功能图标（Translate/ShortText/AutoAwesome/Psychology/ChatBubble，点击弹功能菜单），竖分隔线，右半 = 附属设定（翻译→「中→英」点弹语言；润色→「正式」点击循环风格）。
+2. **去除确定键**；**✕ 移入输入框内**（框内右端 24dp 点击区）。
+3. **候选栏回撤** 19.198 的「AI 激活占行」：恢复 ○ 圆环/剪贴板条/工具栏；AI 状态打字由 composing 分支（preedit+候选）覆盖显示 ✓
+
+## 二、功能打通
+- **翻译/润色**：保持实时（600ms 防抖），回车 = finishComposingText 固化译文 ✓
+- **续写/解释/对话**：不自动跑（无实时语义）⇒ 回车时执行 AI → 结果 commitText 上屏 → 关闭会话
+- 新 `KeyAction.AiModePicked`：选定功能时条内为空则**带入选中文字**（选中优先，不读剪贴板）；两个入口（长按符号键 5 项 / AI 条功能菜单）都发。
+- 新 AiEditChanged 语义：光标/选区持续写回 AiSession，仅文本变化触发重译。
+
+## 三、嵌入修复
+- vc205 曾整段禁用嵌入预览（!isActive）。现在：AI 激活 + 有编码 ⇒ 照常嵌入（覆盖译文区，打字可见）；编码清空 ⇒ 不动 composing（译文保留，互不清除，无闪烁）。
+
+## 四、验证
+- `compileDebugKotlin` **BUILD SUCCESSFUL** ✓ · **vc207 / 1.0.8** ✓
+- 待真机：双按钮点击、✕入框、候选栏回撤、续写/润色/解释/对话回车执行、嵌入模式打字可见编码。
