@@ -4133,3 +4133,9 @@ https://www.alibabacloud.com/help/zh/model-studio/qwen-asr-realtime-interaction-
 ## 五、安全（发布前检查）
 - 源码 / assets / gradle 配置 / APK 全量扫描：**无任何 API Key**（`sk-` 前缀 0 命中）。
 - Key 只存 `speech_prefs`（运行时），备份规则已从 cloud-backup + device-transfer 排除；`ai_prefs` 不含 Key。
+
+# 轮19.213：文档欠账清理
+
+- `BUILD_STATUS.md` 版本表补 **1.0.5 / 1.0.6 / 1.0.7 / 1.0.8** 四行（此前停在 1.0.4，GitHub 上看着像项目还在 1.0.4）。
+- `app/build.gradle.kts` 删过期注释「测试通过后再统一升到正式版 1.0.4」，改中性说明（版本号每轮递增）。
+- 约定：**文档随版本同步**（功能/版本一变，BUILD_STATUS 当轮补行、过期注释当轮清，不等发版后补）。
